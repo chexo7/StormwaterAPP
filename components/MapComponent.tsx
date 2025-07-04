@@ -1,10 +1,11 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { MapContainer, TileLayer, GeoJSON, useMap, LayersControl, LayerGroup } from 'react-leaflet';
 import ReactLeafletGoogleLayer from 'react-leaflet-google-layer';
 import type { LayerData } from '../types';
 import type { GeoJSON as LeafletGeoJSON, Layer } from 'leaflet';
 
-const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY as string | undefined;
+const googleMapsApiKey = (process.env.GOOGLE_MAPS_API_KEY as string | undefined) ||
+  'AIzaSyBsEK-S5Kbf5aqYol5eGv8uYcPgLOlObr4';
 
 interface MapComponentProps {
   layers: LayerData[];
@@ -62,9 +63,96 @@ const ManagedGeoJsonLayer = ({
   );
 };
 
+// Search box powered by Google Maps Places Autocomplete and Geocoding
+const SearchBox = ({ apiKey }: { apiKey?: string }) => {
+  const [query, setQuery] = useState('');
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const map = useMap();
+
+  // Load Google Maps script with Places library
+  useEffect(() => {
+    if (!apiKey || (window as any).google?.maps) return;
+    const script = document.createElement('script');
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
+    script.async = true;
+    document.head.appendChild(script);
+    return () => {
+      document.head.removeChild(script);
+    };
+  }, [apiKey]);
+
+  // Initialize autocomplete once script is ready
+  useEffect(() => {
+    if (!apiKey || !(window as any).google?.maps || !inputRef.current) return;
+    const ac = new (window as any).google.maps.places.Autocomplete(inputRef.current);
+    ac.addListener('place_changed', () => {
+      const place = ac.getPlace();
+      const loc = place.geometry?.location;
+      if (loc) {
+        map.flyTo([loc.lat(), loc.lng()], 14);
+      }
+    });
+  }, [apiKey, map]);
+
+  const geocode = async (text: string) => {
+    if (!apiKey) return;
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(text)}&key=${apiKey}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.results && data.results[0]) {
+      const { lat, lng } = data.results[0].geometry.location;
+      map.flyTo([lat, lng], 14);
+    } else {
+      alert('Location not found');
+    }
+  };
+
+  const handleSearch = async () => {
+    const trimmed = query.trim();
+    if (!trimmed) return;
+
+    const coordMatch = trimmed.match(/^(-?\d+(?:\.\d+)?)[,\s]+(-?\d+(?:\.\d+)?)/);
+    if (coordMatch) {
+      const lat = parseFloat(coordMatch[1]);
+      const lng = parseFloat(coordMatch[2]);
+      map.flyTo([lat, lng], 14);
+      return;
+    }
+
+    await geocode(trimmed);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      handleSearch();
+    }
+  };
+
+  return (
+    <div className="absolute top-2 right-2 z-[1000] flex bg-white rounded shadow p-1">
+      <input
+        ref={inputRef}
+        type="text"
+        value={query}
+        onChange={e => setQuery(e.target.value)}
+        onKeyDown={handleKeyDown}
+        placeholder="Search address or lat,lng"
+        className="text-sm px-2 py-1 border border-gray-300 rounded-l focus:outline-none w-48"
+      />
+      <button
+        className="bg-cyan-600 text-white px-3 rounded-r text-sm"
+        onClick={handleSearch}
+      >
+        Go
+      </button>
+    </div>
+  );
+};
+
 const MapComponent: React.FC<MapComponentProps> = ({ layers }) => {
   return (
-    <MapContainer center={[20, 0]} zoom={2} scrollWheelZoom={true} className="h-full w-full">
+    <MapContainer center={[20, 0]} zoom={2} scrollWheelZoom={true} className="h-full w-full relative">
+      <SearchBox apiKey={googleMapsApiKey} />
       <LayersControl position="topright">
         {/* Base Layers */}
         <LayersControl.BaseLayer checked name="Dark">

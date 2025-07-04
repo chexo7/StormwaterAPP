@@ -19,3 +19,8 @@ html, body, #root {
     font-size: 20px;
   }
 }
+
+/* push layer control down so search box can sit above */
+.leaflet-control-layers {
+  margin-top: 3.5rem;
+}
