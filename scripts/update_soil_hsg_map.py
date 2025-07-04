@@ -4,7 +4,7 @@
 This script queries the USDA Soil Data Access API for all soil survey
 areas and retrieves the hydrologic soil group (HSG) for each map unit
 symbol (MUSYM). The results are merged with the existing
-`data/soil-hsg-map.json` file.
+`public/data/soil-hsg-map.json` file.
 
 Usage::
     python update_soil_hsg_map.py [--areas AREA1 AREA2 ...]
@@ -25,7 +25,12 @@ from typing import Dict, Iterable, List
 import requests
 
 SDM_API_URL = "https://sdmdataaccess.sc.egov.usda.gov/Tabular/post.rest"
-DATA_PATH = Path(__file__).resolve().parents[1] / "data" / "soil-hsg-map.json"
+DATA_PATH = (
+    Path(__file__).resolve().parents[1]
+    / "public"
+    / "data"
+    / "soil-hsg-map.json"
+)
 
 
 def run_query(sql: str) -> str:

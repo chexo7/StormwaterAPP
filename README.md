@@ -15,7 +15,7 @@ This contains everything you need to run your app locally.
 
 ## Update soil HSG mapping
 
-The file `data/soil-hsg-map.json` contains a mapping from soil map unit
+The file `public/data/soil-hsg-map.json` contains a mapping from soil map unit
 symbols (MUSYM) to hydrologic soil groups (HSG). A utility script is
 provided to refresh this mapping using the USDA Soil Data Access API.
 
