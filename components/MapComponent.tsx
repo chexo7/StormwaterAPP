@@ -1,6 +1,9 @@
 import React, { useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, GeoJSON, useMap, LayersControl, LayerGroup } from 'react-leaflet';
+import { GoogleLayer } from 'react-leaflet-google-v2';
 import type { LayerData } from '../types';
+
+const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY as string;
 import type { GeoJSON as LeafletGeoJSON, Layer } from 'leaflet';
 
 interface MapComponentProps {
@@ -76,12 +79,22 @@ const MapComponent: React.FC<MapComponentProps> = ({ layers }) => {
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
         </LayersControl.BaseLayer>
+        {googleMapsApiKey && (
+          <LayersControl.BaseLayer name="Google Street">
+            <GoogleLayer googlekey={googleMapsApiKey} maptype={"ROADMAP"} />
+          </LayersControl.BaseLayer>
+        )}
         <LayersControl.BaseLayer name="Satellite">
              <TileLayer
                 url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
                 attribution="Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community"
             />
         </LayersControl.BaseLayer>
+        {googleMapsApiKey && (
+          <LayersControl.BaseLayer name="Google Satellite">
+            <GoogleLayer googlekey={googleMapsApiKey} maptype={"SATELLITE"} />
+          </LayersControl.BaseLayer>
+        )}
          <LayersControl.BaseLayer name="Hybrid">
             <LayerGroup>
                 <TileLayer
@@ -91,7 +104,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ layers }) => {
                  <TileLayer
                     url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png"
                     attribution='&copy; <a href="https://carto.com/attributions">CARTO</a>'
-                    pane="shadowPane" 
+                    pane="shadowPane"
                 />
             </LayerGroup>
         </LayersControl.BaseLayer>
