@@ -1,14 +1,16 @@
 import React from 'react';
-import type { LayerData } from '../types';
+import type { LayerData, LogEntry } from '../types';
 import { XCircleIcon, InfoIcon, TrashIcon } from './Icons';
+import LogPanel from './LogPanel';
 
 interface InfoPanelProps {
   layers: LayerData[];
   error: string | null;
+  logs: LogEntry[];
   onRemoveLayer: (id: string) => void;
 }
 
-const InfoPanel: React.FC<InfoPanelProps> = ({ layers, error, onRemoveLayer }) => {
+const InfoPanel: React.FC<InfoPanelProps> = ({ layers, error, logs, onRemoveLayer }) => {
 
   const getFeatureTypeSummary = (geojson: LayerData['geojson']) => {
     if (!geojson) return {};
@@ -21,8 +23,8 @@ const InfoPanel: React.FC<InfoPanelProps> = ({ layers, error, onRemoveLayer }) =
   };
 
   return (
-    <div className="bg-gray-700/50 p-6 rounded-lg border border-gray-600 flex-grow flex flex-col">
-      <h2 className="text-lg font-semibold text-white mb-4">Layer Information</h2>
+    <div className="bg-gray-700/50 p-6 rounded-lg border border-gray-600 flex-grow flex flex-col space-y-4">
+      <h2 className="text-lg font-semibold text-white">Layer Information</h2>
       <div className="space-y-4 flex-grow overflow-y-auto pr-2">
         {error && (
           <div className="bg-red-900/50 border border-red-700 text-red-300 px-4 py-3 rounded-lg relative" role="alert">
@@ -72,6 +74,7 @@ const InfoPanel: React.FC<InfoPanelProps> = ({ layers, error, onRemoveLayer }) =
           </div>
         )}
       </div>
+      <LogPanel logs={logs} />
     </div>
   );
 };

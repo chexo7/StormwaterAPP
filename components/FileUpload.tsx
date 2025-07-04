@@ -8,23 +8,28 @@ interface FileUploadProps {
   onLayerAdded: (data: FeatureCollection, fileName: string) => void;
   onLoading: () => void;
   onError: (message: string) => void;
+  onLog: (message: string, type?: 'info' | 'error') => void;
   isLoading: boolean;
 }
 
-const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onError, isLoading }) => {
+const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onError, onLog, isLoading }) => {
   const [isDragging, setIsDragging] = useState(false);
 
   const processFile = useCallback(async (file: File) => {
     if (!file) {
       onError("No file selected.");
+      onLog("No file selected", 'error');
       return;
     }
     if (!file.name.toLowerCase().endsWith('.zip')) {
-      onError("Invalid file type. Please upload a .zip file containing your shapefile components (.shp, .dbf, .prj, etc.).");
+      const msg = "Invalid file type. Please upload a .zip file containing your shapefile components (.shp, .dbf, .prj, etc.).";
+      onError(msg);
+      onLog(msg, 'error');
       return;
     }
 
     onLoading();
+    onLog(`Processing ${file.name}...`);
 
     try {
       let buffer = await file.arrayBuffer();
@@ -60,13 +65,15 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
       // --- DATA ENRICHMENT FOR WSS FILES ---
       if (isWssFile && geojson.features.length > 0) {
         try {
-          // Fetch the mapping data. The path is relative to the public root.
-          const response = await fetch('/data/soil-hsg-map.json');
+          // Fetch the mapping data from the backend
+          const response = await fetch('/api/soil-hsg-map');
           if (!response.ok) {
-            console.warn(`Could not load soil HSG data (status: ${response.status}). Skipping enrichment.`);
+            const msg = `Could not load soil HSG data (status: ${response.status}). Skipping enrichment.`;
+            console.warn(msg);
+            onLog(msg, 'error');
           } else {
             const hsgMap: Record<string, string> = await response.json();
-            
+
             geojson.features.forEach(feature => {
               if (feature.properties && feature.properties.MUSYM) {
                 const musym = String(feature.properties.MUSYM);
@@ -74,20 +81,25 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
                 feature.properties.HSG = hsg;
               }
             });
+            onLog('Soil data enriched');
           }
         } catch (enrichError) {
           console.error("Failed to enrich soil data:", enrichError);
+          onLog('Failed to enrich soil data', 'error');
           // Don't block the layer from being added, just log the error.
         }
       }
       // --- END OF ENRICHMENT LOGIC ---
 
       onLayerAdded(geojson, displayName);
+      onLog(`Loaded ${displayName}`);
     } catch (e) {
       console.error("File parsing error:", e);
-      onError("Failed to parse shapefile. Ensure the .zip contains valid .shp and .dbf files, and for WSS zips, that 'soilmu_a_aoi.shp' is present.");
+      const errMsg = "Failed to parse shapefile. Ensure the .zip contains valid .shp and .dbf files, and for WSS zips, that 'soilmu_a_aoi.shp' is present.";
+      onError(errMsg);
+      onLog(errMsg, 'error');
     }
-  }, [onLayerAdded, onLoading, onError]);
+  }, [onLayerAdded, onLoading, onError, onLog]);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
