@@ -3,6 +3,7 @@ import * as shp from 'shpjs';
 import JSZip from 'jszip';
 import type { FeatureCollection } from 'geojson';
 import { UploadIcon } from './Icons';
+import { loadHsgMap } from '../utils/soil';
 
 interface FileUploadProps {
   onLayerAdded: (data: FeatureCollection, fileName: string) => void;
@@ -65,15 +66,8 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
       // --- DATA ENRICHMENT FOR WSS FILES ---
       if (isWssFile && geojson.features.length > 0) {
         try {
-          // Fetch the mapping data from the backend
-          const response = await fetch('/api/soil-hsg-map');
-          if (!response.ok) {
-            const msg = `Could not load soil HSG data (status: ${response.status}). Skipping enrichment.`;
-            console.warn(msg);
-            onLog(msg, 'error');
-          } else {
-            const hsgMap: Record<string, string> = await response.json();
-
+          const hsgMap = await loadHsgMap();
+          if (hsgMap) {
             geojson.features.forEach(feature => {
               if (feature.properties && feature.properties.MUSYM) {
                 const musym = String(feature.properties.MUSYM);
@@ -82,11 +76,14 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
               }
             });
             onLog('Soil data enriched');
+          } else {
+            const msg = 'Could not load soil HSG data. Skipping enrichment.';
+            console.warn(msg);
+            onLog(msg, 'error');
           }
         } catch (enrichError) {
-          console.error("Failed to enrich soil data:", enrichError);
+          console.error('Failed to enrich soil data:', enrichError);
           onLog('Failed to enrich soil data', 'error');
-          // Don't block the layer from being added, just log the error.
         }
       }
       // --- END OF ENRICHMENT LOGIC ---
