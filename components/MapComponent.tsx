@@ -60,6 +60,7 @@ const ManagedGeoJsonLayer = ({
 };
 
 const MapComponent: React.FC<MapComponentProps> = ({ layers }) => {
+  const googleApiKey = process.env.GOOGLE_MAPS_API_KEY;
   return (
     <MapContainer center={[20, 0]} zoom={2} scrollWheelZoom={true} className="h-full w-full">
       <LayersControl position="topright">
@@ -82,19 +83,27 @@ const MapComponent: React.FC<MapComponentProps> = ({ layers }) => {
                 attribution="Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community"
             />
         </LayersControl.BaseLayer>
-         <LayersControl.BaseLayer name="Hybrid">
+        <LayersControl.BaseLayer name="Hybrid">
             <LayerGroup>
                 <TileLayer
                     url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
                     attribution="Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community"
                 />
-                 <TileLayer
+                <TileLayer
                     url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png"
                     attribution='&copy; <a href="https://carto.com/attributions">CARTO</a>'
-                    pane="shadowPane" 
+                    pane="shadowPane"
                 />
             </LayerGroup>
         </LayersControl.BaseLayer>
+        {googleApiKey && (
+          <LayersControl.BaseLayer name="Google Maps">
+            <TileLayer
+              url={`https://mts1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}&key=${googleApiKey}`}
+              attribution="Map data &copy; Google"
+            />
+          </LayersControl.BaseLayer>
+        )}
 
         {/* Overlay Layers */}
         {layers.map((layer, index) => (
