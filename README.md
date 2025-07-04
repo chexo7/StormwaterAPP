@@ -9,7 +9,8 @@ This contains everything you need to run your app locally.
 
 1. Install dependencies:
    `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+2. Copy `.env.local.example` to `.env.local` and set the `GEMINI_API_KEY`.
+   Optionally add `GOOGLE_MAPS_API_KEY` to enable Google Maps layers.
 3. Run the app:
    `npm run dev`
 4. Start the backend server in another terminal:
