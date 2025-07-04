@@ -12,4 +12,6 @@ export interface LayerData {
 export interface LogEntry {
   message: string;
   type: 'info' | 'error';
+  source?: 'frontend' | 'backend';
+  timestamp?: number;
 }

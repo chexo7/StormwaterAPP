@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import type { FeatureCollection } from 'geojson';
 import type { LayerData, LogEntry } from './types';
 import Header from './components/Header';
@@ -13,7 +13,26 @@ const App: React.FC = () => {
   const [logs, setLogs] = useState<LogEntry[]>([]);
 
   const addLog = useCallback((message: string, type: 'info' | 'error' = 'info') => {
-    setLogs(prev => [...prev, { message, type }]);
+    setLogs(prev => [...prev, { message, type, source: 'frontend' }]);
+  }, []);
+
+  useEffect(() => {
+    const fetchBackendLogs = async () => {
+      try {
+        const res = await fetch('/api/logs');
+        if (res.ok) {
+          const data: LogEntry[] = await res.json();
+          if (data.length > 0) {
+            setLogs(prev => [...prev, ...data.map(l => ({ ...l, source: 'backend' }))]);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch backend logs', err);
+      }
+    };
+    fetchBackendLogs();
+    const interval = setInterval(fetchBackendLogs, 3000);
+    return () => clearInterval(interval);
   }, []);
 
   const handleLayerAdded = useCallback((geojson: FeatureCollection, name: string) => {

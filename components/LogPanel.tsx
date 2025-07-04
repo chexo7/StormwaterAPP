@@ -21,6 +21,7 @@ const LogPanel: React.FC<LogPanelProps> = ({ logs }) => {
               ) : (
                 <CheckCircleIcon className="w-4 h-4 text-cyan-400 mt-0.5 mr-2 flex-shrink-0" />
               )}
+              <span className="text-gray-400 mr-2 text-xs font-mono">{log.source === 'backend' ? 'server' : 'client'}</span>
               <span className="text-gray-300 break-words flex-1">{log.message}</span>
             </li>
           ))}
