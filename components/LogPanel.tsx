@@ -9,11 +9,11 @@ interface LogPanelProps {
 const LogPanel: React.FC<LogPanelProps> = ({ logs }) => {
   return (
     <div className="bg-gray-700/50 p-4 rounded-lg border border-gray-600 overflow-y-auto h-48 space-y-2">
-      <h2 className="text-lg font-semibold text-white mb-2">Log</h2>
+      <h2 className="text-lg 3xl:text-xl 4k:text-2xl font-semibold text-white mb-2">Log</h2>
       {logs.length === 0 ? (
-        <p className="text-gray-400 text-sm">No log messages yet.</p>
+        <p className="text-gray-400 text-sm 3xl:text-base 4k:text-lg">No log messages yet.</p>
       ) : (
-        <ul className="space-y-1 text-sm">
+        <ul className="space-y-1 text-sm 3xl:text-base 4k:text-lg">
           {logs.map((log, index) => (
             <li key={index} className="flex items-start">
               {log.type === 'error' ? (
