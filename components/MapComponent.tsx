@@ -59,9 +59,21 @@ const ManagedGeoJsonLayer = ({
   );
 };
 
+// This component forces Leaflet to recalculate map size after it is mounted.
+// Without this, the map may render incorrectly until the window is resized
+// (for example when the dev tools are opened).
+const MapResizeHandler: React.FC = () => {
+  const map = useMap();
+  useEffect(() => {
+    map.invalidateSize();
+  }, [map]);
+  return null;
+};
+
 const MapComponent: React.FC<MapComponentProps> = ({ layers }) => {
   return (
     <MapContainer center={[20, 0]} zoom={2} scrollWheelZoom={true} className="h-full w-full">
+      <MapResizeHandler />
       <LayersControl position="topright">
         {/* Base Layers */}
         <LayersControl.BaseLayer checked name="Dark">
