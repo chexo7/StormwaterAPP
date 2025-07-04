@@ -65,15 +65,27 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
       // --- DATA ENRICHMENT FOR WSS FILES ---
       if (isWssFile && geojson.features.length > 0) {
         try {
-          // Fetch the mapping data from the backend
-          const response = await fetch('/api/soil-hsg-map');
-          if (!response.ok) {
-            const msg = `Could not load soil HSG data (status: ${response.status}). Skipping enrichment.`;
+          const fetchHsgMap = async () => {
+            const urls = ['/api/soil-hsg-map', '/data/soil-hsg-map.json'];
+            for (const url of urls) {
+              try {
+                const res = await fetch(url);
+                if (res.ok) {
+                  return (await res.json()) as Record<string, string>;
+                }
+              } catch {
+                // ignore and try next url
+              }
+            }
+            return null;
+          };
+
+          const hsgMap = await fetchHsgMap();
+          if (!hsgMap) {
+            const msg = 'Could not load soil HSG data. Skipping enrichment.';
             console.warn(msg);
             onLog(msg, 'error');
           } else {
-            const hsgMap: Record<string, string> = await response.json();
-
             geojson.features.forEach(feature => {
               if (feature.properties && feature.properties.MUSYM) {
                 const musym = String(feature.properties.MUSYM);
@@ -84,7 +96,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
             onLog('Soil data enriched');
           }
         } catch (enrichError) {
-          console.error("Failed to enrich soil data:", enrichError);
+          console.error('Failed to enrich soil data:', enrichError);
           onLog('Failed to enrich soil data', 'error');
           // Don't block the layer from being added, just log the error.
         }
