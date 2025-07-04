@@ -1,0 +1,166 @@
+import React, { useCallback, useState } from 'react';
+import * as shp from 'shpjs';
+import JSZip from 'jszip';
+import type { FeatureCollection } from 'geojson';
+import { UploadIcon } from './Icons';
+
+interface FileUploadProps {
+  onLayerAdded: (data: FeatureCollection, fileName: string) => void;
+  onLoading: () => void;
+  onError: (message: string) => void;
+  isLoading: boolean;
+}
+
+const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onError, isLoading }) => {
+  const [isDragging, setIsDragging] = useState(false);
+
+  const processFile = useCallback(async (file: File) => {
+    if (!file) {
+      onError("No file selected.");
+      return;
+    }
+    if (!file.name.toLowerCase().endsWith('.zip')) {
+      onError("Invalid file type. Please upload a .zip file containing your shapefile components (.shp, .dbf, .prj, etc.).");
+      return;
+    }
+
+    onLoading();
+
+    try {
+      let buffer = await file.arrayBuffer();
+      let displayName = file.name;
+      const isWssFile = file.name.toLowerCase().startsWith('wss_aoi_');
+
+      // Special handling for Web Soil Survey files
+      if (isWssFile) {
+        const targetBasename = 'soilmu_a_aoi';
+        const zip = await JSZip.loadAsync(buffer);
+        
+        const relevantFiles = zip.file(new RegExp(`(^|/)${targetBasename}\\.\\w+$`, 'i'));
+
+        if (relevantFiles.length === 0) {
+          onError(`Could not find '${targetBasename}.shp' in the WSS archive.`);
+          return;
+        }
+
+        const newZip = new JSZip();
+        for (const zipObject of relevantFiles) {
+          const fileNameOnly = zipObject.name.split('/').pop();
+          if(fileNameOnly) {
+            newZip.file(fileNameOnly, await zipObject.async('arraybuffer'));
+          }
+        }
+        
+        buffer = await newZip.generateAsync({ type: 'arraybuffer' });
+        displayName = `${targetBasename}.shp`;
+      }
+
+      let geojson = await shp.parseZip(buffer) as FeatureCollection;
+
+      // --- DATA ENRICHMENT FOR WSS FILES ---
+      if (isWssFile && geojson.features.length > 0) {
+        try {
+          // Fetch the mapping data. The path is relative to the public root.
+          const response = await fetch('/data/soil-hsg-map.json');
+          if (!response.ok) {
+            console.warn(`Could not load soil HSG data (status: ${response.status}). Skipping enrichment.`);
+          } else {
+            const hsgMap: Record<string, string> = await response.json();
+            
+            geojson.features.forEach(feature => {
+              if (feature.properties && feature.properties.MUSYM) {
+                const musym = String(feature.properties.MUSYM);
+                const hsg = hsgMap[musym] || 'N/A';
+                feature.properties.HSG = hsg;
+              }
+            });
+          }
+        } catch (enrichError) {
+          console.error("Failed to enrich soil data:", enrichError);
+          // Don't block the layer from being added, just log the error.
+        }
+      }
+      // --- END OF ENRICHMENT LOGIC ---
+
+      onLayerAdded(geojson, displayName);
+    } catch (e) {
+      console.error("File parsing error:", e);
+      onError("Failed to parse shapefile. Ensure the .zip contains valid .shp and .dbf files, and for WSS zips, that 'soilmu_a_aoi.shp' is present.");
+    }
+  }, [onLayerAdded, onLoading, onError]);
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      processFile(file);
+    }
+    event.target.value = ''; // Reset input to allow re-uploading the same file
+  };
+
+  const handleDragEnter = (e: React.DragEvent<HTMLLabelElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+  
+  const handleDragLeave = (e: React.DragEvent<HTMLLabelElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLLabelElement>) => {
+    e.preventDefault(); // Necessary to allow drop
+    e.stopPropagation();
+  };
+  
+  const handleDrop = (e: React.DragEvent<HTMLLabelElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      processFile(file);
+    }
+  };
+
+  return (
+    <div className="bg-gray-700/50 p-6 rounded-lg border border-dashed border-gray-600">
+      <h2 className="text-lg font-semibold text-white mb-4">Upload Layer</h2>
+      <label
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+        className={`flex flex-col items-center justify-center w-full h-48 border-2 border-dashed rounded-lg cursor-pointer transition-colors
+          ${isDragging ? 'border-cyan-400 bg-gray-700' : 'border-gray-500 hover:border-gray-400 bg-gray-800'}
+        `}
+      >
+        <div className="flex flex-col items-center justify-center pt-5 pb-6 text-center">
+          {isLoading ? (
+            <>
+              <svg className="animate-spin -ml-1 mr-3 h-10 w-10 text-cyan-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              <p className="mt-4 text-sm text-gray-400">Processing file...</p>
+            </>
+          ) : (
+            <>
+              <UploadIcon className="w-10 h-10 mb-3 text-gray-400" />
+              <p className="mb-2 text-sm text-gray-300"><span className="font-semibold text-cyan-400">Click to upload</span> or drag and drop</p>
+              <p className="text-xs text-gray-500">ZIP archive only (.zip)</p>
+            </>
+          )}
+        </div>
+        <input id="dropzone-file" type="file" className="hidden" onChange={handleFileChange} accept=".zip" disabled={isLoading} />
+      </label>
+      <p className="mt-4 text-xs text-gray-500">
+        Upload one or more shapefiles. WSS Soil Survey zips are handled automatically.
+      </p>
+    </div>
+  );
+};
+
+export default FileUpload;

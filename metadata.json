@@ -1,0 +1,5 @@
+{
+  "name": "Shapefile Viewer Pro",
+  "description": "An interactive web application to upload, parse, and visualize shapefiles (.zip). It automatically handles projections and displays geographic data with intuitive controls on an interactive map.",
+  "requestFramePermissions": []
+}
