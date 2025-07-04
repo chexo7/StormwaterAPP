@@ -2,3 +2,20 @@ html, body, #root {
   height: 100%;
   margin: 0;
 }
+
+/* Base font sizing for desktop usage */
+:root {
+  font-size: 16px;
+}
+
+@media (min-width: 2560px) {
+  :root {
+    font-size: 18px;
+  }
+}
+
+@media (min-width: 3840px) {
+  :root {
+    font-size: 20px;
+  }
+}
