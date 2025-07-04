@@ -91,7 +91,7 @@ const SearchBox = ({ apiKey }: { apiKey?: string }) => {
     Object.assign(button.style, {
       marginLeft: '4px',
       background: '#0891b2',
-      color: '#fff',
+      color: '#000',
       border: 'none',
       padding: '2px 6px',
       fontSize: '12px',
