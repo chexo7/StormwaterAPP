@@ -1,10 +1,13 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { MapContainer, TileLayer, GeoJSON, useMap, LayersControl, LayerGroup } from 'react-leaflet';
 import ReactLeafletGoogleLayer from 'react-leaflet-google-layer';
 import type { LayerData } from '../types';
 import type { GeoJSON as LeafletGeoJSON, Layer } from 'leaflet';
 
-const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY as string | undefined;
+declare const google: any;
+
+// Default API key provided by user. Environment variable can override it.
+const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY ?? 'AIzaSyBsEK-S5Kbf5aqYol5eGv8uYcPgLOlObr4';
 
 interface MapComponentProps {
   layers: LayerData[];
@@ -62,9 +65,105 @@ const ManagedGeoJsonLayer = ({
   );
 };
 
+// Search box using Google Maps JS Places library with geocoding fallback
+const SearchBox = ({ apiKey }: { apiKey?: string }) => {
+  const [query, setQuery] = useState('');
+  const map = useMap();
+  const autocompleteRef = useRef<google.maps.places.AutocompleteService | null>(null);
+  const geocoderRef = useRef<google.maps.Geocoder | null>(null);
+
+  useEffect(() => {
+    if (window.google && window.google.maps && window.google.maps.places) {
+      autocompleteRef.current = new window.google.maps.places.AutocompleteService();
+      geocoderRef.current = new window.google.maps.Geocoder();
+    }
+  }, []);
+
+  const handleSearch = async () => {
+    const trimmed = query.trim();
+    if (!trimmed) return;
+
+    const coordMatch = trimmed.match(/^(-?\d+(?:\.\d+)?)[,\s]+(-?\d+(?:\.\d+)?)/);
+    if (coordMatch) {
+      const lat = parseFloat(coordMatch[1]);
+      const lng = parseFloat(coordMatch[2]);
+      map.flyTo([lat, lng], 14);
+      return;
+    }
+
+    // Try Places API via the JS library if available
+    if (autocompleteRef.current && geocoderRef.current) {
+      autocompleteRef.current.getPlacePredictions({ input: trimmed }, (predictions, status) => {
+        if (status === window.google.maps.places.PlacesServiceStatus.OK && predictions && predictions[0]) {
+          const placeId = predictions[0].place_id;
+          geocoderRef.current!.geocode({ placeId }, (results, geoStatus) => {
+            if (geoStatus === 'OK' && results && results[0]) {
+              const loc = results[0].geometry.location;
+              map.flyTo([loc.lat(), loc.lng()], 14);
+            } else {
+              fallbackGeocode(trimmed);
+            }
+          });
+        } else {
+          fallbackGeocode(trimmed);
+        }
+      });
+    } else {
+      fallbackGeocode(trimmed);
+    }
+  };
+
+  const fallbackGeocode = async (text: string) => {
+    if (!apiKey) {
+      alert('Google Maps API key not configured');
+      return;
+    }
+    try {
+      const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(text)}&key=${apiKey}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.results && data.results[0]) {
+        const { lat, lng } = data.results[0].geometry.location;
+        map.flyTo([lat, lng], 14);
+      } else {
+        alert('Location not found');
+      }
+    } catch (err) {
+      console.error('Geocoding error', err);
+      alert('Failed to search location');
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      handleSearch();
+    }
+  };
+
+  return (
+    <div className="absolute top-2 left-2 z-[1000] flex bg-white rounded shadow p-1">
+      <input
+        type="text"
+        value={query}
+        onChange={e => setQuery(e.target.value)}
+        onKeyDown={handleKeyDown}
+        placeholder="Search address or lat,lng"
+        className="text-sm px-2 py-1 border border-gray-300 rounded-l focus:outline-none w-48"
+      />
+      <button
+        className="bg-cyan-600 text-white px-3 rounded-r text-sm"
+        onClick={handleSearch}
+      >
+        Go
+      </button>
+    </div>
+  );
+};
+
 const MapComponent: React.FC<MapComponentProps> = ({ layers }) => {
   return (
-    <MapContainer center={[20, 0]} zoom={2} scrollWheelZoom={true} className="h-full w-full">
+    <MapContainer center={[20, 0]} zoom={2} scrollWheelZoom={true} className="h-full w-full relative">
+      <SearchBox apiKey={googleMapsApiKey} />
       <LayersControl position="topright">
         {/* Base Layers */}
         <LayersControl.BaseLayer checked name="Dark">
