@@ -8,3 +8,8 @@ export interface LayerData {
   name: string;
   geojson: FeatureCollection;
 }
+
+export interface LogEntry {
+  message: string;
+  type: 'info' | 'error';
+}

@@ -8,23 +8,28 @@ interface FileUploadProps {
   onLayerAdded: (data: FeatureCollection, fileName: string) => void;
   onLoading: () => void;
   onError: (message: string) => void;
+  onLog: (message: string, type?: 'info' | 'error') => void;
   isLoading: boolean;
 }
 
-const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onError, isLoading }) => {
+const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onError, onLog, isLoading }) => {
   const [isDragging, setIsDragging] = useState(false);
 
   const processFile = useCallback(async (file: File) => {
     if (!file) {
       onError("No file selected.");
+      onLog("No file selected", 'error');
       return;
     }
     if (!file.name.toLowerCase().endsWith('.zip')) {
-      onError("Invalid file type. Please upload a .zip file containing your shapefile components (.shp, .dbf, .prj, etc.).");
+      const msg = "Invalid file type. Please upload a .zip file containing your shapefile components (.shp, .dbf, .prj, etc.).";
+      onError(msg);
+      onLog(msg, 'error');
       return;
     }
 
     onLoading();
+    onLog(`Processing ${file.name}...`);
 
     try {
       let buffer = await file.arrayBuffer();
@@ -83,11 +88,14 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
       // --- END OF ENRICHMENT LOGIC ---
 
       onLayerAdded(geojson, displayName);
+      onLog(`Loaded ${displayName}`);
     } catch (e) {
       console.error("File parsing error:", e);
-      onError("Failed to parse shapefile. Ensure the .zip contains valid .shp and .dbf files, and for WSS zips, that 'soilmu_a_aoi.shp' is present.");
+      const errMsg = "Failed to parse shapefile. Ensure the .zip contains valid .shp and .dbf files, and for WSS zips, that 'soilmu_a_aoi.shp' is present.";
+      onError(errMsg);
+      onLog(errMsg, 'error');
     }
-  }, [onLayerAdded, onLoading, onError]);
+  }, [onLayerAdded, onLoading, onError, onLog]);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
