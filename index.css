@@ -19,3 +19,8 @@ html, body, #root {
     font-size: 20px;
   }
 }
+
+/* Position Leaflet controls below the search box */
+.leaflet-top.leaflet-right {
+  top: 3.5rem;
+}
