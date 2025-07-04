@@ -33,3 +33,9 @@ You can limit the update to specific area symbols:
 ```bash
 python scripts/update_soil_hsg_map.py --areas CA630 CA649
 ```
+
+## Desktop layout
+
+The default styles target 1080p displays but scale gracefully up to 4K
+monitors. Base font sizes and sidebar widths increase on very large
+screens to keep the interface readable while remaining fully responsive.
