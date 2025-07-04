@@ -17,6 +17,7 @@ This contains everything you need to run your app locally.
    Replace `your-google-maps-key` with `AIzaSyBsEK-S5Kbf5aqYol5eGv8uYcPgLOlObr4` if you wish to use the provided key.
    Note: Google Maps tiles will display a "for development purposes only" watermark if the API key is not fully configured.
    To remove the watermark, ensure billing is enabled for your Google Cloud project and that the key is authorized for your domain.
+   The same key is also used for the map search box.
 3. Run the app:
    `npm run dev`
 4. Start the backend server in another terminal:

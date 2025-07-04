@@ -19,3 +19,8 @@ html, body, #root {
     font-size: 20px;
   }
 }
+
+/* Offset the layer control to leave room for the search box */
+.leaflet-control-layers {
+  margin-top: 3rem;
+}

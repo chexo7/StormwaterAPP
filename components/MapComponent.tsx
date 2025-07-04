@@ -3,6 +3,7 @@ import { MapContainer, TileLayer, GeoJSON, useMap, LayersControl, LayerGroup } f
 import ReactLeafletGoogleLayer from 'react-leaflet-google-layer';
 import type { LayerData } from '../types';
 import type { GeoJSON as LeafletGeoJSON, Layer } from 'leaflet';
+import SearchBox from './SearchBox';
 
 const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY as string | undefined;
 
@@ -64,8 +65,9 @@ const ManagedGeoJsonLayer = ({
 
 const MapComponent: React.FC<MapComponentProps> = ({ layers }) => {
   return (
-    <MapContainer center={[20, 0]} zoom={2} scrollWheelZoom={true} className="h-full w-full">
-      <LayersControl position="topright">
+    <div className="relative h-full w-full">
+      <MapContainer center={[20, 0]} zoom={2} scrollWheelZoom={true} className="h-full w-full">
+        <LayersControl position="topright">
         {/* Base Layers */}
         <LayersControl.BaseLayer checked name="Dark">
           <TileLayer
@@ -121,8 +123,12 @@ const MapComponent: React.FC<MapComponentProps> = ({ layers }) => {
              />
           </LayersControl.Overlay>
         ))}
-      </LayersControl>
-    </MapContainer>
+        </LayersControl>
+      </MapContainer>
+      <div className="absolute top-2 right-2 z-[1000]">
+        <SearchBox />
+      </div>
+    </div>
   );
 };
 
