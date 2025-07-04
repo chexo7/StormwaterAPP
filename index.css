@@ -2,3 +2,21 @@ html, body, #root {
   height: 100%;
   margin: 0;
 }
+
+/* Desktop scaling for 1080p and 4K */
+@media (min-width: 1920px) {
+  :root {
+    font-size: 18px;
+  }
+}
+@media (min-width: 3840px) {
+  :root {
+    font-size: 20px;
+  }
+}
+
+@media (min-width: 3840px) {
+  .sidebar-4k {
+    width: 36rem;
+  }
+}

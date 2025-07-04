@@ -9,7 +9,7 @@ interface LogPanelProps {
 const LogPanel: React.FC<LogPanelProps> = ({ logs }) => {
   return (
     <div className="bg-gray-700/50 p-4 rounded-lg border border-gray-600 overflow-y-auto h-48 space-y-2">
-      <h2 className="text-lg font-semibold text-white mb-2">Log</h2>
+      <h2 className="text-lg lg:text-xl 2xl:text-2xl font-semibold text-white mb-2">Log</h2>
       {logs.length === 0 ? (
         <p className="text-gray-400 text-sm">No log messages yet.</p>
       ) : (

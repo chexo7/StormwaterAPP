@@ -24,7 +24,7 @@ const InfoPanel: React.FC<InfoPanelProps> = ({ layers, error, logs, onRemoveLaye
 
   return (
     <div className="bg-gray-700/50 p-6 rounded-lg border border-gray-600 flex-grow flex flex-col space-y-4">
-      <h2 className="text-lg font-semibold text-white">Layer Information</h2>
+      <h2 className="text-lg lg:text-xl 2xl:text-2xl font-semibold text-white">Layer Information</h2>
       <div className="space-y-4 flex-grow overflow-y-auto pr-2">
         {error && (
           <div className="bg-red-900/50 border border-red-700 text-red-300 px-4 py-3 rounded-lg relative" role="alert">
