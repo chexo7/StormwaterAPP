@@ -28,6 +28,13 @@ survey areas which may take a long time:
 python scripts/update_soil_hsg_map.py      # fetch all areas
 ```
 
+For a much quicker update you can fetch all MUSYM/HSG pairs in a single
+query with the ``--fast`` option (this downloads a large dataset):
+
+```bash
+python scripts/update_soil_hsg_map.py --fast
+```
+
 You can limit the update to specific area symbols:
 
 ```bash
