@@ -532,6 +532,8 @@ Librerías de geoprocesamiento y formatos: shapefile o shpjs , turf , proj4 (si 
 necesaria), adm-zip para descomprimir, y posiblemente shp-write para exportar shapefiles.
 Google Maps no se instala vía npm ya que es una API web; la incluiremos en el frontend via
 <script> con su API key. Sin embargo, podemos usar el loader oficial ( @googlemaps/js-apiloader ) para cargarla de forma programática en el código frontend.
+Para utilizar la API de Google Maps en desarrollo, copia el archivo `.env.example` a `.env.local` y establece la variable `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` con tu clave.
+El código inicial se encuentra en la carpeta `frontend`, generada con Next.js. Ejecuta `npm run dev` dentro de ella para iniciar la aplicación de desarrollo.
 Herramientas de desarrollo: dado que queremos usar IA asistente de código, integraremos GitHub
 Copilot en nuestro editor o utilizaremos ChatGPT para generar fragmentos. La configuración de la
 estructura de datos y algunas funciones (como la escritura de .inp) son buenos candidatos para
