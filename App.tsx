@@ -5,6 +5,7 @@ import Header from './components/Header';
 import FileUpload from './components/FileUpload';
 import InfoPanel from './components/InfoPanel';
 import MapComponent from './components/MapComponent';
+import InstructionsPage from './components/InstructionsPage';
 
 const App: React.FC = () => {
   const [layers, setLayers] = useState<LayerData[]>([]);
@@ -90,7 +91,11 @@ const App: React.FC = () => {
           />
         </aside>
         <main className="flex-1 bg-gray-900 h-full">
-          <MapComponent layers={layers} />
+          {layers.length > 0 ? (
+            <MapComponent layers={layers} />
+          ) : (
+            <InstructionsPage />
+          )}
         </main>
       </div>
     </div>
