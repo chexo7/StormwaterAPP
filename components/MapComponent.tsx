@@ -1,10 +1,13 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { MapContainer, TileLayer, GeoJSON, useMap, LayersControl, LayerGroup } from 'react-leaflet';
+import { Loader } from '@googlemaps/js-api-loader';
 import ReactLeafletGoogleLayer from 'react-leaflet-google-layer';
 import type { LayerData } from '../types';
 import type { GeoJSON as LeafletGeoJSON, Layer } from 'leaflet';
 
-const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY as string | undefined;
+const googleMapsApiKey =
+  (process.env.GOOGLE_MAPS_API_KEY as string | undefined) ||
+  'AIzaSyBsEK-S5Kbf5aqYol5eGv8uYcPgLOlObr4';
 
 interface MapComponentProps {
   layers: LayerData[];
@@ -62,9 +65,121 @@ const ManagedGeoJsonLayer = ({
   );
 };
 
+// Search box using Google Maps Places Autocomplete and Geocoding API
+const SearchBox = ({ apiKey }: { apiKey?: string }) => {
+  const [query, setQuery] = useState('');
+  const [predictions, setPredictions] = useState<google.maps.places.AutocompletePrediction[]>([]);
+  const [service, setService] = useState<google.maps.places.AutocompleteService | null>(null);
+  const map = useMap();
+
+  // load the Google Maps JS API with Places library
+  useEffect(() => {
+    if (apiKey && !service) {
+      const loader = new Loader({ apiKey, libraries: ['places'] });
+      loader.load().then(() => {
+        setService(new google.maps.places.AutocompleteService());
+      });
+    }
+  }, [apiKey, service]);
+
+  const runGeocode = async (text: string) => {
+    if (!apiKey) return;
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(text)}&key=${apiKey}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.results && data.results[0]) {
+      const { lat, lng } = data.results[0].geometry.location;
+      map.flyTo([lat, lng], 14);
+    } else {
+      alert('Location not found');
+    }
+  };
+
+  const handleSearch = async () => {
+    const trimmed = query.trim();
+    if (!trimmed) return;
+
+    const coordMatch = trimmed.match(/^(-?\d+(?:\.\d+)?)[,\s]+(-?\d+(?:\.\d+)?)/);
+    if (coordMatch) {
+      const lat = parseFloat(coordMatch[1]);
+      const lng = parseFloat(coordMatch[2]);
+      map.flyTo([lat, lng], 14);
+      return;
+    }
+
+    await runGeocode(trimmed);
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const text = e.target.value;
+    setQuery(text);
+    if (service && text) {
+      service.getPlacePredictions({ input: text }, preds => setPredictions(preds || []));
+    } else {
+      setPredictions([]);
+    }
+  };
+
+  const selectPrediction = (p: google.maps.places.AutocompletePrediction) => {
+    setQuery(p.description);
+    setPredictions([]);
+    if (apiKey) {
+      fetch(`https://maps.googleapis.com/maps/api/geocode/json?place_id=${p.place_id}&key=${apiKey}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.results && data.results[0]) {
+            const { lat, lng } = data.results[0].geometry.location;
+            map.flyTo([lat, lng], 14);
+          }
+        });
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      handleSearch();
+    }
+  };
+
+  return (
+    <div className="absolute top-2 right-2 z-[1000] w-60">
+      <div className="flex bg-white rounded shadow p-1">
+        <input
+          type="text"
+          value={query}
+          onChange={handleChange}
+          onKeyDown={handleKeyDown}
+          placeholder="Search address or lat,lng"
+          className="text-sm px-2 py-1 border border-gray-300 rounded-l focus:outline-none flex-1"
+        />
+        <button
+          className="bg-cyan-600 text-white px-3 rounded-r text-sm"
+          onClick={handleSearch}
+        >
+          Go
+        </button>
+      </div>
+      {predictions.length > 0 && (
+        <ul className="bg-white border border-gray-300 max-h-40 overflow-auto text-sm">
+          {predictions.map(p => (
+            <li
+              key={p.place_id}
+              className="px-2 py-1 cursor-pointer hover:bg-gray-100"
+              onClick={() => selectPrediction(p)}
+            >
+              {p.description}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+};
+
 const MapComponent: React.FC<MapComponentProps> = ({ layers }) => {
   return (
-    <MapContainer center={[20, 0]} zoom={2} scrollWheelZoom={true} className="h-full w-full">
+    <MapContainer center={[20, 0]} zoom={2} scrollWheelZoom={true} className="h-full w-full relative">
+      <SearchBox apiKey={googleMapsApiKey} />
       <LayersControl position="topright">
         {/* Base Layers */}
         <LayersControl.BaseLayer checked name="Dark">
