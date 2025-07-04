@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Utility script to update the MUSYM to HSG mapping file.
 
-This script queries the USDA Soil Data Access API for all soil survey
-areas and retrieves the hydrologic soil group (HSG) for each map unit
-symbol (MUSYM). The results are merged with the existing
-`public/data/soil-hsg-map.json` file.
+This script queries the USDA Soil Data Access API and retrieves the
+hydrologic soil group (HSG) for each map unit symbol (MUSYM). By
+default it fetches data area by area which can take a long time.  A
+``--fast`` option is provided to download all available pairs in a
+single query.  The results are merged with the existing
+``public/data/soil-hsg-map.json`` file.
 
 Usage::
     python update_soil_hsg_map.py [--areas AREA1 AREA2 ...]
@@ -67,6 +69,18 @@ def fetch_musym_hsg(area: str) -> Dict[str, str]:
     return {p["musym"]: p["hydgrpdcd"] for p in pairs if p["musym"] and p["hydgrpdcd"]}
 
 
+def fetch_all_musym_hsg() -> Dict[str, str]:
+    """Fetch all MUSYM to HSG pairs in a single API query."""
+    sql = (
+        "SELECT DISTINCT mu.musym, muagg.hydgrpdcd "
+        "FROM mapunit mu JOIN muaggatt muagg ON mu.mukey = muagg.mukey "
+        "WHERE muagg.hydgrpdcd IS NOT NULL"
+    )
+    xml = run_query(sql)
+    pairs = parse_table(xml, ["musym", "hydgrpdcd"])
+    return {p["musym"]: p["hydgrpdcd"] for p in pairs if p["musym"] and p["hydgrpdcd"]}
+
+
 def load_existing_map() -> Dict[str, str]:
     if DATA_PATH.exists():
         with open(DATA_PATH, "r", encoding="utf-8") as f:
@@ -100,9 +114,25 @@ def main(argv: List[str] | None = None) -> int:
         nargs="*",
         help="Optional list of area symbols to fetch. Defaults to all areas.",
     )
+    parser.add_argument(
+        "--fast",
+        action="store_true",
+        help="Fetch all MUSYM/HSG pairs in a single query (may be large)",
+    )
     args = parser.parse_args(argv)
 
-    if args.areas:
+    if args.fast:
+        existing = load_existing_map()
+        try:
+            print("Fetching all MUSYM/HSG pairs in bulk...")
+            pairs = fetch_all_musym_hsg()
+            existing.update(pairs)
+            save_map(existing)
+        except Exception as exc:  # noqa: BLE001
+            print(f"Bulk fetch failed: {exc}", file=sys.stderr)
+            return 1
+        return 0
+    elif args.areas:
         areas = args.areas
     else:
         areas = get_area_symbols()
