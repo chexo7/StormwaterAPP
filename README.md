@@ -22,6 +22,14 @@ This contains everything you need to run your app locally.
 4. Start the backend server in another terminal:
    `npm run backend`
 
+## Shapefile requirements
+
+All uploaded shapefiles **must** include a `.prj` file describing their
+coordinate reference system. Files without this projection information are
+rejected by the app. Uploaded data is automatically reprojected to
+`EPSG:3857` (Web Mercator) so it aligns with the map tiles used by the
+viewer.
+
 ## Update soil HSG mapping
 
 The file `public/data/soil-hsg-map.json` contains a mapping from soil map unit
