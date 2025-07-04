@@ -1,7 +1,10 @@
 import React, { useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, GeoJSON, useMap, LayersControl, LayerGroup } from 'react-leaflet';
+import ReactLeafletGoogleLayer from 'react-leaflet-google-layer';
 import type { LayerData } from '../types';
 import type { GeoJSON as LeafletGeoJSON, Layer } from 'leaflet';
+
+const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY as string | undefined;
 
 interface MapComponentProps {
   layers: LayerData[];
@@ -82,7 +85,19 @@ const MapComponent: React.FC<MapComponentProps> = ({ layers }) => {
                 attribution="Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community"
             />
         </LayersControl.BaseLayer>
-         <LayersControl.BaseLayer name="Hybrid">
+        <LayersControl.BaseLayer name="Google Roadmap">
+          <ReactLeafletGoogleLayer apiKey={googleMapsApiKey} type="roadmap" />
+        </LayersControl.BaseLayer>
+        <LayersControl.BaseLayer name="Google Satellite">
+          <ReactLeafletGoogleLayer apiKey={googleMapsApiKey} type="satellite" />
+        </LayersControl.BaseLayer>
+        <LayersControl.BaseLayer name="Google Terrain">
+          <ReactLeafletGoogleLayer apiKey={googleMapsApiKey} type="terrain" />
+        </LayersControl.BaseLayer>
+        <LayersControl.BaseLayer name="Google Hybrid">
+          <ReactLeafletGoogleLayer apiKey={googleMapsApiKey} type="hybrid" />
+        </LayersControl.BaseLayer>
+        <LayersControl.BaseLayer name="Hybrid">
             <LayerGroup>
                 <TileLayer
                     url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
