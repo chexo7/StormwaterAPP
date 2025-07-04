@@ -57,7 +57,7 @@ const App: React.FC = () => {
             onRemoveLayer={handleRemoveLayer}
           />
         </aside>
-        <main className="flex-1 bg-gray-900">
+        <main className="flex-1 bg-gray-900 h-full">
           <MapComponent layers={layers} />
         </main>
       </div>
