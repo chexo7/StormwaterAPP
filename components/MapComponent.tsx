@@ -1,10 +1,11 @@
 import React, { useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, GeoJSON, useMap, LayersControl, LayerGroup } from 'react-leaflet';
+import L from 'leaflet';
 import ReactLeafletGoogleLayer from 'react-leaflet-google-layer';
 import type { LayerData } from '../types';
 import type { GeoJSON as LeafletGeoJSON, Layer } from 'leaflet';
 
-const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY as string | undefined;
+const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY || 'AIzaSyBsEK-S5Kbf5aqYol5eGv8uYcPgLOlObr4';
 
 interface MapComponentProps {
   layers: LayerData[];
@@ -62,9 +63,108 @@ const ManagedGeoJsonLayer = ({
   );
 };
 
+// Search control using Google Places and Geocoding APIs
+const SearchBox = ({ apiKey }: { apiKey?: string }) => {
+  const map = useMap();
+
+  useEffect(() => {
+    const container = L.DomUtil.create('div', 'leaflet-control');
+    container.style.background = 'white';
+    container.style.padding = '4px';
+    container.style.borderRadius = '4px';
+    container.style.boxShadow = '0 1px 3px rgba(0,0,0,0.3)';
+    container.style.display = 'flex';
+    container.style.alignItems = 'center';
+
+    const input = L.DomUtil.create('input', '', container) as HTMLInputElement;
+    input.type = 'text';
+    input.placeholder = 'Search address or lat,lng';
+    Object.assign(input.style, {
+      border: '1px solid #ccc',
+      padding: '2px 4px',
+      fontSize: '12px',
+      flex: '1',
+    });
+
+    const button = L.DomUtil.create('button', '', container) as HTMLButtonElement;
+    button.innerText = 'Go';
+    Object.assign(button.style, {
+      marginLeft: '4px',
+      background: '#0891b2',
+      color: '#000',
+      border: 'none',
+      padding: '2px 6px',
+      fontSize: '12px',
+      borderRadius: '2px',
+      cursor: 'pointer',
+    });
+
+    const control = L.control({ position: 'topright' });
+    control.onAdd = () => container;
+    control.addTo(map);
+
+    const handleSearch = async () => {
+      const query = input.value.trim();
+      if (!query) return;
+
+      const coordMatch = query.match(/^(-?\d+(?:\.\d+)?)[,\s]+(-?\d+(?:\.\d+)?)/);
+      if (coordMatch) {
+        const lat = parseFloat(coordMatch[1]);
+        const lng = parseFloat(coordMatch[2]);
+        map.flyTo([lat, lng], 14);
+        return;
+      }
+
+      if (!apiKey) {
+        alert('Google Maps API key not configured');
+        return;
+      }
+
+      try {
+        let url = `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${encodeURIComponent(query)}&inputtype=textquery&fields=geometry&key=${apiKey}`;
+        let res = await fetch(url);
+        let data = await res.json();
+        let loc = data.candidates?.[0]?.geometry?.location;
+
+        if (!loc) {
+          url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(query)}&key=${apiKey}`;
+          res = await fetch(url);
+          data = await res.json();
+          loc = data.results?.[0]?.geometry?.location;
+        }
+
+        if (loc) {
+          map.flyTo([loc.lat, loc.lng], 14);
+        } else {
+          alert('Location not found');
+        }
+      } catch (err) {
+        console.error('Search error', err);
+        alert('Failed to search location');
+      }
+    };
+
+    const keydown = (e: KeyboardEvent) => {
+      if (e.key === 'Enter') handleSearch();
+    };
+
+    input.addEventListener('keydown', keydown);
+    button.addEventListener('click', handleSearch);
+
+    return () => {
+      input.removeEventListener('keydown', keydown);
+      button.removeEventListener('click', handleSearch);
+      map.removeControl(control);
+    };
+  }, [apiKey, map]);
+
+  return null;
+};
+
 const MapComponent: React.FC<MapComponentProps> = ({ layers }) => {
   return (
-    <MapContainer center={[20, 0]} zoom={2} scrollWheelZoom={true} className="h-full w-full">
+    <MapContainer center={[20, 0]} zoom={2} scrollWheelZoom={true} className="h-full w-full relative">
+      <SearchBox apiKey={googleMapsApiKey} />
       <LayersControl position="topright">
         {/* Base Layers */}
         <LayersControl.BaseLayer checked name="Dark">
