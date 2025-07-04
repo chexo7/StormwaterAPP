@@ -9,7 +9,15 @@ interface MapComponentProps {
 
 // This component renders a single GeoJSON layer and handles the auto-zooming effect.
 // It must be a child of MapContainer to use the `useMap` hook.
-const ManagedGeoJsonLayer = ({ data, isLastAdded }: { data: LayerData['geojson'], isLastAdded: boolean }) => {
+const ManagedGeoJsonLayer = ({
+  id,
+  data,
+  isLastAdded,
+}: {
+  id: string;
+  data: LayerData['geojson'];
+  isLastAdded: boolean;
+}) => {
   const geoJsonRef = useRef<LeafletGeoJSON | null>(null);
   const map = useMap();
 
@@ -42,7 +50,7 @@ const ManagedGeoJsonLayer = ({ data, isLastAdded }: { data: LayerData['geojson']
 
   return (
     <GeoJSON
-      key={JSON.stringify(data)}
+      key={id}
       data={data}
       style={geoJsonStyle}
       onEachFeature={onEachFeature}
@@ -91,9 +99,10 @@ const MapComponent: React.FC<MapComponentProps> = ({ layers }) => {
         {/* Overlay Layers */}
         {layers.map((layer, index) => (
           <LayersControl.Overlay checked name={layer.name} key={layer.id}>
-             <ManagedGeoJsonLayer 
-                data={layer.geojson} 
-                isLastAdded={index === layers.length - 1} 
+             <ManagedGeoJsonLayer
+                id={layer.id}
+                data={layer.geojson}
+                isLastAdded={index === layers.length - 1}
              />
           </LayersControl.Overlay>
         ))}
