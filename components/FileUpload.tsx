@@ -139,7 +139,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
 
   return (
     <div className="bg-gray-700/50 p-6 rounded-lg border border-dashed border-gray-600">
-      <h2 className="text-lg font-semibold text-white mb-4">Upload Layer</h2>
+      <h2 className="text-lg lg:text-xl 2xl:text-2xl font-semibold text-white mb-4">Upload Layer</h2>
       <label
         onDragEnter={handleDragEnter}
         onDragLeave={handleDragLeave}
@@ -156,19 +156,19 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
-              <p className="mt-4 text-sm text-gray-400">Processing file...</p>
+              <p className="mt-4 text-sm lg:text-base 2xl:text-lg text-gray-400">Processing file...</p>
             </>
           ) : (
             <>
               <UploadIcon className="w-10 h-10 mb-3 text-gray-400" />
-              <p className="mb-2 text-sm text-gray-300"><span className="font-semibold text-cyan-400">Click to upload</span> or drag and drop</p>
-              <p className="text-xs text-gray-500">ZIP archive only (.zip)</p>
+              <p className="mb-2 text-sm lg:text-base 2xl:text-lg text-gray-300"><span className="font-semibold text-cyan-400">Click to upload</span> or drag and drop</p>
+              <p className="text-xs lg:text-sm 2xl:text-base text-gray-500">ZIP archive only (.zip)</p>
             </>
           )}
         </div>
         <input id="dropzone-file" type="file" className="hidden" onChange={handleFileChange} accept=".zip" disabled={isLoading} />
       </label>
-      <p className="mt-4 text-xs text-gray-500">
+      <p className="mt-4 text-xs lg:text-sm 2xl:text-base text-gray-500">
         Upload one or more shapefiles. WSS Soil Survey zips are handled automatically.
       </p>
     </div>
