@@ -16,6 +16,7 @@
     "shpjs": "^6.1.0",
     "leaflet": "^1.9.4",
     "react-leaflet": "^5.0.0",
+    "react-leaflet-google-layer": "^4.0.0",
     "jszip": "^3.10.1",
     "express": "^4.19.2"
   },
