@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, GeoJSON, useMap, LayersControl, LayerGroup } from 'react-leaflet';
+import GoogleLayer, { useLoadGoogleMaps } from './GoogleLayer';
 import type { LayerData } from '../types';
 import type { GeoJSON as LeafletGeoJSON, Layer } from 'leaflet';
 
@@ -60,6 +61,7 @@ const ManagedGeoJsonLayer = ({
 };
 
 const MapComponent: React.FC<MapComponentProps> = ({ layers }) => {
+  useLoadGoogleMaps();
   return (
     <MapContainer center={[20, 0]} zoom={2} scrollWheelZoom={true} className="h-full w-full">
       <LayersControl position="topright">
@@ -82,18 +84,24 @@ const MapComponent: React.FC<MapComponentProps> = ({ layers }) => {
                 attribution="Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community"
             />
         </LayersControl.BaseLayer>
-         <LayersControl.BaseLayer name="Hybrid">
+        <LayersControl.BaseLayer name="Hybrid">
             <LayerGroup>
                 <TileLayer
                     url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
                     attribution="Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community"
                 />
-                 <TileLayer
+                <TileLayer
                     url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png"
                     attribution='&copy; <a href="https://carto.com/attributions">CARTO</a>'
-                    pane="shadowPane" 
+                    pane="shadowPane"
                 />
             </LayerGroup>
+        </LayersControl.BaseLayer>
+        <LayersControl.BaseLayer name="Google Roadmap">
+          <GoogleLayer type="roadmap" />
+        </LayersControl.BaseLayer>
+        <LayersControl.BaseLayer name="Google Hybrid">
+          <GoogleLayer type="hybrid" />
         </LayersControl.BaseLayer>
 
         {/* Overlay Layers */}
