@@ -74,7 +74,7 @@ const App: React.FC = () => {
     <div className="flex flex-col h-screen bg-gray-900 text-gray-100 font-sans">
       <Header />
       <div className="flex flex-1 overflow-hidden">
-        <aside className="w-96 bg-gray-800 p-6 flex flex-col space-y-6 overflow-y-auto shadow-lg border-r border-gray-700">
+        <aside className="w-80 lg:w-96 hd:w-[28rem] 4k:w-[32rem] bg-gray-800 p-6 flex flex-col space-y-6 overflow-y-auto shadow-lg border-r border-gray-700">
           <FileUpload
             onLayerAdded={handleLayerAdded}
             onLoading={handleLoading}
