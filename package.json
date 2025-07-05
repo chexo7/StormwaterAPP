@@ -18,7 +18,8 @@
     "react-leaflet": "^5.0.0",
     "react-leaflet-google-layer": "^4.0.0",
     "jszip": "^3.10.1",
-    "express": "^4.19.2"
+    "express": "^4.19.2",
+    "proj4": "^2.9.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
