@@ -1,7 +1,8 @@
 import React, { useCallback, useState } from 'react';
 import * as shp from 'shpjs';
 import JSZip from 'jszip';
-import type { FeatureCollection } from 'geojson';
+import proj4 from 'proj4';
+import type { FeatureCollection, Geometry } from 'geojson';
 import { UploadIcon } from './Icons';
 import { loadHsgMap } from '../utils/soil';
 
@@ -11,6 +12,29 @@ interface FileUploadProps {
   onError: (message: string) => void;
   onLog: (message: string, type?: 'info' | 'error') => void;
   isLoading: boolean;
+}
+
+function toWebMercator(geojson: FeatureCollection): FeatureCollection {
+  const transformer = proj4('EPSG:4326', 'EPSG:3857');
+
+  const transformCoords = (coords: any): any => {
+    if (typeof coords[0] === 'number') {
+      const [x, y, z] = coords as number[];
+      const [x2, y2] = transformer.forward([x, y]);
+      return z !== undefined ? [x2, y2, z] : [x2, y2];
+    }
+    return coords.map(transformCoords);
+  };
+
+  const clone: FeatureCollection = JSON.parse(JSON.stringify(geojson));
+  clone.features.forEach(f => {
+    if (f.geometry) {
+      f.geometry.coordinates = transformCoords(
+        (f.geometry as Geometry).coordinates
+      );
+    }
+  });
+  return clone;
 }
 
 const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onError, onLog, isLoading }) => {
@@ -61,7 +85,17 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
         displayName = `${targetBasename}.shp`;
       }
 
+      const zipCheck = await JSZip.loadAsync(buffer);
+      const prjFiles = zipCheck.file(/\.prj$/i);
+      if (prjFiles.length === 0) {
+        const msg = 'Shapefile is missing a .prj file. Unable to determine projection.';
+        onError(msg);
+        onLog(msg, 'error');
+        return;
+      }
+
       let geojson = await shp.parseZip(buffer) as FeatureCollection;
+      geojson = toWebMercator(geojson);
 
       // --- DATA ENRICHMENT FOR WSS FILES ---
       if (isWssFile && geojson.features.length > 0) {
