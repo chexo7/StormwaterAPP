@@ -4,6 +4,7 @@ import JSZip from 'jszip';
 import type { FeatureCollection } from 'geojson';
 import { UploadIcon } from './Icons';
 import { loadHsgMap } from '../utils/soil';
+import { reprojectTo3857 } from '../utils/projection';
 
 interface FileUploadProps {
   onLayerAdded: (data: FeatureCollection, fileName: string) => void;
@@ -61,7 +62,19 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
         displayName = `${targetBasename}.shp`;
       }
 
+      // Ensure projection file (.prj) exists
+      const zipForCheck = await JSZip.loadAsync(buffer);
+      const hasPrj = Object.keys(zipForCheck.files).some(name => name.toLowerCase().endsWith('.prj'));
+      if (!hasPrj) {
+        const msg = 'Shapefile missing .prj file. Projection information is required.';
+        onError(msg);
+        onLog(msg, 'error');
+        return;
+      }
+
       let geojson = await shp.parseZip(buffer) as FeatureCollection;
+
+      geojson = reprojectTo3857(geojson);
 
       // --- DATA ENRICHMENT FOR WSS FILES ---
       if (isWssFile && geojson.features.length > 0) {
