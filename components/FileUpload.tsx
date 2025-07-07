@@ -88,6 +88,12 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
       }
       // --- END OF ENRICHMENT LOGIC ---
 
+      // assign internal index to each feature for easier updates later
+      geojson.features.forEach((feature, idx) => {
+        if (!feature.properties) feature.properties = {} as any;
+        (feature.properties as any).__index = idx;
+      });
+
       onLayerAdded(geojson, displayName);
       onLog(`Loaded ${displayName}`);
     } catch (e) {
