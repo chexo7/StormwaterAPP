@@ -8,9 +8,10 @@ interface InfoPanelProps {
   error: string | null;
   logs: LogEntry[];
   onRemoveLayer: (id: string) => void;
+  onZoomToLayer?: (id: string) => void;
 }
 
-const InfoPanel: React.FC<InfoPanelProps> = ({ layers, error, logs, onRemoveLayer }) => {
+const InfoPanel: React.FC<InfoPanelProps> = ({ layers, error, logs, onRemoveLayer, onZoomToLayer }) => {
 
   const getFeatureTypeSummary = (geojson: LayerData['geojson']) => {
     if (!geojson) return {};
@@ -51,7 +52,11 @@ const InfoPanel: React.FC<InfoPanelProps> = ({ layers, error, logs, onRemoveLaye
               const featureCount = layer.geojson.features.length;
               const featureSummary = getFeatureTypeSummary(layer.geojson);
               return (
-                <div key={layer.id} className="bg-gray-800 p-4 rounded-lg border border-gray-600/50">
+                <div
+                  key={layer.id}
+                  className="bg-gray-800 p-4 rounded-lg border border-gray-600/50 cursor-pointer hover:border-cyan-400"
+                  onClick={() => onZoomToLayer && onZoomToLayer(layer.id)}
+                >
                   <div className="flex justify-between items-start">
                     <h3 className="text-md font-bold text-cyan-400 mb-2 break-all pr-2">{layer.name}</h3>
                     <button onClick={() => onRemoveLayer(layer.id)} className="text-gray-500 hover:text-red-400 transition-colors flex-shrink-0" aria-label={`Remove layer ${layer.name}`}>

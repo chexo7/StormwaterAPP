@@ -14,6 +14,7 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [zoomToLayer, setZoomToLayer] = useState<{ id: string; ts: number } | null>(null);
 
   const addLog = useCallback((message: string, type: 'info' | 'error' = 'info') => {
     setLogs(prev => [...prev, { message, type, source: 'frontend' }]);
@@ -73,6 +74,10 @@ const App: React.FC = () => {
     addLog(`Removed layer ${id}`);
   }, [addLog]);
 
+  const handleZoomToLayer = useCallback((id: string) => {
+    setZoomToLayer({ id, ts: Date.now() });
+  }, []);
+
   const handleUpdateFeatureHsg = useCallback<UpdateHsgFn>((layerId, featureIndex, hsg) => {
     setLayers(prev => prev.map(layer => {
       if (layer.id !== layerId) return layer;
@@ -102,11 +107,16 @@ const App: React.FC = () => {
             error={error}
             logs={logs}
             onRemoveLayer={handleRemoveLayer}
+            onZoomToLayer={handleZoomToLayer}
           />
         </aside>
         <main className="flex-1 bg-gray-900 h-full">
           {layers.length > 0 ? (
-            <MapComponent layers={layers} onUpdateFeatureHsg={handleUpdateFeatureHsg} />
+            <MapComponent
+              layers={layers}
+              onUpdateFeatureHsg={handleUpdateFeatureHsg}
+              zoomToLayer={zoomToLayer}
+            />
           ) : (
             <InstructionsPage />
           )}
