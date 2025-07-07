@@ -4,6 +4,7 @@ import JSZip from 'jszip';
 import type { FeatureCollection } from 'geojson';
 import { UploadIcon } from './Icons';
 import { loadHsgMap } from '../utils/soil';
+import { reprojectTo3857 } from '../utils/projection';
 
 interface FileUploadProps {
   onLayerAdded: (data: FeatureCollection, fileName: string) => void;
@@ -37,11 +38,12 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
       let displayName = file.name;
       const isWssFile = file.name.toLowerCase().startsWith('wss_aoi_');
 
+      let zip = await JSZip.loadAsync(buffer);
+
       // Special handling for Web Soil Survey files
       if (isWssFile) {
         const targetBasename = 'soilmu_a_aoi';
-        const zip = await JSZip.loadAsync(buffer);
-        
+
         const relevantFiles = zip.file(new RegExp(`(^|/)${targetBasename}\\.\\w+$`, 'i'));
 
         if (relevantFiles.length === 0) {
@@ -49,19 +51,37 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
           return;
         }
 
+        const hasPrj = relevantFiles.some(f => f.name.toLowerCase().endsWith('.prj'));
+        if (!hasPrj) {
+          const msg = 'The shapefile is missing a .prj projection file.';
+          onError(msg);
+          onLog(msg, 'error');
+          return;
+        }
+
         const newZip = new JSZip();
         for (const zipObject of relevantFiles) {
           const fileNameOnly = zipObject.name.split('/').pop();
-          if(fileNameOnly) {
+          if (fileNameOnly) {
             newZip.file(fileNameOnly, await zipObject.async('arraybuffer'));
           }
         }
-        
+
         buffer = await newZip.generateAsync({ type: 'arraybuffer' });
         displayName = `${targetBasename}.shp`;
+        zip = await JSZip.loadAsync(buffer);
+      } else {
+        const prjFiles = zip.file(/\.prj$/i);
+        if (prjFiles.length === 0) {
+          const msg = 'The shapefile is missing a .prj projection file.';
+          onError(msg);
+          onLog(msg, 'error');
+          return;
+        }
       }
 
       let geojson = await shp.parseZip(buffer) as FeatureCollection;
+      geojson = reprojectTo3857(geojson);
 
       // --- DATA ENRICHMENT FOR WSS FILES ---
       if (isWssFile && geojson.features.length > 0) {
