@@ -9,6 +9,7 @@ const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY as string | undefined;
 
 interface MapComponentProps {
   layers: LayerData[];
+  onLayerUpdated: (id: string) => void;
 }
 
 // This component renders a single GeoJSON layer and handles the auto-zooming effect.
@@ -17,20 +18,50 @@ const ManagedGeoJsonLayer = ({
   id,
   data,
   isLastAdded,
+  onLayerUpdated,
 }: {
   id: string;
   data: LayerData['geojson'];
   isLastAdded: boolean;
+  onLayerUpdated: (id: string) => void;
 }) => {
   const geoJsonRef = useRef<LeafletGeoJSON | null>(null);
   const map = useMap();
 
   const onEachFeature = (feature: GeoJSON.Feature, layer: Layer) => {
-    if (feature.properties) {
-      const popupContent = `<div style="max-height: 150px; overflow-y: auto; font-family: sans-serif;">${Object.entries(feature.properties)
-        .map(([key, value]) => `<b>${key}:</b> ${value}`)
-        .join('<br/>')}</div>`;
-      layer.bindPopup(popupContent);
+    if (!feature.properties) return;
+
+    const hasHsg = Object.prototype.hasOwnProperty.call(feature.properties, 'HSG');
+    const uniqueId = L.Util.stamp(layer);
+    const propsHtml = Object.entries(feature.properties)
+      .filter(([k]) => k !== 'HSG')
+      .map(([key, value]) => `<b>${key}:</b> ${value}`)
+      .join('<br/>');
+
+    const hsgOptions = ['A', 'B', 'C', 'D', 'A/D', 'B/D', 'C/D']
+      .map(opt => `<option value="${opt}">${opt}</option>`) 
+      .join('');
+    const selectHtml = hasHsg
+      ? `<label>HSG: <select id="hsg-${uniqueId}">${hsgOptions}</select></label><br/>`
+      : '';
+
+    const popupContent = `<div style="max-height: 150px; overflow-y: auto; font-family: sans-serif;">${
+      selectHtml + propsHtml
+    }</div>`;
+
+    layer.bindPopup(popupContent);
+
+    if (hasHsg) {
+      layer.on('popupopen', () => {
+        const select = document.getElementById(`hsg-${uniqueId}`) as HTMLSelectElement | null;
+        if (select) {
+          select.value = String(feature.properties!.HSG);
+          select.addEventListener('change', () => {
+            feature.properties!.HSG = select.value;
+            onLayerUpdated(id);
+          });
+        }
+      });
     }
   };
 
@@ -63,7 +94,7 @@ const ManagedGeoJsonLayer = ({
   );
 };
 
-const MapComponent: React.FC<MapComponentProps> = ({ layers }) => {
+const MapComponent: React.FC<MapComponentProps> = ({ layers, onLayerUpdated }) => {
   return (
     <MapContainer center={[20, 0]} zoom={2} scrollWheelZoom={true} className="h-full w-full relative">
       <div className="absolute top-2 left-2 z-[1000] w-64">
@@ -122,6 +153,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ layers }) => {
                 id={layer.id}
                 data={layer.geojson}
                 isLastAdded={index === layers.length - 1}
+                onLayerUpdated={onLayerUpdated}
              />
           </LayersControl.Overlay>
         ))}
