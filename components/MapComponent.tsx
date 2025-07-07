@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, GeoJSON, useMap, LayersControl, LayerGroup } from 'react-leaflet';
+import L from 'leaflet';
 import AddressSearch from './AddressSearch';
 import ReactLeafletGoogleLayer from 'react-leaflet-google-layer';
 import type { LayerData } from '../types';
@@ -9,6 +10,7 @@ const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY as string | undefined;
 
 interface MapComponentProps {
   layers: LayerData[];
+  onUpdateFeatureHsg: (layerId: string, featureIndex: number, hsg: string) => void;
 }
 
 // This component renders a single GeoJSON layer and handles the auto-zooming effect.
@@ -17,20 +19,47 @@ const ManagedGeoJsonLayer = ({
   id,
   data,
   isLastAdded,
+  onUpdateFeatureHsg,
 }: {
   id: string;
   data: LayerData['geojson'];
   isLastAdded: boolean;
+  onUpdateFeatureHsg: (layerId: string, featureIndex: number, hsg: string) => void;
 }) => {
   const geoJsonRef = useRef<LeafletGeoJSON | null>(null);
   const map = useMap();
 
   const onEachFeature = (feature: GeoJSON.Feature, layer: Layer) => {
     if (feature.properties) {
-      const popupContent = `<div style="max-height: 150px; overflow-y: auto; font-family: sans-serif;">${Object.entries(feature.properties)
-        .map(([key, value]) => `<b>${key}:</b> ${value}`)
-        .join('<br/>')}</div>`;
-      layer.bindPopup(popupContent);
+      const container = L.DomUtil.create('div');
+      container.style.maxHeight = '150px';
+      container.style.overflowY = 'auto';
+      container.style.fontFamily = 'sans-serif';
+
+      Object.entries(feature.properties).forEach(([key, value]) => {
+        const row = L.DomUtil.create('div', '', container);
+        if (key === 'HSG') {
+          const label = L.DomUtil.create('span', '', row);
+          label.innerHTML = `<b>${key}:</b>`;
+          const select = L.DomUtil.create('select', '', row) as HTMLSelectElement;
+          select.className = 'ml-2 px-1 py-0.5 bg-gray-800 text-white border border-cyan-400 rounded';
+          ['A', 'B', 'C', 'D'].forEach(val => {
+            const opt = L.DomUtil.create('option', '', select) as HTMLOptionElement;
+            opt.value = val;
+            opt.textContent = val;
+            if (value === val) opt.selected = true;
+          });
+          select.addEventListener('change', (e) => {
+            const newVal = (e.target as HTMLSelectElement).value;
+            const idx = data.features.indexOf(feature);
+            onUpdateFeatureHsg(id, idx, newVal);
+            feature.properties!.HSG = newVal;
+          });
+        } else {
+          row.innerHTML = `<b>${key}:</b> ${value}`;
+        }
+      });
+      layer.bindPopup(container);
     }
   };
 
@@ -63,7 +92,7 @@ const ManagedGeoJsonLayer = ({
   );
 };
 
-const MapComponent: React.FC<MapComponentProps> = ({ layers }) => {
+const MapComponent: React.FC<MapComponentProps> = ({ layers, onUpdateFeatureHsg }) => {
   return (
     <MapContainer center={[20, 0]} zoom={2} scrollWheelZoom={true} className="h-full w-full relative">
       <div className="absolute top-2 left-2 z-[1000] w-64">
@@ -122,6 +151,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ layers }) => {
                 id={layer.id}
                 data={layer.geojson}
                 isLastAdded={index === layers.length - 1}
+                onUpdateFeatureHsg={onUpdateFeatureHsg}
              />
           </LayersControl.Overlay>
         ))}
