@@ -71,7 +71,8 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
             geojson.features.forEach(feature => {
               if (feature.properties && feature.properties.MUSYM) {
                 const musym = String(feature.properties.MUSYM);
-                const hsg = hsgMap[musym] || 'N/A';
+                const rawHsg = hsgMap[musym] || 'N/A';
+                const hsg = typeof rawHsg === 'string' ? rawHsg.split('/')[0] : rawHsg;
                 feature.properties.HSG = hsg;
               }
             });
