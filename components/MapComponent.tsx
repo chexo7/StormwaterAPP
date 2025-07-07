@@ -4,11 +4,13 @@ import AddressSearch from './AddressSearch';
 import ReactLeafletGoogleLayer from 'react-leaflet-google-layer';
 import type { LayerData } from '../types';
 import type { GeoJSON as LeafletGeoJSON, Layer } from 'leaflet';
+import L from 'leaflet';
 
 const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY as string | undefined;
 
 interface MapComponentProps {
   layers: LayerData[];
+  onUpdateHsg: (layerId: string, featureIndex: number, newHsg: string) => void;
 }
 
 // This component renders a single GeoJSON layer and handles the auto-zooming effect.
@@ -17,21 +19,49 @@ const ManagedGeoJsonLayer = ({
   id,
   data,
   isLastAdded,
+  onUpdateHsg,
 }: {
   id: string;
   data: LayerData['geojson'];
   isLastAdded: boolean;
+  onUpdateHsg: (layerId: string, featureIndex: number, newHsg: string) => void;
 }) => {
   const geoJsonRef = useRef<LeafletGeoJSON | null>(null);
   const map = useMap();
 
   const onEachFeature = (feature: GeoJSON.Feature, layer: Layer) => {
-    if (feature.properties) {
-      const popupContent = `<div style="max-height: 150px; overflow-y: auto; font-family: sans-serif;">${Object.entries(feature.properties)
-        .map(([key, value]) => `<b>${key}:</b> ${value}`)
-        .join('<br/>')}</div>`;
-      layer.bindPopup(popupContent);
-    }
+    if (!feature.properties) return;
+    const idx = (feature.properties as any).__idx ?? 0;
+    const container = L.DomUtil.create('div');
+    const propsDiv = L.DomUtil.create('div', '', container);
+    propsDiv.style.maxHeight = '100px';
+    propsDiv.style.overflowY = 'auto';
+    propsDiv.style.fontFamily = 'sans-serif';
+    Object.entries(feature.properties)
+      .filter(([k]) => k !== '__idx')
+      .forEach(([k, v]) => {
+        const row = L.DomUtil.create('div', '', propsDiv);
+        row.innerHTML = `<b>${k}:</b> ${v}`;
+      });
+    const label = L.DomUtil.create('label', '', container);
+    label.innerHTML = '<br/><b>HSG:</b> ';
+    const select = L.DomUtil.create('select', '', label) as HTMLSelectElement;
+    ['A', 'B', 'C', 'D', 'N/A'].forEach(val => {
+      const opt = L.DomUtil.create('option', '', select) as HTMLOptionElement;
+      opt.value = val;
+      opt.innerHTML = val;
+      if (String(feature.properties?.HSG ?? 'N/A') === val) opt.selected = true;
+    });
+    const button = L.DomUtil.create('button', '', container);
+    button.innerHTML = 'Save';
+    button.style.display = 'block';
+    button.style.marginTop = '4px';
+    button.onclick = () => {
+      const newHsg = select.value;
+      onUpdateHsg(id, idx, newHsg);
+      layer.closePopup();
+    };
+    layer.bindPopup(container);
   };
 
   const geoJsonStyle = {
@@ -63,7 +93,7 @@ const ManagedGeoJsonLayer = ({
   );
 };
 
-const MapComponent: React.FC<MapComponentProps> = ({ layers }) => {
+const MapComponent: React.FC<MapComponentProps> = ({ layers, onUpdateHsg }) => {
   return (
     <MapContainer center={[20, 0]} zoom={2} scrollWheelZoom={true} className="h-full w-full relative">
       <div className="absolute top-2 left-2 z-[1000] w-64">
@@ -116,15 +146,25 @@ const MapComponent: React.FC<MapComponentProps> = ({ layers }) => {
         </LayersControl.BaseLayer>
 
         {/* Overlay Layers */}
-        {layers.map((layer, index) => (
-          <LayersControl.Overlay checked name={layer.name} key={layer.id}>
-             <ManagedGeoJsonLayer
+        {layers.map((layer, index) => {
+          const indexedGeojson = {
+            ...layer.geojson,
+            features: layer.geojson.features.map((f, i) => ({
+              ...f,
+              properties: { ...(f.properties || {}), __idx: i },
+            })),
+          };
+          return (
+            <LayersControl.Overlay checked name={layer.name} key={layer.id}>
+              <ManagedGeoJsonLayer
                 id={layer.id}
-                data={layer.geojson}
+                data={indexedGeojson}
                 isLastAdded={index === layers.length - 1}
-             />
-          </LayersControl.Overlay>
-        ))}
+                onUpdateHsg={onUpdateHsg}
+              />
+            </LayersControl.Overlay>
+          );
+        })}
       </LayersControl>
     </MapContainer>
   );
