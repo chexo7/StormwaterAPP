@@ -9,6 +9,7 @@ const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY as string | undefined;
 
 interface MapComponentProps {
   layers: LayerData[];
+  onUpdateHsg: (layerId: string, featureIndex: number, newHsg: string) => void;
 }
 
 // This component renders a single GeoJSON layer and handles the auto-zooming effect.
@@ -17,20 +18,35 @@ const ManagedGeoJsonLayer = ({
   id,
   data,
   isLastAdded,
+  onUpdateHsg,
 }: {
   id: string;
   data: LayerData['geojson'];
   isLastAdded: boolean;
+  onUpdateHsg: (layerId: string, featureIndex: number, newHsg: string) => void;
 }) => {
   const geoJsonRef = useRef<LeafletGeoJSON | null>(null);
   const map = useMap();
 
+  const buildPopup = (props: Record<string, unknown>) => {
+    return `<div style="max-height: 150px; overflow-y: auto; font-family: sans-serif;">${Object.entries(props)
+      .map(([key, value]) => `<b>${key}:</b> ${value}`)
+      .join('<br/>')}</div>`;
+  };
+
   const onEachFeature = (feature: GeoJSON.Feature, layer: Layer) => {
     if (feature.properties) {
-      const popupContent = `<div style="max-height: 150px; overflow-y: auto; font-family: sans-serif;">${Object.entries(feature.properties)
-        .map(([key, value]) => `<b>${key}:</b> ${value}`)
-        .join('<br/>')}</div>`;
-      layer.bindPopup(popupContent);
+      layer.bindPopup(buildPopup(feature.properties));
+
+      layer.on('dblclick', () => {
+        const current = (feature.properties as any).HSG ?? '';
+        const newVal = window.prompt('Set HSG value', String(current));
+        if (newVal !== null) {
+          (feature.properties as any).HSG = newVal;
+          layer.bindPopup(buildPopup(feature.properties));
+          onUpdateHsg(id, (feature.properties as any).__index ?? 0, newVal);
+        }
+      });
     }
   };
 
@@ -63,7 +79,7 @@ const ManagedGeoJsonLayer = ({
   );
 };
 
-const MapComponent: React.FC<MapComponentProps> = ({ layers }) => {
+const MapComponent: React.FC<MapComponentProps> = ({ layers, onUpdateHsg }) => {
   return (
     <MapContainer center={[20, 0]} zoom={2} scrollWheelZoom={true} className="h-full w-full relative">
       <div className="absolute top-2 left-2 z-[1000] w-64">
@@ -122,6 +138,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ layers }) => {
                 id={layer.id}
                 data={layer.geojson}
                 isLastAdded={index === layers.length - 1}
+                onUpdateHsg={onUpdateHsg}
              />
           </LayersControl.Overlay>
         ))}

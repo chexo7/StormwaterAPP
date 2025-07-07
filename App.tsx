@@ -71,6 +71,19 @@ const App: React.FC = () => {
     addLog(`Removed layer ${id}`);
   }, [addLog]);
 
+  const handleUpdateHsg = useCallback((layerId: string, featureIndex: number, newHsg: string) => {
+    setLayers(prevLayers => prevLayers.map(layer => {
+      if (layer.id !== layerId) return layer;
+      const updated = { ...layer.geojson, features: [...layer.geojson.features] };
+      const feature = updated.features[featureIndex];
+      if (feature && feature.properties) {
+        (feature.properties as any).HSG = newHsg;
+      }
+      return { ...layer, geojson: updated };
+    }));
+    addLog(`Updated HSG for feature ${featureIndex} in ${layerId} to ${newHsg}`);
+  }, [addLog]);
+
   return (
     <div className="flex flex-col h-screen bg-gray-900 text-gray-100 font-sans">
       <Header />
@@ -92,7 +105,7 @@ const App: React.FC = () => {
         </aside>
         <main className="flex-1 bg-gray-900 h-full">
           {layers.length > 0 ? (
-            <MapComponent layers={layers} />
+            <MapComponent layers={layers} onUpdateHsg={handleUpdateHsg} />
           ) : (
             <InstructionsPage />
           )}
