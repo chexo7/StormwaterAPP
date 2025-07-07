@@ -11,6 +11,7 @@ const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY as string | undefined;
 interface MapComponentProps {
   layers: LayerData[];
   onUpdateFeatureHsg: (layerId: string, featureIndex: number, hsg: string) => void;
+  zoomToLayer?: { id: string; ts: number } | null;
 }
 
 // This component renders a single GeoJSON layer and handles the auto-zooming effect.
@@ -103,9 +104,27 @@ const ManagedGeoJsonLayer = ({
   );
 };
 
-const MapComponent: React.FC<MapComponentProps> = ({ layers, onUpdateFeatureHsg }) => {
+const ZoomToLayerHandler = ({ layers, target }: { layers: LayerData[]; target: { id: string; ts: number } | null }) => {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!target) return;
+    const layer = layers.find(l => l.id === target.id);
+    if (layer) {
+      const bounds = L.geoJSON(layer.geojson).getBounds();
+      if (bounds.isValid()) {
+        map.flyToBounds(bounds, { padding: [50, 50], maxZoom: 16 });
+      }
+    }
+  }, [target, layers, map]);
+
+  return null;
+};
+
+const MapComponent: React.FC<MapComponentProps> = ({ layers, onUpdateFeatureHsg, zoomToLayer }) => {
   return (
     <MapContainer center={[20, 0]} zoom={2} scrollWheelZoom={true} className="h-full w-full relative">
+      <ZoomToLayerHandler layers={layers} target={zoomToLayer ?? null} />
       <div className="absolute top-2 left-2 z-[1000] w-64">
         <AddressSearch />
       </div>
