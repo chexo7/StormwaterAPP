@@ -71,6 +71,14 @@ const App: React.FC = () => {
     addLog(`Removed layer ${id}`);
   }, [addLog]);
 
+  const handleLayerUpdated = useCallback((id: string) => {
+    setLayers(prevLayers =>
+      prevLayers.map(layer =>
+        layer.id === id ? { ...layer, geojson: { ...layer.geojson } } : layer
+      )
+    );
+  }, []);
+
   return (
     <div className="flex flex-col h-screen bg-gray-900 text-gray-100 font-sans">
       <Header />
@@ -92,7 +100,7 @@ const App: React.FC = () => {
         </aside>
         <main className="flex-1 bg-gray-900 h-full">
           {layers.length > 0 ? (
-            <MapComponent layers={layers} />
+            <MapComponent layers={layers} onLayerUpdated={handleLayerUpdated} />
           ) : (
             <InstructionsPage />
           )}
