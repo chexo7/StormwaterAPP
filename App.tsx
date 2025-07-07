@@ -7,6 +7,8 @@ import InfoPanel from './components/InfoPanel';
 import MapComponent from './components/MapComponent';
 import InstructionsPage from './components/InstructionsPage';
 
+type UpdateHsgFn = (layerId: string, featureIndex: number, hsg: string) => void;
+
 const App: React.FC = () => {
   const [layers, setLayers] = useState<LayerData[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -71,6 +73,18 @@ const App: React.FC = () => {
     addLog(`Removed layer ${id}`);
   }, [addLog]);
 
+  const handleUpdateFeatureHsg = useCallback<UpdateHsgFn>((layerId, featureIndex, hsg) => {
+    setLayers(prev => prev.map(layer => {
+      if (layer.id !== layerId) return layer;
+      const features = [...layer.geojson.features];
+      const feature = { ...features[featureIndex] };
+      feature.properties = { ...(feature.properties || {}), HSG: hsg };
+      features[featureIndex] = feature;
+      return { ...layer, geojson: { ...layer.geojson, features } };
+    }));
+    addLog(`Set HSG for feature ${featureIndex} in ${layerId} to ${hsg}`);
+  }, [addLog]);
+
   return (
     <div className="flex flex-col h-screen bg-gray-900 text-gray-100 font-sans">
       <Header />
@@ -92,7 +106,7 @@ const App: React.FC = () => {
         </aside>
         <main className="flex-1 bg-gray-900 h-full">
           {layers.length > 0 ? (
-            <MapComponent layers={layers} />
+            <MapComponent layers={layers} onUpdateFeatureHsg={handleUpdateFeatureHsg} />
           ) : (
             <InstructionsPage />
           )}
