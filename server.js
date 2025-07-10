@@ -2,7 +2,7 @@ import express from 'express';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { intersect, area as turfArea, featureCollection } from '@turf/turf';
+import { intersect as turfIntersect, area as turfArea } from '@turf/turf';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -13,6 +13,11 @@ const port = process.env.PORT || 3001;
 const logLimit = parseInt(process.env.LOG_LIMIT || '100', 10);
 
 const logs = [];
+const featureCollectionLocal = (features) => ({ type: 'FeatureCollection', features });
+const toFeature = (poly) =>
+  poly.type === 'Feature' ? poly : { type: 'Feature', properties: {}, geometry: poly };
+const intersect = (poly1, poly2) =>
+  turfIntersect(featureCollectionLocal([toFeature(poly1), toFeature(poly2)]));
 function addLog(message, type = 'info') {
   const entry = { message, type, source: 'backend', timestamp: Date.now() };
   logs.push(entry);
@@ -46,8 +51,23 @@ app.get('/api/logs', (req, res) => {
 
 app.post('/api/intersect', (req, res) => {
   const { poly1, poly2 } = req.body || {};
+
+  const isPolygon = (poly) =>
+    poly &&
+    (poly.type === 'Polygon' ||
+      poly.type === 'MultiPolygon' ||
+      (poly.type === 'Feature' &&
+        poly.geometry &&
+        (poly.geometry.type === 'Polygon' ||
+          poly.geometry.type === 'MultiPolygon')));
+
+  if (!isPolygon(poly1) || !isPolygon(poly2)) {
+    addLog('Invalid polygons for intersection', 'error');
+    return res.status(400).json({ error: 'Invalid polygons' });
+  }
+
   try {
-    const result = intersect(featureCollection([poly1, poly2]));
+    const result = intersect(poly1, poly2);
     addLog('Intersection calculated');
     res.json(result || null);
   } catch (err) {
