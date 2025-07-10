@@ -1,10 +1,12 @@
 import React, { useEffect, useRef } from 'react';
-import { MapContainer, TileLayer, GeoJSON, useMap, LayersControl, LayerGroup } from 'react-leaflet';
+import { MapContainer, TileLayer, GeoJSON, useMap, LayersControl, LayerGroup, FeatureGroup } from 'react-leaflet';
+import { EditControl } from 'react-leaflet-draw';
 import L from 'leaflet';
 import AddressSearch from './AddressSearch';
 import ReactLeafletGoogleLayer from 'react-leaflet-google-layer';
 import type { LayerData } from '../types';
 import type { GeoJSON as LeafletGeoJSON, Layer } from 'leaflet';
+import type { FeatureCollection } from 'geojson';
 
 const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY as string | undefined;
 
@@ -12,6 +14,7 @@ interface MapComponentProps {
   layers: LayerData[];
   onUpdateFeatureHsg: (layerId: string, featureIndex: number, hsg: string) => void;
   zoomToLayer?: { id: string; ts: number } | null;
+  onLodCreated?: (geojson: FeatureCollection) => void;
 }
 
 // This component renders a single GeoJSON layer and handles the auto-zooming effect.
@@ -121,13 +124,27 @@ const ZoomToLayerHandler = ({ layers, target }: { layers: LayerData[]; target: {
   return null;
 };
 
-const MapComponent: React.FC<MapComponentProps> = ({ layers, onUpdateFeatureHsg, zoomToLayer }) => {
+const MapComponent: React.FC<MapComponentProps> = ({ layers, onUpdateFeatureHsg, zoomToLayer, onLodCreated }) => {
+  const handleDrawCreated = (e: any) => {
+    if (!onLodCreated) return;
+    const layer = e.layer;
+    const geojson = layer.toGeoJSON() as any;
+    const fc: FeatureCollection = { type: 'FeatureCollection', features: [geojson] };
+    onLodCreated(fc);
+  };
   return (
     <MapContainer center={[20, 0]} zoom={2} scrollWheelZoom={true} className="h-full w-full relative">
       <ZoomToLayerHandler layers={layers} target={zoomToLayer ?? null} />
       <div className="absolute top-2 left-2 z-[1000] w-64">
         <AddressSearch />
       </div>
+      <FeatureGroup>
+        <EditControl
+          position="topright"
+          onCreated={handleDrawCreated}
+          draw={{ rectangle: false, polyline: false, marker: false, circle: false, circlemarker: false, polygon: true }}
+        />
+      </FeatureGroup>
       <LayersControl position="topright">
         {/* Base Layers */}
         <LayersControl.BaseLayer checked name="Dark">

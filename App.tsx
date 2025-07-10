@@ -42,18 +42,20 @@ const App: React.FC = () => {
   const handleLayerAdded = useCallback((geojson: FeatureCollection, name: string) => {
     setIsLoading(false);
     setError(null);
+    const isLod = /lod|limit.*disturbance/i.test(name);
+    const finalName = isLod ? 'Limit of Disturbance (LOD)' : name;
     if (geojson.features.length === 0) {
       const msg = `The file "${name}" appears to be empty or could not be read correctly.`;
       setError(msg);
       addLog(msg, 'error');
     } else {
       const newLayer: LayerData = {
-        id: `${Date.now()}-${name}`,
-        name: name,
+        id: `${Date.now()}-${finalName}`,
+        name: finalName,
         geojson: geojson,
       };
       setLayers(prevLayers => [...prevLayers, newLayer]);
-      addLog(`Loaded layer ${name}`);
+      addLog(`Loaded layer ${finalName}`);
     }
   }, [addLog]);
 
@@ -90,6 +92,22 @@ const App: React.FC = () => {
     addLog(`Set HSG for feature ${featureIndex} in ${layerId} to ${hsg}`);
   }, [addLog]);
 
+  const handleLodCreated = useCallback((geojson: FeatureCollection) => {
+    const lodName = 'Limit of Disturbance (LOD)';
+    setLayers(prev => {
+      const idx = prev.findIndex(l => l.name === lodName);
+      if (idx >= 0) {
+        const layer = prev[idx];
+        const newFeatures = [...layer.geojson.features, ...geojson.features];
+        const updated = { ...layer, geojson: { ...layer.geojson, features: newFeatures } };
+        return [...prev.slice(0, idx), updated, ...prev.slice(idx + 1)];
+      }
+      const newLayer: LayerData = { id: `${Date.now()}-${lodName}`, name: lodName, geojson };
+      return [...prev, newLayer];
+    });
+    addLog('Updated Limit of Disturbance (LOD) layer');
+  }, [addLog]);
+
   return (
     <div className="flex flex-col h-screen bg-gray-900 text-gray-100 font-sans">
       <Header />
@@ -116,6 +134,7 @@ const App: React.FC = () => {
               layers={layers}
               onUpdateFeatureHsg={handleUpdateFeatureHsg}
               zoomToLayer={zoomToLayer}
+              onLodCreated={handleLodCreated}
             />
           ) : (
             <InstructionsPage />
