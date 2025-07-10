@@ -15,6 +15,7 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [zoomToLayer, setZoomToLayer] = useState<{ id: string; ts: number } | null>(null);
+  const [editingLayerId, setEditingLayerId] = useState<string | null>(null);
 
   const addLog = useCallback((message: string, type: 'info' | 'error' = 'info') => {
     setLogs(prev => [...prev, { message, type, source: 'frontend' }]);
@@ -72,7 +73,8 @@ const App: React.FC = () => {
   const handleRemoveLayer = useCallback((id: string) => {
     setLayers(prevLayers => prevLayers.filter(layer => layer.id !== id));
     addLog(`Removed layer ${id}`);
-  }, [addLog]);
+    if (editingLayerId === id) setEditingLayerId(null);
+  }, [addLog, editingLayerId]);
 
   const handleZoomToLayer = useCallback((id: string) => {
     setZoomToLayer({ id, ts: Date.now() });
@@ -88,6 +90,15 @@ const App: React.FC = () => {
       return { ...layer, geojson: { ...layer.geojson, features } };
     }));
     addLog(`Set HSG for feature ${featureIndex} in ${layerId} to ${hsg}`);
+  }, [addLog]);
+
+  const handleToggleEditLayer = useCallback((id: string) => {
+    setEditingLayerId(prev => prev === id ? null : id);
+  }, []);
+
+  const handleUpdateLayerGeojson = useCallback((id: string, geojson: FeatureCollection) => {
+    setLayers(prev => prev.map(layer => layer.id === id ? { ...layer, geojson } : layer));
+    addLog(`Updated geometry for layer ${id}`);
   }, [addLog]);
 
   return (
@@ -108,6 +119,8 @@ const App: React.FC = () => {
             logs={logs}
             onRemoveLayer={handleRemoveLayer}
             onZoomToLayer={handleZoomToLayer}
+            onToggleEditLayer={handleToggleEditLayer}
+            editingLayerId={editingLayerId}
           />
         </aside>
         <main className="flex-1 bg-gray-900 h-full">
@@ -116,6 +129,8 @@ const App: React.FC = () => {
               layers={layers}
               onUpdateFeatureHsg={handleUpdateFeatureHsg}
               zoomToLayer={zoomToLayer}
+              editingLayerId={editingLayerId}
+              onUpdateLayerGeojson={handleUpdateLayerGeojson}
             />
           ) : (
             <InstructionsPage />
