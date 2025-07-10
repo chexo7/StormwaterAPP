@@ -88,6 +88,7 @@ const ManagedGeoJsonLayer = ({
   useEffect(() => {
     if (!geoJsonRef.current || !onUpdateLayerGeojson) return;
     const handler = () => {
+      if (!isEditingLayer) return;
       const updated = geoJsonRef.current!.toGeoJSON() as LayerData['geojson'];
       onUpdateLayerGeojson(id, updated);
     };
@@ -95,7 +96,7 @@ const ManagedGeoJsonLayer = ({
     return () => {
       geoJsonRef.current?.off('edit', handler);
     };
-  }, [id, onUpdateLayerGeojson]);
+  }, [id, onUpdateLayerGeojson, isEditingLayer]);
 
   const onEachFeature = (feature: GeoJSON.Feature, layer: Layer) => {
     if (feature.properties) {
