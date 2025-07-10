@@ -129,15 +129,26 @@ const ManagedGeoJsonLayer = ({
         });
       }
 
-      layer.bindPopup(container);
-
-      if (isEditingLayer && editingFeatureIndex === null && onSelectFeature) {
-        const handler = () => {
-          const idx = data.features.indexOf(feature);
-          onSelectFeature(idx);
-        };
-        layer.once('click', handler);
+      if (isEditingLayer) {
+        const idx = data.features.indexOf(feature);
+        const editRow = L.DomUtil.create('div', '', propsDiv);
+        const btn = L.DomUtil.create('button', '', editRow) as HTMLButtonElement;
+        btn.textContent = editingFeatureIndex === idx ? 'Editando…' : 'Editar vértices';
+        btn.style.marginTop = '4px';
+        btn.style.padding = '2px 4px';
+        btn.style.border = '2px solid #16a34a';
+        btn.style.backgroundColor = '#dcfce7';
+        btn.style.color = '#065f46';
+        btn.style.fontWeight = 'bold';
+        if (editingFeatureIndex === idx) btn.disabled = true;
+        btn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onSelectFeature && onSelectFeature(idx);
+        });
       }
+
+      layer.bindPopup(container);
     }
   };
 
