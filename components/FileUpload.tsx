@@ -62,6 +62,10 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
       }
 
       let geojson = await shp.parseZip(buffer) as FeatureCollection;
+      const isLodFile = /lod|limit.*disturbance/i.test(displayName);
+      if (isLodFile) {
+        displayName = 'Limit of Disturbance (LOD)';
+      }
 
       // --- DATA ENRICHMENT FOR WSS FILES ---
       if (isWssFile && geojson.features.length > 0) {
