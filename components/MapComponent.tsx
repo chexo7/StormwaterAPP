@@ -101,8 +101,13 @@ const ManagedGeoJsonLayer = ({
         }
       };
       updateArea();
-      layer.on('popupopen', updateArea);
       layer.on('edit', updateArea);
+      const featureIndex = data.features.indexOf(feature);
+      const isEditingFeature = isEditingLayer && editingFeatureIndex === featureIndex;
+      if (!isEditingFeature) {
+        layer.on('popupopen', updateArea);
+        layer.bindPopup(container);
+      }
 
       // Special editable field for HSG
       if ('HSG' in feature.properties) {
@@ -128,8 +133,6 @@ const ManagedGeoJsonLayer = ({
           feature.properties!.HSG = newVal;
         });
       }
-
-      layer.bindPopup(container);
 
       if (isEditingLayer && editingFeatureIndex === null && onSelectFeature) {
         const handler = () => {
@@ -246,12 +249,12 @@ const MapComponent: React.FC<MapComponentProps> = ({ layers, onUpdateFeatureHsg,
         </LayersControl.BaseLayer>
 
         {/* Overlay Layers */}
-        {layers.map((layer, index) => (
+        {(editingTarget?.layerId ? layers.filter(l => l.id === editingTarget.layerId) : layers).map((layer) => (
           <LayersControl.Overlay checked name={layer.name} key={layer.id}>
              <ManagedGeoJsonLayer
                 id={layer.id}
                 data={layer.geojson}
-                isLastAdded={index === layers.length - 1}
+                isLastAdded={layers[layers.length - 1]?.id === layer.id}
                 onUpdateFeatureHsg={onUpdateFeatureHsg}
                 isEditingLayer={editingTarget?.layerId === layer.id}
                 editingFeatureIndex={editingTarget?.layerId === layer.id ? editingTarget.featureIndex : null}
