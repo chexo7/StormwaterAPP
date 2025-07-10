@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
+import { area as turfArea } from '@turf/turf';
 import type { FeatureCollection } from 'geojson';
 import type { LayerData, LogEntry } from './types';
 import Header from './components/Header';
@@ -93,11 +94,28 @@ const App: React.FC = () => {
   }, [addLog]);
 
   const handleToggleEditLayer = useCallback((id: string) => {
-    setEditingTarget(prev => prev.layerId === id ? { layerId: null, featureIndex: null } : { layerId: id, featureIndex: null });
-    if (editingTarget.layerId !== id) {
-      addLog(`Selecciona un pol\u00edgono de ${id} para editarlo`);
-    }
-  }, [addLog, editingTarget.layerId]);
+    setEditingTarget(prev => {
+      if (prev.layerId === id) {
+        if (prev.featureIndex !== null) {
+          setLayers(layers => layers.map(layer => {
+            if (layer.id !== id) return layer;
+            const features = [...layer.geojson.features];
+            const feature = { ...features[prev.featureIndex] } as any;
+            try {
+              const areaSqM = turfArea(feature);
+              feature.properties = { ...(feature.properties || {}), areaSqM };
+            } catch {}
+            features[prev.featureIndex] = feature;
+            return { ...layer, geojson: { ...layer.geojson, features } };
+          }));
+        }
+        return { layerId: null, featureIndex: null };
+      } else {
+        addLog(`Selecciona un pol\u00edgono de ${id} para editarlo`);
+        return { layerId: id, featureIndex: null };
+      }
+    });
+  }, [addLog, setLayers]);
 
   const handleSelectFeatureForEditing = useCallback((layerId: string, index: number) => {
     setEditingTarget({ layerId, featureIndex: index });
