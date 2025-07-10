@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
-import { MapContainer, TileLayer, GeoJSON, useMap, LayersControl, LayerGroup } from 'react-leaflet';
+import { MapContainer, TileLayer, GeoJSON, useMap, LayersControl, LayerGroup, FeatureGroup } from 'react-leaflet';
+import { EditControl } from 'react-leaflet-draw';
 import L from 'leaflet';
 import { area as turfArea } from '@turf/turf';
 import AddressSearch from './AddressSearch';
@@ -13,6 +14,7 @@ interface MapComponentProps {
   layers: LayerData[];
   onUpdateFeatureHsg: (layerId: string, featureIndex: number, hsg: string) => void;
   zoomToLayer?: { id: string; ts: number } | null;
+  onLayerEdited: (id: string, geojson: LayerData['geojson']) => void;
 }
 
 // This component renders a single GeoJSON layer and handles the auto-zooming effect.
@@ -21,14 +23,19 @@ const ManagedGeoJsonLayer = ({
   id,
   data,
   isLastAdded,
+  editable,
   onUpdateFeatureHsg,
+  onLayerEdited,
 }: {
   id: string;
   data: LayerData['geojson'];
   isLastAdded: boolean;
+  editable: boolean | undefined;
   onUpdateFeatureHsg: (layerId: string, featureIndex: number, hsg: string) => void;
+  onLayerEdited: (id: string, geojson: LayerData['geojson']) => void;
 }) => {
   const geoJsonRef = useRef<LeafletGeoJSON | null>(null);
+  const fgRef = useRef<L.FeatureGroup | null>(null);
   const map = useMap();
 
   const onEachFeature = (feature: GeoJSON.Feature, layer: Layer) => {
@@ -109,14 +116,48 @@ const ManagedGeoJsonLayer = ({
     }
   }, [data, isLastAdded, map]);
 
+  useEffect(() => {
+    if (!fgRef.current) return;
+    fgRef.current.eachLayer((layer: any) => {
+      if (layer.editing) {
+        if (editable) {
+          layer.editing.enable();
+        } else {
+          layer.editing.disable();
+        }
+      }
+    });
+  }, [editable, data]);
+
   return (
-    <GeoJSON
-      key={id}
-      data={data}
-      style={geoJsonStyle}
-      onEachFeature={onEachFeature}
-      ref={geoJsonRef}
-    />
+    <FeatureGroup ref={fgRef as any}>
+      {editable && (
+        <EditControl
+          position="topright"
+          onEdited={() => {
+            if (fgRef.current) {
+              const gj = fgRef.current.toGeoJSON() as LayerData['geojson'];
+              onLayerEdited(id, gj);
+            }
+          }}
+          draw={{
+            polygon: false,
+            polyline: false,
+            rectangle: false,
+            circle: false,
+            circlemarker: false,
+            marker: false,
+          }}
+        />
+      )}
+      <GeoJSON
+        key={id}
+        data={data}
+        style={geoJsonStyle}
+        onEachFeature={onEachFeature}
+        ref={geoJsonRef}
+      />
+    </FeatureGroup>
   );
 };
 
@@ -137,7 +178,7 @@ const ZoomToLayerHandler = ({ layers, target }: { layers: LayerData[]; target: {
   return null;
 };
 
-const MapComponent: React.FC<MapComponentProps> = ({ layers, onUpdateFeatureHsg, zoomToLayer }) => {
+const MapComponent: React.FC<MapComponentProps> = ({ layers, onUpdateFeatureHsg, onLayerEdited, zoomToLayer }) => {
   return (
     <MapContainer center={[20, 0]} zoom={2} scrollWheelZoom={true} className="h-full w-full relative">
       <ZoomToLayerHandler layers={layers} target={zoomToLayer ?? null} />
@@ -197,7 +238,9 @@ const MapComponent: React.FC<MapComponentProps> = ({ layers, onUpdateFeatureHsg,
                 id={layer.id}
                 data={layer.geojson}
                 isLastAdded={index === layers.length - 1}
+                editable={layer.editable}
                 onUpdateFeatureHsg={onUpdateFeatureHsg}
+                onLayerEdited={onLayerEdited}
              />
           </LayersControl.Overlay>
         ))}
