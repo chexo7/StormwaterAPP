@@ -31,6 +31,13 @@ The backend exposes two endpoints using Turf.js for polygon processing:
   their intersection or `null` if they do not overlap.
 * `POST /api/area` accepts `{ polygon }` and returns `{ area }` in square meters.
 
+An additional route serves SCS Curve Number lookup data used for hydrologic
+analysis:
+
+* `GET /api/cn-values` returns the contents of `public/data/SCS_CN_VALUES.json`.
+
+This allows the frontend to fetch the table of CN values based on soil group.
+
 These routes are ready for future integration with the frontend.
 
 ## Update soil HSG mapping

@@ -45,6 +45,19 @@ app.get('/api/soil-hsg-map', (req, res) => {
   });
 });
 
+app.get('/api/cn-values', (req, res) => {
+  const filePath = path.join(__dirname, 'public', 'data', 'SCS_CN_VALUES.json');
+  fs.readFile(filePath, (err, data) => {
+    if (err) {
+      addLog('Error reading CN values', 'error');
+      res.status(500).send('Unable to read CN values');
+    } else {
+      addLog('Curve Number values served');
+      res.type('application/json').send(data);
+    }
+  });
+});
+
 app.get('/api/logs', (req, res) => {
   res.json(logs);
 });
