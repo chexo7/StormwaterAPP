@@ -10,10 +10,12 @@ interface InfoPanelProps {
   onRemoveLayer: (id: string) => void;
   onZoomToLayer?: (id: string) => void;
   onToggleEditLayer?: (id: string) => void;
+  onSaveEdits?: () => void;
+  onDiscardEdits?: () => void;
   editingLayerId?: string | null;
 }
 
-const InfoPanel: React.FC<InfoPanelProps> = ({ layers, error, logs, onRemoveLayer, onZoomToLayer, onToggleEditLayer, editingLayerId }) => {
+const InfoPanel: React.FC<InfoPanelProps> = ({ layers, error, logs, onRemoveLayer, onZoomToLayer, onToggleEditLayer, onSaveEdits, onDiscardEdits, editingLayerId }) => {
 
   const getFeatureTypeSummary = (geojson: LayerData['geojson']) => {
     if (!geojson) return {};
@@ -28,6 +30,27 @@ const InfoPanel: React.FC<InfoPanelProps> = ({ layers, error, logs, onRemoveLaye
   return (
     <div className="bg-gray-700/50 p-6 rounded-lg border border-gray-600 flex-grow flex flex-col space-y-4">
       <h2 className="text-lg font-semibold text-white">Layer Information</h2>
+      {editingLayerId && onSaveEdits && onDiscardEdits && (
+        <div className="flex items-center justify-between bg-gray-800 border border-gray-600 rounded p-2 text-sm">
+          <span className="text-cyan-300 font-semibold">Editando {
+            layers.find(l => l.id === editingLayerId)?.name || editingLayerId
+          }</span>
+          <div className="space-x-2">
+            <button
+              onClick={onSaveEdits}
+              className="bg-green-700 hover:bg-green-600 text-white px-2 py-1 rounded"
+            >
+              Guardar
+            </button>
+            <button
+              onClick={onDiscardEdits}
+              className="bg-red-700 hover:bg-red-600 text-white px-2 py-1 rounded"
+            >
+              Descartar
+            </button>
+          </div>
+        </div>
+      )}
       <div className="space-y-4 flex-grow overflow-y-auto pr-2">
         {error && (
           <div className="bg-red-900/50 border border-red-700 text-red-300 px-4 py-3 rounded-lg relative" role="alert">
