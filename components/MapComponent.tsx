@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, GeoJSON, useMap, LayersControl, LayerGroup } from 'react-leaflet';
 import L from 'leaflet';
+import 'leaflet-draw';
 import { area as turfArea } from '@turf/turf';
 import AddressSearch from './AddressSearch';
 import ReactLeafletGoogleLayer from 'react-leaflet-google-layer';
@@ -9,10 +10,18 @@ import type { GeoJSON as LeafletGeoJSON, Layer } from 'leaflet';
 
 const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY as string | undefined;
 
+interface EditingTarget {
+  layerId: string;
+  featureIndex: number | null;
+}
+
 interface MapComponentProps {
   layers: LayerData[];
   onUpdateFeatureHsg: (layerId: string, featureIndex: number, hsg: string) => void;
   zoomToLayer?: { id: string; ts: number } | null;
+  editingTarget?: EditingTarget | null;
+  onSelectFeatureForEditing?: (layerId: string, featureIndex: number) => void;
+  onUpdateLayerGeojson?: (id: string, geojson: LayerData['geojson']) => void;
 }
 
 // This component renders a single GeoJSON layer and handles the auto-zooming effect.
@@ -22,14 +31,77 @@ const ManagedGeoJsonLayer = ({
   data,
   isLastAdded,
   onUpdateFeatureHsg,
+  isEditingLayer,
+  editingFeatureIndex,
+  onSelectFeature,
+  onUpdateLayerGeojson,
 }: {
   id: string;
   data: LayerData['geojson'];
   isLastAdded: boolean;
   onUpdateFeatureHsg: (layerId: string, featureIndex: number, hsg: string) => void;
+  isEditingLayer: boolean;
+  editingFeatureIndex: number | null;
+  onSelectFeature?: (index: number) => void;
+  onUpdateLayerGeojson?: (id: string, geojson: LayerData['geojson']) => void;
 }) => {
   const geoJsonRef = useRef<LeafletGeoJSON | null>(null);
   const map = useMap();
+
+  // Enable editing only for the selected feature
+  useEffect(() => {
+    if (!geoJsonRef.current) return;
+    const layers = geoJsonRef.current.getLayers() as any[];
+    layers.forEach((layer, idx) => {
+      if (layer.editing && typeof layer.editing.enable === 'function') {
+        if (isEditingLayer && editingFeatureIndex === idx) layer.editing.enable();
+        else layer.editing.disable();
+      }
+    });
+  }, [isEditingLayer, editingFeatureIndex]);
+
+  // When selecting a feature to edit, attach click handlers
+  useEffect(() => {
+    if (!geoJsonRef.current) return;
+    const layers = geoJsonRef.current.getLayers() as any[];
+    layers.forEach((layer: any) => {
+      if (layer._selectHandler) {
+        layer.off('click', layer._selectHandler);
+        delete layer._selectHandler;
+      }
+    });
+    if (isEditingLayer && editingFeatureIndex === null && onSelectFeature) {
+      layers.forEach((layer: any, idx) => {
+        const handler = (e: any) => {
+          e.originalEvent.preventDefault();
+          e.originalEvent.stopPropagation();
+          onSelectFeature(idx);
+        };
+        layer._selectHandler = handler;
+        layer.on('click', handler);
+      });
+    }
+  }, [isEditingLayer, editingFeatureIndex, onSelectFeature]);
+
+  // When geometry is edited, recompute area and propagate changes up
+  useEffect(() => {
+    if (!geoJsonRef.current || !onUpdateLayerGeojson) return;
+    const handler = () => {
+      const updated = geoJsonRef.current!.toGeoJSON() as LayerData['geojson'];
+      updated.features.forEach(f => {
+        try {
+          const a = turfArea(f as any);
+          if (!f.properties) f.properties = {};
+          (f.properties as any).calc_area_m2 = a;
+        } catch {}
+      });
+      onUpdateLayerGeojson(id, updated);
+    };
+    geoJsonRef.current.on('edit', handler);
+    return () => {
+      geoJsonRef.current?.off('edit', handler);
+    };
+  }, [id, onUpdateLayerGeojson]);
 
   const onEachFeature = (feature: GeoJSON.Feature, layer: Layer) => {
     if (feature.properties) {
@@ -51,7 +123,7 @@ const ManagedGeoJsonLayer = ({
       const areaRow = L.DomUtil.create('div', '', propsDiv);
       const updateArea = () => {
         try {
-          const areaSqM = turfArea(feature as any);
+          const areaSqM = (feature.properties as any)?.calc_area_m2 ?? turfArea(feature as any);
           const areaSqFt = areaSqM * 10.7639;
           const areaAc = areaSqM / 4046.8564224;
           areaRow.innerHTML = `<b>Area:</b> ${areaSqFt.toLocaleString(undefined, { maximumFractionDigits: 2 })} sf (${areaAc.toLocaleString(undefined, { maximumFractionDigits: 4 })} ac)`;
@@ -137,7 +209,7 @@ const ZoomToLayerHandler = ({ layers, target }: { layers: LayerData[]; target: {
   return null;
 };
 
-const MapComponent: React.FC<MapComponentProps> = ({ layers, onUpdateFeatureHsg, zoomToLayer }) => {
+const MapComponent: React.FC<MapComponentProps> = ({ layers, onUpdateFeatureHsg, zoomToLayer, editingTarget, onSelectFeatureForEditing, onUpdateLayerGeojson }) => {
   return (
     <MapContainer center={[20, 0]} zoom={2} scrollWheelZoom={true} className="h-full w-full relative">
       <ZoomToLayerHandler layers={layers} target={zoomToLayer ?? null} />
@@ -191,16 +263,24 @@ const MapComponent: React.FC<MapComponentProps> = ({ layers, onUpdateFeatureHsg,
         </LayersControl.BaseLayer>
 
         {/* Overlay Layers */}
-        {layers.map((layer, index) => (
-          <LayersControl.Overlay checked name={layer.name} key={layer.id}>
-             <ManagedGeoJsonLayer
+        {layers.map((layer, index) => {
+          const isEditingLayer = editingTarget && editingTarget.layerId === layer.id;
+          const editingIdx = isEditingLayer ? editingTarget!.featureIndex : null;
+          return (
+            <LayersControl.Overlay checked name={layer.name} key={layer.id}>
+              <ManagedGeoJsonLayer
                 id={layer.id}
                 data={layer.geojson}
                 isLastAdded={index === layers.length - 1}
                 onUpdateFeatureHsg={onUpdateFeatureHsg}
-             />
-          </LayersControl.Overlay>
-        ))}
+                isEditingLayer={!!isEditingLayer}
+                editingFeatureIndex={editingIdx}
+                onSelectFeature={idx => onSelectFeatureForEditing && onSelectFeatureForEditing(layer.id, idx)}
+                onUpdateLayerGeojson={onUpdateLayerGeojson}
+              />
+            </LayersControl.Overlay>
+          );
+        })}
       </LayersControl>
     </MapContainer>
   );

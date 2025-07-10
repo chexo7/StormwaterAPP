@@ -40,6 +40,12 @@ export const TrashIcon: React.FC<IconProps> = ({ className }) => (
     </svg>
 );
 
+export const EditIcon: React.FC<IconProps> = ({ className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M11 5h2m-1 0v9m-6.707.707l-.707.707a1 1 0 101.414 1.414l.707-.707M16.414 4.586a2 2 0 112.828 2.828l-10 10-4 1 1-4 10-10z" />
+  </svg>
+);
+
 export const SearchIcon: React.FC<IconProps> = ({ className }) => (
   <svg xmlns="http://www.w3.org/2000/svg" className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
     <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35m0 0A7.5 7.5 0 104.5 4.5a7.5 7.5 0 0012.15 12.15z" />
