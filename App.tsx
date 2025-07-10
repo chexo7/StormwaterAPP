@@ -56,7 +56,7 @@ const App: React.FC = () => {
       setLayers(prevLayers => [...prevLayers, newLayer]);
       addLog(`Loaded layer ${name}`);
     }
-  }, [addLog]);
+  }, [addLog, editingTarget.featureIndex]);
 
   const handleLoading = useCallback(() => {
     setIsLoading(true);
@@ -93,16 +93,35 @@ const App: React.FC = () => {
   }, [addLog]);
 
   const handleToggleEditLayer = useCallback((id: string) => {
-    setEditingTarget(prev => prev.layerId === id ? { layerId: null, featureIndex: null } : { layerId: id, featureIndex: null });
-    if (editingTarget.layerId !== id) {
-      addLog(`Selecciona un pol\u00edgono de ${id} para editarlo`);
+    if (editingTarget.layerId === id) {
+      if (editingTarget.featureIndex !== null) {
+        addLog(`Guardado polígono ${editingTarget.featureIndex} en ${id}`);
+      }
+      setEditingTarget({ layerId: null, featureIndex: null });
+    } else {
+      setEditingTarget({ layerId: id, featureIndex: null });
+      addLog(`Selecciona un polígono de ${id} para editarlo`);
     }
-  }, [addLog, editingTarget.layerId]);
+  }, [addLog, editingTarget.layerId, editingTarget.featureIndex]);
 
   const handleSelectFeatureForEditing = useCallback((layerId: string, index: number) => {
-    setEditingTarget({ layerId, featureIndex: index });
-    addLog(`Editando pol\u00edgono ${index} en ${layerId}`);
-  }, [addLog]);
+    if (index === -1) {
+      setEditingTarget(prev => ({ layerId: prev.layerId, featureIndex: null }));
+      if (editingTarget.featureIndex !== null) {
+        addLog(`Guardado pol\u00edgono ${editingTarget.featureIndex} en ${layerId}`);
+      }
+    } else {
+      setEditingTarget({ layerId, featureIndex: index });
+      addLog(`Editando pol\u00edgono ${index} en ${layerId}`);
+    }
+  }, [addLog, editingTarget.featureIndex]);
+  const handleStopFeatureEditing = useCallback((layerId: string) => {
+    setEditingTarget(prev => prev.layerId === layerId ? { layerId, featureIndex: null } : prev);
+    if (editingTarget.layerId === layerId && editingTarget.featureIndex !== null) {
+      addLog(`Guardado polígono ${editingTarget.featureIndex} en ${layerId}`);
+    }
+  }, [addLog, editingTarget.layerId, editingTarget.featureIndex]);
+
 
   const handleUpdateLayerGeojson = useCallback((id: string, geojson: FeatureCollection) => {
     setLayers(prev => prev.map(layer => layer.id === id ? { ...layer, geojson } : layer));
@@ -140,6 +159,7 @@ const App: React.FC = () => {
               editingTarget={editingTarget}
               onSelectFeatureForEditing={handleSelectFeatureForEditing}
               onUpdateLayerGeojson={handleUpdateLayerGeojson}
+              onStopFeatureEditing={handleStopFeatureEditing}
             />
           ) : (
             <InstructionsPage />
