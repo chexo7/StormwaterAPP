@@ -1,6 +1,6 @@
 import React from 'react';
 import type { LayerData, LogEntry } from '../types';
-import { XCircleIcon, InfoIcon, TrashIcon, EditIcon } from './Icons';
+import { XCircleIcon, InfoIcon, TrashIcon, EditIcon, CheckCircleIcon } from './Icons';
 import LogPanel from './LogPanel';
 
 interface InfoPanelProps {
@@ -11,9 +11,23 @@ interface InfoPanelProps {
   onZoomToLayer?: (id: string) => void;
   onToggleEditLayer?: (id: string) => void;
   editingLayerId?: string | null;
+  editingFeatureIndex?: number | null;
+  onSaveEdit?: () => void;
+  onDiscardEdit?: () => void;
 }
 
-const InfoPanel: React.FC<InfoPanelProps> = ({ layers, error, logs, onRemoveLayer, onZoomToLayer, onToggleEditLayer, editingLayerId }) => {
+const InfoPanel: React.FC<InfoPanelProps> = ({
+  layers,
+  error,
+  logs,
+  onRemoveLayer,
+  onZoomToLayer,
+  onToggleEditLayer,
+  editingLayerId,
+  editingFeatureIndex,
+  onSaveEdit,
+  onDiscardEdit,
+}) => {
 
   const getFeatureTypeSummary = (geojson: LayerData['geojson']) => {
     if (!geojson) return {};
@@ -28,6 +42,28 @@ const InfoPanel: React.FC<InfoPanelProps> = ({ layers, error, logs, onRemoveLaye
   return (
     <div className="bg-gray-700/50 p-6 rounded-lg border border-gray-600 flex-grow flex flex-col space-y-4">
       <h2 className="text-lg font-semibold text-white">Layer Information</h2>
+      {editingLayerId && editingFeatureIndex !== null && (
+        <div className="flex justify-end space-x-2 mt-2">
+          {onDiscardEdit && (
+            <button
+              onClick={onDiscardEdit}
+              className="flex items-center text-xs bg-red-600 hover:bg-red-500 text-white px-2 py-1 rounded"
+            >
+              <XCircleIcon className="w-4 h-4 mr-1" />
+              Descartar
+            </button>
+          )}
+          {onSaveEdit && (
+            <button
+              onClick={onSaveEdit}
+              className="flex items-center text-xs bg-green-600 hover:bg-green-500 text-white px-2 py-1 rounded"
+            >
+              <CheckCircleIcon className="w-4 h-4 mr-1" />
+              Guardar
+            </button>
+          )}
+        </div>
+      )}
       <div className="space-y-4 flex-grow overflow-y-auto pr-2">
         {error && (
           <div className="bg-red-900/50 border border-red-700 text-red-300 px-4 py-3 rounded-lg relative" role="alert">

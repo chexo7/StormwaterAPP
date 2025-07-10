@@ -16,6 +16,7 @@ const App: React.FC = () => {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [zoomToLayer, setZoomToLayer] = useState<{ id: string; ts: number } | null>(null);
   const [editingTarget, setEditingTarget] = useState<{ layerId: string | null; featureIndex: number | null }>({ layerId: null, featureIndex: null });
+  const [originalLayer, setOriginalLayer] = useState<LayerData | null>(null);
 
   const addLog = useCallback((message: string, type: 'info' | 'error' = 'info') => {
     setLogs(prev => [...prev, { message, type, source: 'frontend' }]);
@@ -73,7 +74,10 @@ const App: React.FC = () => {
   const handleRemoveLayer = useCallback((id: string) => {
     setLayers(prevLayers => prevLayers.filter(layer => layer.id !== id));
     addLog(`Removed layer ${id}`);
-    if (editingTarget.layerId === id) setEditingTarget({ layerId: null, featureIndex: null });
+    if (editingTarget.layerId === id) {
+      setEditingTarget({ layerId: null, featureIndex: null });
+      setOriginalLayer(null);
+    }
   }, [addLog, editingTarget]);
 
   const handleZoomToLayer = useCallback((id: string) => {
@@ -93,21 +97,45 @@ const App: React.FC = () => {
   }, [addLog]);
 
   const handleToggleEditLayer = useCallback((id: string) => {
-    setEditingTarget(prev => prev.layerId === id ? { layerId: null, featureIndex: null } : { layerId: id, featureIndex: null });
+    setEditingTarget(prev =>
+      prev.layerId === id ? { layerId: null, featureIndex: null } : { layerId: id, featureIndex: null }
+    );
+    setOriginalLayer(null);
     if (editingTarget.layerId !== id) {
-      addLog(`Selecciona un pol\u00edgono de ${id} para editarlo`);
+      addLog(`Selecciona un polígono de ${id} para editarlo`);
     }
   }, [addLog, editingTarget.layerId]);
 
   const handleSelectFeatureForEditing = useCallback((layerId: string, index: number) => {
     setEditingTarget({ layerId, featureIndex: index });
+    const layer = layers.find(l => l.id === layerId);
+    if (layer) {
+      setOriginalLayer({ ...layer, geojson: JSON.parse(JSON.stringify(layer.geojson)) });
+    }
     addLog(`Editando pol\u00edgono ${index} en ${layerId}`);
-  }, [addLog]);
+  }, [addLog, layers]);
 
   const handleUpdateLayerGeojson = useCallback((id: string, geojson: FeatureCollection) => {
     setLayers(prev => prev.map(layer => layer.id === id ? { ...layer, geojson } : layer));
     addLog(`Updated geometry for layer ${id}`);
   }, [addLog]);
+
+  const handleSaveEdit = useCallback(() => {
+    if (editingTarget.layerId) {
+      addLog(`Saved edits for ${editingTarget.layerId}`);
+    }
+    setEditingTarget({ layerId: null, featureIndex: null });
+    setOriginalLayer(null);
+  }, [addLog, editingTarget.layerId]);
+
+  const handleDiscardEdit = useCallback(() => {
+    if (originalLayer) {
+      setLayers(prev => prev.map(l => l.id === originalLayer.id ? originalLayer : l));
+      addLog(`Discarded edits for ${originalLayer.id}`);
+    }
+    setEditingTarget({ layerId: null, featureIndex: null });
+    setOriginalLayer(null);
+  }, [addLog, originalLayer]);
 
   return (
     <div className="flex flex-col h-screen bg-gray-900 text-gray-100 font-sans">
@@ -129,6 +157,9 @@ const App: React.FC = () => {
             onZoomToLayer={handleZoomToLayer}
             onToggleEditLayer={handleToggleEditLayer}
             editingLayerId={editingTarget.layerId}
+            editingFeatureIndex={editingTarget.featureIndex}
+            onSaveEdit={handleSaveEdit}
+            onDiscardEdit={handleDiscardEdit}
           />
         </aside>
         <main className="flex-1 bg-gray-900 h-full">
