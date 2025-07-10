@@ -1,6 +1,6 @@
 import React from 'react';
 import type { LayerData, LogEntry } from '../types';
-import { XCircleIcon, InfoIcon, TrashIcon } from './Icons';
+import { XCircleIcon, InfoIcon, TrashIcon, EditIcon } from './Icons';
 import LogPanel from './LogPanel';
 
 interface InfoPanelProps {
@@ -9,9 +9,11 @@ interface InfoPanelProps {
   logs: LogEntry[];
   onRemoveLayer: (id: string) => void;
   onZoomToLayer?: (id: string) => void;
+  onToggleEditLayer?: (id: string) => void;
+  editingLayerId?: string | null;
 }
 
-const InfoPanel: React.FC<InfoPanelProps> = ({ layers, error, logs, onRemoveLayer, onZoomToLayer }) => {
+const InfoPanel: React.FC<InfoPanelProps> = ({ layers, error, logs, onRemoveLayer, onZoomToLayer, onToggleEditLayer, editingLayerId }) => {
 
   const getFeatureTypeSummary = (geojson: LayerData['geojson']) => {
     if (!geojson) return {};
@@ -59,9 +61,20 @@ const InfoPanel: React.FC<InfoPanelProps> = ({ layers, error, logs, onRemoveLaye
                 >
                   <div className="flex justify-between items-start">
                     <h3 className="text-md font-bold text-cyan-400 mb-2 break-all pr-2">{layer.name}</h3>
-                    <button onClick={() => onRemoveLayer(layer.id)} className="text-gray-500 hover:text-red-400 transition-colors flex-shrink-0" aria-label={`Remove layer ${layer.name}`}>
-                      <TrashIcon className="w-5 h-5" />
-                    </button>
+                    <div className="flex space-x-2">
+                      {onToggleEditLayer && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onToggleEditLayer(layer.id); }}
+                          className="text-gray-500 hover:text-green-400 transition-colors flex-shrink-0"
+                          aria-label={`Edit layer ${layer.name}`}
+                        >
+                          {editingLayerId === layer.id ? <XCircleIcon className="w-5 h-5" /> : <EditIcon className="w-5 h-5" />}
+                        </button>
+                      )}
+                      <button onClick={(e) => { e.stopPropagation(); onRemoveLayer(layer.id); }} className="text-gray-500 hover:text-red-400 transition-colors flex-shrink-0" aria-label={`Remove layer ${layer.name}`}>
+                        <TrashIcon className="w-5 h-5" />
+                      </button>
+                    </div>
                   </div>
                   <div className="text-gray-300 space-y-2 text-sm">
                      <p><strong>Total Features:</strong> <span className="font-mono bg-gray-900 px-2 py-1 rounded">{featureCount}</span></p>
