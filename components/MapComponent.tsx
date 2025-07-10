@@ -1,10 +1,12 @@
 import React, { useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, GeoJSON, useMap, LayersControl, LayerGroup } from 'react-leaflet';
 import L from 'leaflet';
+import 'leaflet-draw';
 import AddressSearch from './AddressSearch';
 import ReactLeafletGoogleLayer from 'react-leaflet-google-layer';
 import type { LayerData } from '../types';
 import type { GeoJSON as LeafletGeoJSON, Layer } from 'leaflet';
+import type { Feature } from 'geojson';
 
 const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY as string | undefined;
 
@@ -12,6 +14,8 @@ interface MapComponentProps {
   layers: LayerData[];
   onUpdateFeatureHsg: (layerId: string, featureIndex: number, hsg: string) => void;
   zoomToLayer?: { id: string; ts: number } | null;
+  isDrawingLod: boolean;
+  onLodFeatureAdd: (feature: Feature) => void;
 }
 
 // This component renders a single GeoJSON layer and handles the auto-zooming effect.
@@ -30,7 +34,7 @@ const ManagedGeoJsonLayer = ({
   const geoJsonRef = useRef<LeafletGeoJSON | null>(null);
   const map = useMap();
 
-  const onEachFeature = (feature: GeoJSON.Feature, layer: Layer) => {
+  const onEachFeature = (feature: Feature, layer: Layer) => {
     if (feature.properties) {
       const container = L.DomUtil.create('div');
       container.style.maxHeight = '150px';
@@ -121,9 +125,57 @@ const ZoomToLayerHandler = ({ layers, target }: { layers: LayerData[]; target: {
   return null;
 };
 
-const MapComponent: React.FC<MapComponentProps> = ({ layers, onUpdateFeatureHsg, zoomToLayer }) => {
+const MapComponent: React.FC<MapComponentProps> = ({
+  layers,
+  onUpdateFeatureHsg,
+  zoomToLayer,
+  isDrawingLod,
+  onLodFeatureAdd,
+}) => {
+  const mapRef = useRef<L.Map | null>(null);
+
+  useEffect(() => {
+    if (!isDrawingLod || !mapRef.current) return;
+    const map = mapRef.current;
+    const drawnItems = new L.FeatureGroup();
+    map.addLayer(drawnItems);
+    const drawControl = new L.Control.Draw({
+      draw: {
+        polygon: true,
+        polyline: false,
+        rectangle: false,
+        circle: false,
+        marker: false,
+        circlemarker: false,
+      },
+      edit: { featureGroup: drawnItems, edit: false, remove: false },
+    });
+    map.addControl(drawControl);
+
+    const handleCreate = (e: any) => {
+      drawnItems.addLayer(e.layer);
+      const feature = e.layer.toGeoJSON() as Feature;
+      onLodFeatureAdd(feature);
+    };
+    map.on(L.Draw.Event.CREATED, handleCreate);
+
+    return () => {
+      map.off(L.Draw.Event.CREATED, handleCreate);
+      map.removeControl(drawControl);
+      map.removeLayer(drawnItems);
+    };
+  }, [isDrawingLod, onLodFeatureAdd]);
+
   return (
-    <MapContainer center={[20, 0]} zoom={2} scrollWheelZoom={true} className="h-full w-full relative">
+    <MapContainer
+      center={[20, 0]}
+      zoom={2}
+      scrollWheelZoom={true}
+      className="h-full w-full relative"
+      whenCreated={(map) => {
+        mapRef.current = map;
+      }}
+    >
       <ZoomToLayerHandler layers={layers} target={zoomToLayer ?? null} />
       <div className="absolute top-2 left-2 z-[1000] w-64">
         <AddressSearch />

@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import type { FeatureCollection } from 'geojson';
+import type { FeatureCollection, Feature } from 'geojson';
 import type { LayerData, LogEntry } from './types';
 import Header from './components/Header';
 import FileUpload from './components/FileUpload';
@@ -15,6 +15,7 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [zoomToLayer, setZoomToLayer] = useState<{ id: string; ts: number } | null>(null);
+  const [isDrawingLod, setIsDrawingLod] = useState<boolean>(false);
 
   const addLog = useCallback((message: string, type: 'info' | 'error' = 'info') => {
     setLogs(prev => [...prev, { message, type, source: 'frontend' }]);
@@ -78,6 +79,29 @@ const App: React.FC = () => {
     setZoomToLayer({ id, ts: Date.now() });
   }, []);
 
+  const handleToggleDrawLod = useCallback(() => {
+    setIsDrawingLod(prev => !prev);
+  }, []);
+
+  const handleAddLodFeature = useCallback((feature: Feature) => {
+    setLayers(prev => {
+      const idx = prev.findIndex(l => l.name === 'Limit of Disturbance (LOD)');
+      if (idx >= 0) {
+        const layer = prev[idx];
+        const features = [...layer.geojson.features, feature];
+        const updatedLayer = { ...layer, geojson: { ...layer.geojson, features } };
+        return prev.map((l, i) => (i === idx ? updatedLayer : l));
+      }
+      const newLayer: LayerData = {
+        id: `lod-${Date.now()}`,
+        name: 'Limit of Disturbance (LOD)',
+        geojson: { type: 'FeatureCollection', features: [feature] },
+      };
+      return [...prev, newLayer];
+    });
+    addLog('Added LOD polygon via drawing');
+  }, [addLog]);
+
   const handleUpdateFeatureHsg = useCallback<UpdateHsgFn>((layerId, featureIndex, hsg) => {
     setLayers(prev => prev.map(layer => {
       if (layer.id !== layerId) return layer;
@@ -108,6 +132,8 @@ const App: React.FC = () => {
             logs={logs}
             onRemoveLayer={handleRemoveLayer}
             onZoomToLayer={handleZoomToLayer}
+            onToggleDrawLod={handleToggleDrawLod}
+            isDrawingLod={isDrawingLod}
           />
         </aside>
         <main className="flex-1 bg-gray-900 h-full">
@@ -116,6 +142,8 @@ const App: React.FC = () => {
               layers={layers}
               onUpdateFeatureHsg={handleUpdateFeatureHsg}
               zoomToLayer={zoomToLayer}
+              isDrawingLod={isDrawingLod}
+              onLodFeatureAdd={handleAddLodFeature}
             />
           ) : (
             <InstructionsPage />
