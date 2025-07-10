@@ -15,6 +15,7 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [zoomToLayer, setZoomToLayer] = useState<{ id: string; ts: number } | null>(null);
+  const [editingTarget, setEditingTarget] = useState<{ layerId: string | null; featureIndex: number | null }>({ layerId: null, featureIndex: null });
 
   const addLog = useCallback((message: string, type: 'info' | 'error' = 'info') => {
     setLogs(prev => [...prev, { message, type, source: 'frontend' }]);
@@ -72,7 +73,8 @@ const App: React.FC = () => {
   const handleRemoveLayer = useCallback((id: string) => {
     setLayers(prevLayers => prevLayers.filter(layer => layer.id !== id));
     addLog(`Removed layer ${id}`);
-  }, [addLog]);
+    if (editingTarget.layerId === id) setEditingTarget({ layerId: null, featureIndex: null });
+  }, [addLog, editingTarget]);
 
   const handleZoomToLayer = useCallback((id: string) => {
     setZoomToLayer({ id, ts: Date.now() });
@@ -88,6 +90,23 @@ const App: React.FC = () => {
       return { ...layer, geojson: { ...layer.geojson, features } };
     }));
     addLog(`Set HSG for feature ${featureIndex} in ${layerId} to ${hsg}`);
+  }, [addLog]);
+
+  const handleToggleEditLayer = useCallback((id: string) => {
+    setEditingTarget(prev => prev.layerId === id ? { layerId: null, featureIndex: null } : { layerId: id, featureIndex: null });
+    if (editingTarget.layerId !== id) {
+      addLog(`Selecciona un pol\u00edgono de ${id} para editarlo`);
+    }
+  }, [addLog, editingTarget.layerId]);
+
+  const handleSelectFeatureForEditing = useCallback((layerId: string, index: number) => {
+    setEditingTarget({ layerId, featureIndex: index });
+    addLog(`Editando pol\u00edgono ${index} en ${layerId}`);
+  }, [addLog]);
+
+  const handleUpdateLayerGeojson = useCallback((id: string, geojson: FeatureCollection) => {
+    setLayers(prev => prev.map(layer => layer.id === id ? { ...layer, geojson } : layer));
+    addLog(`Updated geometry for layer ${id}`);
   }, [addLog]);
 
   return (
@@ -108,6 +127,8 @@ const App: React.FC = () => {
             logs={logs}
             onRemoveLayer={handleRemoveLayer}
             onZoomToLayer={handleZoomToLayer}
+            onToggleEditLayer={handleToggleEditLayer}
+            editingLayerId={editingTarget.layerId}
           />
         </aside>
         <main className="flex-1 bg-gray-900 h-full">
@@ -116,6 +137,9 @@ const App: React.FC = () => {
               layers={layers}
               onUpdateFeatureHsg={handleUpdateFeatureHsg}
               zoomToLayer={zoomToLayer}
+              editingTarget={editingTarget}
+              onSelectFeatureForEditing={handleSelectFeatureForEditing}
+              onUpdateLayerGeojson={handleUpdateLayerGeojson}
             />
           ) : (
             <InstructionsPage />
