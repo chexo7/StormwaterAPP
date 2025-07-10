@@ -10,11 +10,15 @@ const __dirname = path.dirname(__filename);
 const app = express();
 app.use(express.json());
 const port = process.env.PORT || 3001;
+const logLimit = parseInt(process.env.LOG_LIMIT || '100', 10);
 
 const logs = [];
 function addLog(message, type = 'info') {
   const entry = { message, type, source: 'backend', timestamp: Date.now() };
   logs.push(entry);
+  if (logs.length > logLimit) {
+    logs.splice(0, logs.length - logLimit);
+  }
   console.log(`[${entry.type.toUpperCase()}] ${entry.message}`);
 }
 

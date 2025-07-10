@@ -21,6 +21,8 @@ This contains everything you need to run your app locally.
    `npm run dev`
 4. Start the backend server in another terminal:
    `npm run backend`
+   You can control how many log entries the server keeps by setting the
+   `LOG_LIMIT` environment variable (defaults to `100`).
 
 ## Geospatial utilities
 
