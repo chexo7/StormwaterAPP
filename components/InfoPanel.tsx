@@ -1,6 +1,6 @@
 import React from 'react';
 import type { LayerData, LogEntry } from '../types';
-import { XCircleIcon, InfoIcon, TrashIcon, EditIcon } from './Icons';
+import { XCircleIcon, InfoIcon, TrashIcon, EditIcon, CheckCircleIcon } from './Icons';
 import LogPanel from './LogPanel';
 
 interface InfoPanelProps {
@@ -10,10 +10,12 @@ interface InfoPanelProps {
   onRemoveLayer: (id: string) => void;
   onZoomToLayer?: (id: string) => void;
   onToggleEditLayer?: (id: string) => void;
+  onSaveEditLayer?: () => void;
+  onDiscardEditLayer?: () => void;
   editingLayerId?: string | null;
 }
 
-const InfoPanel: React.FC<InfoPanelProps> = ({ layers, error, logs, onRemoveLayer, onZoomToLayer, onToggleEditLayer, editingLayerId }) => {
+const InfoPanel: React.FC<InfoPanelProps> = ({ layers, error, logs, onRemoveLayer, onZoomToLayer, onToggleEditLayer, onSaveEditLayer, onDiscardEditLayer, editingLayerId }) => {
 
   const getFeatureTypeSummary = (geojson: LayerData['geojson']) => {
     if (!geojson) return {};
@@ -62,15 +64,32 @@ const InfoPanel: React.FC<InfoPanelProps> = ({ layers, error, logs, onRemoveLaye
                   <div className="flex justify-between items-start">
                     <h3 className="text-md font-bold text-cyan-400 mb-2 break-all pr-2">{layer.name}</h3>
                     <div className="flex space-x-2">
-                      {onToggleEditLayer && (
+                      {editingLayerId === layer.id && onSaveEditLayer && onDiscardEditLayer ? (
+                        <>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); onSaveEditLayer(); }}
+                            className="text-gray-500 hover:text-green-400 transition-colors flex-shrink-0"
+                            aria-label={`Save edits to ${layer.name}`}
+                          >
+                            <CheckCircleIcon className="w-5 h-5" />
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); onDiscardEditLayer(); }}
+                            className="text-gray-500 hover:text-red-400 transition-colors flex-shrink-0"
+                            aria-label={`Discard edits to ${layer.name}`}
+                          >
+                            <XCircleIcon className="w-5 h-5" />
+                          </button>
+                        </>
+                      ) : onToggleEditLayer ? (
                         <button
                           onClick={(e) => { e.stopPropagation(); onToggleEditLayer(layer.id); }}
                           className="text-gray-500 hover:text-green-400 transition-colors flex-shrink-0"
                           aria-label={`Edit layer ${layer.name}`}
                         >
-                          {editingLayerId === layer.id ? <XCircleIcon className="w-5 h-5" /> : <EditIcon className="w-5 h-5" />}
+                          <EditIcon className="w-5 h-5" />
                         </button>
-                      )}
+                      ) : null}
                       <button onClick={(e) => { e.stopPropagation(); onRemoveLayer(layer.id); }} className="text-gray-500 hover:text-red-400 transition-colors flex-shrink-0" aria-label={`Remove layer ${layer.name}`}>
                         <TrashIcon className="w-5 h-5" />
                       </button>
