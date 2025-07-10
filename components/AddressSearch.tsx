@@ -30,7 +30,7 @@ const AddressSearch: React.FC = () => {
         limit: '1'
       });
       const res = await fetch(`${NOMINATIM_URL}?${params.toString()}`, {
-        headers: { 'Accept-Language': 'en', 'User-Agent': 'shapefile-viewer-pro' }
+        headers: { 'Accept-Language': 'en' }
       });
       if (res.ok) {
         const data = await res.json();
