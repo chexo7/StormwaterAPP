@@ -1,9 +1,11 @@
 import React, { useCallback, useState } from 'react';
 import * as shp from 'shpjs';
 import JSZip from 'jszip';
+import proj4 from 'proj4';
 import type { FeatureCollection } from 'geojson';
 import { UploadIcon } from './Icons';
 import { loadHsgMap } from '../utils/soil';
+import { reprojectTo3857 } from '../utils/projection';
 
 interface FileUploadProps {
   onLayerAdded: (data: FeatureCollection, fileName: string) => void;
@@ -37,11 +39,28 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
       let displayName = file.name;
       const isWssFile = file.name.toLowerCase().startsWith('wss_aoi_');
 
+      const zip = await JSZip.loadAsync(buffer);
+      const prjFiles = zip.file(/\.prj$/i);
+      if (prjFiles.length === 0) {
+        const msg = 'Shapefile archive must include a .prj projection file.';
+        onError(msg);
+        onLog(msg, 'error');
+        return;
+      }
+      try {
+        const prjText = await prjFiles[0].async('string');
+        proj4(prjText); // validate projection
+      } catch {
+        const msg = 'Invalid projection definition in .prj file.';
+        onError(msg);
+        onLog(msg, 'error');
+        return;
+      }
+
       // Special handling for Web Soil Survey files
       if (isWssFile) {
         const targetBasename = 'soilmu_a_aoi';
-        const zip = await JSZip.loadAsync(buffer);
-        
+
         const relevantFiles = zip.file(new RegExp(`(^|/)${targetBasename}\\.\\w+$`, 'i'));
 
         if (relevantFiles.length === 0) {
@@ -62,6 +81,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
       }
 
       let geojson = await shp.parseZip(buffer) as FeatureCollection;
+      geojson = reprojectTo3857(geojson);
 
       // --- DATA ENRICHMENT FOR WSS FILES ---
       if (isWssFile && geojson.features.length > 0) {
