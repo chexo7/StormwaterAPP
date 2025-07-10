@@ -22,6 +22,16 @@ This contains everything you need to run your app locally.
 4. Start the backend server in another terminal:
    `npm run backend`
 
+## Geospatial utilities
+
+The backend exposes two endpoints using Turf.js for polygon processing:
+
+* `POST /api/intersect` accepts `{ poly1, poly2 }` GeoJSON polygons and returns
+  their intersection or `null` if they do not overlap.
+* `POST /api/area` accepts `{ polygon }` and returns `{ area }` in square meters.
+
+These routes are ready for future integration with the frontend.
+
 ## Update soil HSG mapping
 
 The file `public/data/soil-hsg-map.json` contains a mapping from soil map unit
