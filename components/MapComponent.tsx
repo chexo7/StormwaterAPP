@@ -129,12 +129,17 @@ const ManagedGeoJsonLayer = ({
         });
       }
 
-      layer.bindPopup(container);
+      const featureIdx = data.features.indexOf(feature);
+      const allowPopup = !isEditingLayer ||
+        (editingFeatureIndex !== null && featureIdx !== editingFeatureIndex);
+      if (allowPopup) {
+        layer.bindPopup(container);
+      }
 
       if (isEditingLayer && editingFeatureIndex === null && onSelectFeature) {
         const handler = () => {
-          const idx = data.features.indexOf(feature);
-          onSelectFeature(idx);
+          const idxSel = data.features.indexOf(feature);
+          onSelectFeature(idxSel);
         };
         layer.once('click', handler);
       }
@@ -246,7 +251,9 @@ const MapComponent: React.FC<MapComponentProps> = ({ layers, onUpdateFeatureHsg,
         </LayersControl.BaseLayer>
 
         {/* Overlay Layers */}
-        {layers.map((layer, index) => (
+        {layers
+          .filter(l => !editingTarget?.layerId || l.id === editingTarget.layerId)
+          .map((layer, index) => (
           <LayersControl.Overlay checked name={layer.name} key={layer.id}>
              <ManagedGeoJsonLayer
                 id={layer.id}
