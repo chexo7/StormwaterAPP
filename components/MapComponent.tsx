@@ -146,7 +146,9 @@ const ManagedGeoJsonLayer = ({
         });
       }
 
-      layer.bindPopup(container);
+      if (!isEditingLayer) {
+        layer.bindPopup(container);
+      }
 
       if (isEditingLayer && editingFeatureIndex === null && onSelectFeature) {
         const handler = () => {
@@ -263,7 +265,9 @@ const MapComponent: React.FC<MapComponentProps> = ({ layers, onUpdateFeatureHsg,
         </LayersControl.BaseLayer>
 
         {/* Overlay Layers */}
-        {layers.map((layer, index) => (
+        {layers
+          .filter(l => !editingTarget?.layerId || editingTarget.layerId === l.id)
+          .map((layer, index) => (
           <LayersControl.Overlay checked name={layer.name} key={layer.id}>
              <ManagedGeoJsonLayer
                 id={layer.id}
