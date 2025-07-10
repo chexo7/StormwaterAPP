@@ -93,9 +93,12 @@ const App: React.FC = () => {
   }, [addLog]);
 
   const handleToggleEditLayer = useCallback((id: string) => {
-    setEditingTarget(prev => prev.layerId === id ? { layerId: null, featureIndex: null } : { layerId: id, featureIndex: null });
-    if (editingTarget.layerId !== id) {
-      addLog(`Selecciona un pol\u00edgono de ${id} para editarlo`);
+    const turningOff = editingTarget.layerId === id;
+    setEditingTarget(prev => turningOff ? { layerId: null, featureIndex: null } : { layerId: id, featureIndex: null });
+    if (turningOff) {
+      addLog(`Finalizada la edición de ${id}`);
+    } else {
+      addLog(`Selecciona un polígono de ${id} para editarlo`);
     }
   }, [addLog, editingTarget.layerId]);
 
