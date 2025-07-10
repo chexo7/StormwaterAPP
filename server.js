@@ -2,11 +2,13 @@ import express from 'express';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { intersect, area as turfArea, featureCollection } from '@turf/turf';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+app.use(express.json());
 const port = process.env.PORT || 3001;
 
 const logs = [];
@@ -36,6 +38,30 @@ app.get('/api/soil-hsg-map', (req, res) => {
 
 app.get('/api/logs', (req, res) => {
   res.json(logs);
+});
+
+app.post('/api/intersect', (req, res) => {
+  const { poly1, poly2 } = req.body || {};
+  try {
+    const result = intersect(featureCollection([poly1, poly2]));
+    addLog('Intersection calculated');
+    res.json(result || null);
+  } catch (err) {
+    addLog('Invalid polygons for intersection', 'error');
+    res.status(400).json({ error: 'Invalid polygons' });
+  }
+});
+
+app.post('/api/area', (req, res) => {
+  const { polygon } = req.body || {};
+  try {
+    const result = turfArea(polygon);
+    addLog('Area calculated');
+    res.json({ area: result });
+  } catch (err) {
+    addLog('Invalid polygon for area', 'error');
+    res.status(400).json({ error: 'Invalid polygon' });
+  }
 });
 
 app.use(express.static(path.join(__dirname, 'public')));
