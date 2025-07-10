@@ -15,6 +15,7 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [zoomToLayer, setZoomToLayer] = useState<{ id: string; ts: number } | null>(null);
+  const [editingLayerId, setEditingLayerId] = useState<string | null>(null);
 
   const addLog = useCallback((message: string, type: 'info' | 'error' = 'info') => {
     setLogs(prev => [...prev, { message, type, source: 'frontend' }]);
@@ -78,6 +79,10 @@ const App: React.FC = () => {
     setZoomToLayer({ id, ts: Date.now() });
   }, []);
 
+  const handleToggleEditLayer = useCallback((id: string) => {
+    setEditingLayerId(prev => (prev === id ? null : id));
+  }, []);
+
   const handleUpdateFeatureHsg = useCallback<UpdateHsgFn>((layerId, featureIndex, hsg) => {
     setLayers(prev => prev.map(layer => {
       if (layer.id !== layerId) return layer;
@@ -108,6 +113,8 @@ const App: React.FC = () => {
             logs={logs}
             onRemoveLayer={handleRemoveLayer}
             onZoomToLayer={handleZoomToLayer}
+            onToggleEditLayer={handleToggleEditLayer}
+            editingLayerId={editingLayerId}
           />
         </aside>
         <main className="flex-1 bg-gray-900 h-full">
@@ -116,6 +123,10 @@ const App: React.FC = () => {
               layers={layers}
               onUpdateFeatureHsg={handleUpdateFeatureHsg}
               zoomToLayer={zoomToLayer}
+              editingLayerId={editingLayerId}
+              onLayerGeoJsonChange={(id, geojson) => {
+                setLayers(prev => prev.map(l => l.id === id ? { ...l, geojson } : l));
+              }}
             />
           ) : (
             <InstructionsPage />
