@@ -11,6 +11,7 @@ type UpdateHsgFn = (layerId: string, featureIndex: number, hsg: string) => void;
 
 const App: React.FC = () => {
   const [layers, setLayers] = useState<LayerData[]>([]);
+  const [lodLayer, setLodLayer] = useState<LayerData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -47,13 +48,20 @@ const App: React.FC = () => {
       setError(msg);
       addLog(msg, 'error');
     } else {
-      const newLayer: LayerData = {
-        id: `${Date.now()}-${name}`,
-        name: name,
-        geojson: geojson,
-      };
-      setLayers(prevLayers => [...prevLayers, newLayer]);
-      addLog(`Loaded layer ${name}`);
+      const isLod = /lod|limit[_\s]?of[_\s]?disturbance/i.test(name);
+      if (isLod) {
+        const layer: LayerData = { id: 'lod-layer', name: 'Limit of Disturbance (LOD)', geojson };
+        setLodLayer(layer);
+        addLog(`Loaded LOD layer from ${name}`);
+      } else {
+        const newLayer: LayerData = {
+          id: `${Date.now()}-${name}`,
+          name: name,
+          geojson: geojson,
+        };
+        setLayers(prevLayers => [...prevLayers, newLayer]);
+        addLog(`Loaded layer ${name}`);
+      }
     }
   }, [addLog]);
 
@@ -70,13 +78,23 @@ const App: React.FC = () => {
   }, [addLog]);
 
   const handleRemoveLayer = useCallback((id: string) => {
-    setLayers(prevLayers => prevLayers.filter(layer => layer.id !== id));
-    addLog(`Removed layer ${id}`);
+    if (id === 'lod-layer') {
+      setLodLayer(null);
+      addLog('Removed LOD layer');
+    } else {
+      setLayers(prevLayers => prevLayers.filter(layer => layer.id !== id));
+      addLog(`Removed layer ${id}`);
+    }
   }, [addLog]);
 
   const handleZoomToLayer = useCallback((id: string) => {
     setZoomToLayer({ id, ts: Date.now() });
   }, []);
+
+  const handleLodChange = useCallback((fc: FeatureCollection) => {
+    setLodLayer({ id: 'lod-layer', name: 'Limit of Disturbance (LOD)', geojson: fc });
+    addLog('Updated LOD layer');
+  }, [addLog]);
 
   const handleUpdateFeatureHsg = useCallback<UpdateHsgFn>((layerId, featureIndex, hsg) => {
     setLayers(prev => prev.map(layer => {
@@ -103,7 +121,7 @@ const App: React.FC = () => {
             isLoading={isLoading}
           />
           <InfoPanel
-            layers={layers}
+            layers={lodLayer ? [...layers, lodLayer] : layers}
             error={error}
             logs={logs}
             onRemoveLayer={handleRemoveLayer}
@@ -111,8 +129,10 @@ const App: React.FC = () => {
           />
         </aside>
         <main className="flex-1 bg-gray-900 h-full">
-          {layers.length > 0 ? (
+          {layers.length > 0 || lodLayer ? (
             <MapComponent
+              lodLayer={lodLayer}
+              onLodChange={handleLodChange}
               layers={layers}
               onUpdateFeatureHsg={handleUpdateFeatureHsg}
               zoomToLayer={zoomToLayer}

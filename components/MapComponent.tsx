@@ -1,4 +1,6 @@
 import React, { useEffect, useRef } from 'react';
+import LodDrawer from "./LodDrawer";
+import type { FeatureCollection } from "geojson";
 import { MapContainer, TileLayer, GeoJSON, useMap, LayersControl, LayerGroup } from 'react-leaflet';
 import L from 'leaflet';
 import AddressSearch from './AddressSearch';
@@ -9,6 +11,8 @@ import type { GeoJSON as LeafletGeoJSON, Layer } from 'leaflet';
 const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY as string | undefined;
 
 interface MapComponentProps {
+  lodLayer: LayerData | null;
+  onLodChange: (fc: FeatureCollection) => void;
   layers: LayerData[];
   onUpdateFeatureHsg: (layerId: string, featureIndex: number, hsg: string) => void;
   zoomToLayer?: { id: string; ts: number } | null;
@@ -104,27 +108,30 @@ const ManagedGeoJsonLayer = ({
   );
 };
 
-const ZoomToLayerHandler = ({ layers, target }: { layers: LayerData[]; target: { id: string; ts: number } | null }) => {
+const ZoomToLayerHandler = ({ layers, lodLayer, target }: { layers: LayerData[]; lodLayer: LayerData | null; target: { id: string; ts: number } | null }) => {
   const map = useMap();
 
   useEffect(() => {
     if (!target) return;
-    const layer = layers.find(l => l.id === target.id);
+    let layer = layers.find(l => l.id === target.id);
+    if (!layer && lodLayer && lodLayer.id === target.id) {
+      layer = lodLayer;
+    }
     if (layer) {
       const bounds = L.geoJSON(layer.geojson).getBounds();
       if (bounds.isValid()) {
         map.flyToBounds(bounds, { padding: [50, 50], maxZoom: 16 });
       }
     }
-  }, [target, layers, map]);
+  }, [target, layers, lodLayer, map]);
 
   return null;
 };
 
-const MapComponent: React.FC<MapComponentProps> = ({ layers, onUpdateFeatureHsg, zoomToLayer }) => {
+const MapComponent: React.FC<MapComponentProps> = ({ lodLayer, onLodChange, layers, onUpdateFeatureHsg, zoomToLayer }) => {
   return (
     <MapContainer center={[20, 0]} zoom={2} scrollWheelZoom={true} className="h-full w-full relative">
-      <ZoomToLayerHandler layers={layers} target={zoomToLayer ?? null} />
+      <ZoomToLayerHandler layers={layers} lodLayer={lodLayer} target={zoomToLayer ?? null} />
       <div className="absolute top-2 left-2 z-[1000] w-64">
         <AddressSearch />
       </div>
@@ -175,6 +182,11 @@ const MapComponent: React.FC<MapComponentProps> = ({ layers, onUpdateFeatureHsg,
         </LayersControl.BaseLayer>
 
         {/* Overlay Layers */}
+        {lodLayer && (
+          <LayersControl.Overlay checked name={lodLayer.name} key={lodLayer.id}>
+            <LodDrawer data={lodLayer.geojson} onChange={onLodChange} />
+          </LayersControl.Overlay>
+        )}
         {layers.map((layer, index) => (
           <LayersControl.Overlay checked name={layer.name} key={layer.id}>
              <ManagedGeoJsonLayer
