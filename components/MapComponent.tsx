@@ -32,6 +32,7 @@ const ManagedGeoJsonLayer = ({
   editingFeatureIndex,
   onSelectFeature,
   onUpdateLayerGeojson,
+  layerRef,
 }: {
   id: string;
   data: LayerData['geojson'];
@@ -41,9 +42,18 @@ const ManagedGeoJsonLayer = ({
   editingFeatureIndex: number | null;
   onSelectFeature?: (index: number) => void;
   onUpdateLayerGeojson?: (id: string, geojson: LayerData['geojson']) => void;
+  layerRef?: (ref: LeafletGeoJSON | null) => void;
 }) => {
   const geoJsonRef = useRef<LeafletGeoJSON | null>(null);
   const map = useMap();
+
+  // Expose layer ref to parent component so it can fetch latest geometry
+  useEffect(() => {
+    if (layerRef) layerRef(geoJsonRef.current);
+    return () => {
+      if (layerRef) layerRef(null);
+    };
+  }, [layerRef]);
 
   // Enable or disable vertex editing based on `isEditingLayer` and `editingFeatureIndex`
   useEffect(() => {
@@ -223,6 +233,18 @@ const MapComponent: React.FC<MapComponentProps> = ({
   onSaveEdits,
   onDiscardEdits,
 }) => {
+  const layerRefs = useRef<Record<string, L.GeoJSON | null>>({});
+
+  const handleSaveClick = () => {
+    if (editingTarget?.layerId) {
+      const ref = layerRefs.current[editingTarget.layerId];
+      if (ref && onUpdateLayerGeojson) {
+        const latest = ref.toGeoJSON() as LayerData['geojson'];
+        onUpdateLayerGeojson(editingTarget.layerId, latest);
+      }
+    }
+    if (onSaveEdits) onSaveEdits();
+  };
   return (
     <MapContainer center={[20, 0]} zoom={2} scrollWheelZoom={true} className="h-full w-full relative">
       <ZoomToLayerHandler layers={layers} target={zoomToLayer ?? null} />
@@ -237,7 +259,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
       {editingTarget?.layerId && (
         <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-[1000] space-x-2">
           <button
-            onClick={onSaveEdits}
+            onClick={handleSaveClick}
             className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded shadow"
           >
             Guardar
@@ -308,6 +330,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
                 editingFeatureIndex={editingTarget?.layerId === layer.id ? editingTarget.featureIndex : null}
                 onSelectFeature={idx => onSelectFeatureForEditing && onSelectFeatureForEditing(layer.id, idx)}
                 onUpdateLayerGeojson={onUpdateLayerGeojson}
+                layerRef={ref => { layerRefs.current[layer.id] = ref; }}
              />
           </LayersControl.Overlay>
         ))}
