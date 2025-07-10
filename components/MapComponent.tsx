@@ -42,6 +42,10 @@ const ManagedGeoJsonLayer = ({
 }) => {
   const geoJsonRef = useRef<LeafletGeoJSON | null>(null);
   const map = useMap();
+  const versionRef = useRef(0);
+  useEffect(() => {
+    versionRef.current += 1;
+  }, [data]);
 
   // Enable or disable vertex editing based on `isEditingLayer` and `editingFeatureIndex`
   useEffect(() => {
@@ -176,9 +180,11 @@ const ManagedGeoJsonLayer = ({
     }
   }, [data, isLastAdded, map]);
 
+  const layerKey = `${id}-${versionRef.current}`;
+
   return (
     <GeoJSON
-      key={id}
+      key={layerKey}
       data={data}
       style={geoJsonStyle}
       onEachFeature={onEachFeature}
