@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
-import { MapContainer, TileLayer, GeoJSON, useMap, LayersControl, LayerGroup } from 'react-leaflet';
+import { MapContainer, TileLayer, GeoJSON, useMap, LayersControl, LayerGroup, FeatureGroup } from 'react-leaflet';
 import L from 'leaflet';
+import 'leaflet-draw';
 import { area as turfArea } from '@turf/turf';
 import AddressSearch from './AddressSearch';
 import ReactLeafletGoogleLayer from 'react-leaflet-google-layer';
@@ -12,6 +13,7 @@ const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY as string | undefined;
 interface MapComponentProps {
   layers: LayerData[];
   onUpdateFeatureHsg: (layerId: string, featureIndex: number, hsg: string) => void;
+  onLayerGeoJsonChange: (layerId: string, geojson: LayerData['geojson']) => void;
   zoomToLayer?: { id: string; ts: number } | null;
 }
 
@@ -22,13 +24,19 @@ const ManagedGeoJsonLayer = ({
   data,
   isLastAdded,
   onUpdateFeatureHsg,
+  editable,
+  onLayerGeoJsonChange,
 }: {
   id: string;
   data: LayerData['geojson'];
   isLastAdded: boolean;
   onUpdateFeatureHsg: (layerId: string, featureIndex: number, hsg: string) => void;
+  editable: boolean | undefined;
+  onLayerGeoJsonChange: (layerId: string, geojson: LayerData['geojson']) => void;
 }) => {
   const geoJsonRef = useRef<LeafletGeoJSON | null>(null);
+  const featureGroupRef = useRef<L.FeatureGroup<any> | null>(null);
+  const editHandlerRef = useRef<any>(null);
   const map = useMap();
 
   const onEachFeature = (feature: GeoJSON.Feature, layer: Layer) => {
@@ -109,14 +117,37 @@ const ManagedGeoJsonLayer = ({
     }
   }, [data, isLastAdded, map]);
 
+  // Enable/disable editing when the editable prop changes
+  useEffect(() => {
+    if (!map || !featureGroupRef.current) return;
+
+    if (editable) {
+      editHandlerRef.current = new (L as any).EditToolbar.Edit(map, { featureGroup: featureGroupRef.current });
+      editHandlerRef.current.enable();
+    }
+
+    return () => {
+      if (editHandlerRef.current) {
+        editHandlerRef.current.disable();
+        editHandlerRef.current = null;
+        const fg = featureGroupRef.current;
+        if (fg) {
+          onLayerGeoJsonChange(id, fg.toGeoJSON() as any);
+        }
+      }
+    };
+  }, [editable, map, id, onLayerGeoJsonChange]);
+
   return (
-    <GeoJSON
-      key={id}
-      data={data}
-      style={geoJsonStyle}
-      onEachFeature={onEachFeature}
-      ref={geoJsonRef}
-    />
+    <FeatureGroup ref={featureGroupRef}>
+      <GeoJSON
+        key={id}
+        data={data}
+        style={geoJsonStyle}
+        onEachFeature={onEachFeature}
+        ref={geoJsonRef}
+      />
+    </FeatureGroup>
   );
 };
 
@@ -137,7 +168,7 @@ const ZoomToLayerHandler = ({ layers, target }: { layers: LayerData[]; target: {
   return null;
 };
 
-const MapComponent: React.FC<MapComponentProps> = ({ layers, onUpdateFeatureHsg, zoomToLayer }) => {
+const MapComponent: React.FC<MapComponentProps> = ({ layers, onUpdateFeatureHsg, onLayerGeoJsonChange, zoomToLayer }) => {
   return (
     <MapContainer center={[20, 0]} zoom={2} scrollWheelZoom={true} className="h-full w-full relative">
       <ZoomToLayerHandler layers={layers} target={zoomToLayer ?? null} />
@@ -198,6 +229,8 @@ const MapComponent: React.FC<MapComponentProps> = ({ layers, onUpdateFeatureHsg,
                 data={layer.geojson}
                 isLastAdded={index === layers.length - 1}
                 onUpdateFeatureHsg={onUpdateFeatureHsg}
+                editable={layer.editable}
+                onLayerGeoJsonChange={onLayerGeoJsonChange}
              />
           </LayersControl.Overlay>
         ))}
