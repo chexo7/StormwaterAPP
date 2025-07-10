@@ -49,8 +49,9 @@ const App: React.FC = () => {
     } else {
       const newLayer: LayerData = {
         id: `${Date.now()}-${name}`,
-        name: name,
-        geojson: geojson,
+        name,
+        geojson,
+        editable: false,
       };
       setLayers(prevLayers => [...prevLayers, newLayer]);
       addLog(`Loaded layer ${name}`);
@@ -77,6 +78,20 @@ const App: React.FC = () => {
   const handleZoomToLayer = useCallback((id: string) => {
     setZoomToLayer({ id, ts: Date.now() });
   }, []);
+
+  const handleToggleLayerEdit = useCallback((id: string) => {
+    setLayers(prev => prev.map(layer =>
+      layer.id === id ? { ...layer, editable: !layer.editable } : layer
+    ));
+    addLog(`Toggled edit mode for ${id}`);
+  }, [addLog]);
+
+  const handleLayerGeoJsonChange = useCallback((id: string, geojson: FeatureCollection) => {
+    setLayers(prev => prev.map(layer =>
+      layer.id === id ? { ...layer, geojson } : layer
+    ));
+    addLog(`Updated geometry for ${id}`);
+  }, [addLog]);
 
   const handleUpdateFeatureHsg = useCallback<UpdateHsgFn>((layerId, featureIndex, hsg) => {
     setLayers(prev => prev.map(layer => {
@@ -108,6 +123,7 @@ const App: React.FC = () => {
             logs={logs}
             onRemoveLayer={handleRemoveLayer}
             onZoomToLayer={handleZoomToLayer}
+            onToggleEditLayer={handleToggleLayerEdit}
           />
         </aside>
         <main className="flex-1 bg-gray-900 h-full">
@@ -115,6 +131,7 @@ const App: React.FC = () => {
             <MapComponent
               layers={layers}
               onUpdateFeatureHsg={handleUpdateFeatureHsg}
+              onLayerGeoJsonChange={handleLayerGeoJsonChange}
               zoomToLayer={zoomToLayer}
             />
           ) : (
