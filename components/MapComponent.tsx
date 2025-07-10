@@ -41,6 +41,7 @@ const ManagedGeoJsonLayer = ({
   onUpdateLayerGeojson?: (id: string, geojson: LayerData['geojson']) => void;
 }) => {
   const geoJsonRef = useRef<LeafletGeoJSON | null>(null);
+  const wasEditing = useRef(false);
   const map = useMap();
 
   // Enable or disable vertex editing based on `isEditingLayer` and `editingFeatureIndex`
@@ -52,11 +53,27 @@ const ManagedGeoJsonLayer = ({
         if (isEditingLayer && editingFeatureIndex === idx) {
           layer.editing.enable();
         } else {
-          layer.editing.disable();
+          if (layer.editing.enabled()) {
+            layer.editing.disable();
+            layer.fire('edit');
+          } else {
+            layer.editing.disable();
+          }
         }
       }
     });
   }, [isEditingLayer, editingFeatureIndex, data]);
+
+  // Save geometry when editing is turned off
+  useEffect(() => {
+    if (!geoJsonRef.current || !onUpdateLayerGeojson) return;
+    const currentlyEditing = isEditingLayer && editingFeatureIndex !== null;
+    if (wasEditing.current && !currentlyEditing) {
+      const updated = geoJsonRef.current.toGeoJSON() as LayerData['geojson'];
+      onUpdateLayerGeojson(id, updated);
+    }
+    wasEditing.current = currentlyEditing;
+  }, [isEditingLayer, editingFeatureIndex, onUpdateLayerGeojson, id]);
 
   // When geometry is edited, propagate changes up
   useEffect(() => {
@@ -103,6 +120,23 @@ const ManagedGeoJsonLayer = ({
       updateArea();
       layer.on('popupopen', updateArea);
       layer.on('edit', updateArea);
+
+      // Button to enable vertex editing when layer editing mode is active
+      if (isEditingLayer) {
+        const editBtnRow = L.DomUtil.create('div', '', propsDiv);
+        const editBtn = L.DomUtil.create('button', '', editBtnRow) as HTMLButtonElement;
+        editBtn.textContent = 'Editar vértices';
+        editBtn.style.marginTop = '4px';
+        editBtn.style.padding = '2px 4px';
+        editBtn.style.fontWeight = 'bold';
+        editBtn.style.backgroundColor = '#fcd34d';
+        editBtn.style.border = '1px solid #f59e0b';
+        editBtn.addEventListener('click', () => {
+          const idx = data.features.indexOf(feature);
+          onSelectFeature && onSelectFeature(idx);
+          layer.closePopup();
+        });
+      }
 
       // Special editable field for HSG
       if ('HSG' in feature.properties) {
@@ -196,7 +230,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ layers, onUpdateFeatureHsg,
       </div>
       {editingTarget?.layerId && editingTarget.featureIndex === null && (
         <div className="absolute top-2 left-1/2 -translate-x-1/2 z-[1000] bg-gray-800/90 text-white px-3 py-1 rounded shadow">
-          Haz clic en un polígono para editarlo
+          Haz clic en un polígono y pulsa "Editar vértices" en el popup
         </div>
       )}
       <LayersControl position="topright">
