@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, GeoJSON, useMap, LayersControl, LayerGroup } from 'react-leaflet';
 import L from 'leaflet';
+import { area as turfArea } from '@turf/turf';
 import AddressSearch from './AddressSearch';
 import ReactLeafletGoogleLayer from 'react-leaflet-google-layer';
 import type { LayerData } from '../types';
@@ -45,6 +46,21 @@ const ManagedGeoJsonLayer = ({
         const row = L.DomUtil.create('div', '', propsDiv);
         row.innerHTML = `<b>${k}:</b> ${v}`;
       });
+
+      // Area display
+      const areaRow = L.DomUtil.create('div', '', propsDiv);
+      const updateArea = () => {
+        try {
+          const areaSqM = turfArea(feature as any);
+          const areaSqFt = areaSqM * 10.7639;
+          const areaAc = areaSqM / 4046.8564224;
+          areaRow.innerHTML = `<b>Area:</b> ${areaSqFt.toLocaleString(undefined, { maximumFractionDigits: 2 })} sf (${areaAc.toLocaleString(undefined, { maximumFractionDigits: 4 })} ac)`;
+        } catch {
+          areaRow.innerHTML = '<b>Area:</b> n/a';
+        }
+      };
+      updateArea();
+      layer.on('popupopen', updateArea);
 
       // Special editable field for HSG
       if ('HSG' in feature.properties) {
