@@ -129,15 +129,26 @@ const ManagedGeoJsonLayer = ({
         });
       }
 
-      layer.bindPopup(container);
-
-      if (isEditingLayer && editingFeatureIndex === null && onSelectFeature) {
-        const handler = () => {
+      // Edit vertices button when layer editing is enabled
+      if (isEditingLayer && onSelectFeature) {
+        const editRow = L.DomUtil.create('div', '', propsDiv);
+        const editBtn = L.DomUtil.create('button', '', editRow) as HTMLButtonElement;
+        editBtn.textContent = 'Editar vértices';
+        editBtn.style.marginTop = '4px';
+        editBtn.style.padding = '2px 6px';
+        editBtn.style.border = '2px solid #4ade80';
+        editBtn.style.backgroundColor = '#dcfce7';
+        editBtn.style.fontWeight = 'bold';
+        editBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
           const idx = data.features.indexOf(feature);
           onSelectFeature(idx);
-        };
-        layer.once('click', handler);
+          layer.closePopup();
+        });
       }
+
+      layer.bindPopup(container);
     }
   };
 
@@ -196,7 +207,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ layers, onUpdateFeatureHsg,
       </div>
       {editingTarget?.layerId && editingTarget.featureIndex === null && (
         <div className="absolute top-2 left-1/2 -translate-x-1/2 z-[1000] bg-gray-800/90 text-white px-3 py-1 rounded shadow">
-          Haz clic en un polígono para editarlo
+          Haz clic en un polígono y presiona "Editar vértices"
         </div>
       )}
       <LayersControl position="topright">
