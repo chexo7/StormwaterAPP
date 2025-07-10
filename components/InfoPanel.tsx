@@ -10,10 +10,12 @@ interface InfoPanelProps {
   onRemoveLayer: (id: string) => void;
   onZoomToLayer?: (id: string) => void;
   onToggleEditLayer?: (id: string) => void;
+  onSaveEdit?: () => void;
+  onCancelEdit?: () => void;
   editingLayerId?: string | null;
 }
 
-const InfoPanel: React.FC<InfoPanelProps> = ({ layers, error, logs, onRemoveLayer, onZoomToLayer, onToggleEditLayer, editingLayerId }) => {
+const InfoPanel: React.FC<InfoPanelProps> = ({ layers, error, logs, onRemoveLayer, onZoomToLayer, onToggleEditLayer, onSaveEdit, onCancelEdit, editingLayerId }) => {
 
   const getFeatureTypeSummary = (geojson: LayerData['geojson']) => {
     if (!geojson) return {};
@@ -92,6 +94,26 @@ const InfoPanel: React.FC<InfoPanelProps> = ({ layers, error, logs, onRemoveLaye
           </div>
         )}
       </div>
+      {editingLayerId && (
+        <div className="flex justify-end space-x-2">
+          {onCancelEdit && (
+            <button
+              onClick={onCancelEdit}
+              className="px-3 py-1 text-sm border border-red-400 rounded text-red-300 hover:bg-red-500/20"
+            >
+              Descartar
+            </button>
+          )}
+          {onSaveEdit && (
+            <button
+              onClick={onSaveEdit}
+              className="px-3 py-1 text-sm border border-green-400 rounded text-green-300 hover:bg-green-500/20"
+            >
+              Guardar
+            </button>
+          )}
+        </div>
+      )}
       <LogPanel logs={logs} />
     </div>
   );
