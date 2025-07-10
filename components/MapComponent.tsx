@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, GeoJSON, useMap, LayersControl, LayerGroup } from 'react-leaflet';
 import L from 'leaflet';
+import 'leaflet-draw';
 import { area as turfArea } from '@turf/turf';
 import AddressSearch from './AddressSearch';
 import ReactLeafletGoogleLayer from 'react-leaflet-google-layer';
@@ -13,6 +14,9 @@ interface MapComponentProps {
   layers: LayerData[];
   onUpdateFeatureHsg: (layerId: string, featureIndex: number, hsg: string) => void;
   zoomToLayer?: { id: string; ts: number } | null;
+  editingTarget?: { layerId: string | null; featureIndex: number | null };
+  onSelectFeatureForEditing?: (layerId: string, index: number) => void;
+  onUpdateLayerGeojson?: (id: string, geojson: LayerData['geojson']) => void;
 }
 
 // This component renders a single GeoJSON layer and handles the auto-zooming effect.
@@ -22,14 +26,50 @@ const ManagedGeoJsonLayer = ({
   data,
   isLastAdded,
   onUpdateFeatureHsg,
+  isEditingLayer,
+  editingFeatureIndex,
+  onSelectFeature,
+  onUpdateLayerGeojson,
 }: {
   id: string;
   data: LayerData['geojson'];
   isLastAdded: boolean;
   onUpdateFeatureHsg: (layerId: string, featureIndex: number, hsg: string) => void;
+  isEditingLayer: boolean;
+  editingFeatureIndex: number | null;
+  onSelectFeature?: (index: number) => void;
+  onUpdateLayerGeojson?: (id: string, geojson: LayerData['geojson']) => void;
 }) => {
   const geoJsonRef = useRef<LeafletGeoJSON | null>(null);
   const map = useMap();
+
+  // Enable or disable vertex editing based on `isEditingLayer` and `editingFeatureIndex`
+  useEffect(() => {
+    if (!geoJsonRef.current) return;
+    geoJsonRef.current.eachLayer((layer: any) => {
+      if (layer.editing && typeof layer.editing.enable === 'function') {
+        const idx = data.features.indexOf(layer.feature as any);
+        if (isEditingLayer && editingFeatureIndex === idx) {
+          layer.editing.enable();
+        } else {
+          layer.editing.disable();
+        }
+      }
+    });
+  }, [isEditingLayer, editingFeatureIndex, data]);
+
+  // When geometry is edited, propagate changes up
+  useEffect(() => {
+    if (!geoJsonRef.current || !onUpdateLayerGeojson) return;
+    const handler = () => {
+      const updated = geoJsonRef.current!.toGeoJSON() as LayerData['geojson'];
+      onUpdateLayerGeojson(id, updated);
+    };
+    geoJsonRef.current.on('edit', handler);
+    return () => {
+      geoJsonRef.current?.off('edit', handler);
+    };
+  }, [id, onUpdateLayerGeojson]);
 
   const onEachFeature = (feature: GeoJSON.Feature, layer: Layer) => {
     if (feature.properties) {
@@ -51,7 +91,8 @@ const ManagedGeoJsonLayer = ({
       const areaRow = L.DomUtil.create('div', '', propsDiv);
       const updateArea = () => {
         try {
-          const areaSqM = turfArea(feature as any);
+          const poly = layer.toGeoJSON() as any;
+          const areaSqM = turfArea(poly);
           const areaSqFt = areaSqM * 10.7639;
           const areaAc = areaSqM / 4046.8564224;
           areaRow.innerHTML = `<b>Area:</b> ${areaSqFt.toLocaleString(undefined, { maximumFractionDigits: 2 })} sf (${areaAc.toLocaleString(undefined, { maximumFractionDigits: 4 })} ac)`;
@@ -61,6 +102,7 @@ const ManagedGeoJsonLayer = ({
       };
       updateArea();
       layer.on('popupopen', updateArea);
+      layer.on('edit', updateArea);
 
       // Special editable field for HSG
       if ('HSG' in feature.properties) {
@@ -88,6 +130,14 @@ const ManagedGeoJsonLayer = ({
       }
 
       layer.bindPopup(container);
+
+      if (isEditingLayer && editingFeatureIndex === null && onSelectFeature) {
+        const handler = () => {
+          const idx = data.features.indexOf(feature);
+          onSelectFeature(idx);
+        };
+        layer.once('click', handler);
+      }
     }
   };
 
@@ -137,13 +187,18 @@ const ZoomToLayerHandler = ({ layers, target }: { layers: LayerData[]; target: {
   return null;
 };
 
-const MapComponent: React.FC<MapComponentProps> = ({ layers, onUpdateFeatureHsg, zoomToLayer }) => {
+const MapComponent: React.FC<MapComponentProps> = ({ layers, onUpdateFeatureHsg, zoomToLayer, editingTarget, onSelectFeatureForEditing, onUpdateLayerGeojson }) => {
   return (
     <MapContainer center={[20, 0]} zoom={2} scrollWheelZoom={true} className="h-full w-full relative">
       <ZoomToLayerHandler layers={layers} target={zoomToLayer ?? null} />
       <div className="absolute top-2 left-2 z-[1000] w-64">
         <AddressSearch />
       </div>
+      {editingTarget?.layerId && editingTarget.featureIndex === null && (
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 z-[1000] bg-gray-800/90 text-white px-3 py-1 rounded shadow">
+          Haz clic en un polígono para editarlo
+        </div>
+      )}
       <LayersControl position="topright">
         {/* Base Layers */}
         <LayersControl.BaseLayer checked name="Dark">
@@ -198,6 +253,10 @@ const MapComponent: React.FC<MapComponentProps> = ({ layers, onUpdateFeatureHsg,
                 data={layer.geojson}
                 isLastAdded={index === layers.length - 1}
                 onUpdateFeatureHsg={onUpdateFeatureHsg}
+                isEditingLayer={editingTarget?.layerId === layer.id}
+                editingFeatureIndex={editingTarget?.layerId === layer.id ? editingTarget.featureIndex : null}
+                onSelectFeature={idx => onSelectFeatureForEditing && onSelectFeatureForEditing(layer.id, idx)}
+                onUpdateLayerGeojson={onUpdateLayerGeojson}
              />
           </LayersControl.Overlay>
         ))}
