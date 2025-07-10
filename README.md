@@ -9,12 +9,11 @@ This contains everything you need to run your app locally.
 
 1. Install dependencies:
    `npm install`
-2. Create an `.env.local` file with your API keys:
+2. Copy `.env.local.example` to `.env.local` and add your API keys:
    ```
    GEMINI_API_KEY=your-gemini-key
    GOOGLE_MAPS_API_KEY=your-google-maps-key
    ```
-   Replace `your-google-maps-key` with `AIzaSyBsEK-S5Kbf5aqYol5eGv8uYcPgLOlObr4` if you wish to use the provided key.
    Note: Google Maps tiles will display a "for development purposes only" watermark if the API key is not fully configured.
    To remove the watermark, ensure billing is enabled for your Google Cloud project and that the key is authorized for your domain.
 3. Run the app:
