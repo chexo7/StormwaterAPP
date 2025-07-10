@@ -16,6 +16,7 @@ const App: React.FC = () => {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [zoomToLayer, setZoomToLayer] = useState<{ id: string; ts: number } | null>(null);
   const [editingTarget, setEditingTarget] = useState<{ layerId: string | null; featureIndex: number | null }>({ layerId: null, featureIndex: null });
+  const [editBackup, setEditBackup] = useState<{ layerId: string; geojson: FeatureCollection } | null>(null);
 
   const addLog = useCallback((message: string, type: 'info' | 'error' = 'info') => {
     setLogs(prev => [...prev, { message, type, source: 'frontend' }]);
@@ -93,16 +94,40 @@ const App: React.FC = () => {
   }, [addLog]);
 
   const handleToggleEditLayer = useCallback((id: string) => {
-    setEditingTarget(prev => prev.layerId === id ? { layerId: null, featureIndex: null } : { layerId: id, featureIndex: null });
-    if (editingTarget.layerId !== id) {
+    if (editingTarget.layerId === id) {
+      setEditingTarget({ layerId: null, featureIndex: null });
+      setEditBackup(null);
+    } else {
+      const layer = layers.find(l => l.id === id);
+      if (layer) {
+        setEditBackup({ layerId: id, geojson: JSON.parse(JSON.stringify(layer.geojson)) });
+      }
+      setEditingTarget({ layerId: id, featureIndex: null });
       addLog(`Selecciona un pol\u00edgono de ${id} para editarlo`);
     }
-  }, [addLog, editingTarget.layerId]);
+  }, [addLog, editingTarget.layerId, layers]);
 
   const handleSelectFeatureForEditing = useCallback((layerId: string, index: number) => {
     setEditingTarget({ layerId, featureIndex: index });
     addLog(`Editando pol\u00edgono ${index} en ${layerId}`);
   }, [addLog]);
+
+  const handleSaveEdit = useCallback(() => {
+    if (editingTarget.layerId) {
+      addLog(`Saved changes to layer ${editingTarget.layerId}`);
+    }
+    setEditingTarget({ layerId: null, featureIndex: null });
+    setEditBackup(null);
+  }, [addLog, editingTarget.layerId]);
+
+  const handleDiscardEdit = useCallback(() => {
+    if (editBackup) {
+      setLayers(prev => prev.map(l => l.id === editBackup.layerId ? { ...l, geojson: editBackup.geojson } : l));
+      addLog(`Discarded changes to layer ${editBackup.layerId}`);
+    }
+    setEditingTarget({ layerId: null, featureIndex: null });
+    setEditBackup(null);
+  }, [addLog, editBackup]);
 
   const handleUpdateLayerGeojson = useCallback((id: string, geojson: FeatureCollection) => {
     setLayers(prev => prev.map(layer => layer.id === id ? { ...layer, geojson } : layer));
@@ -129,6 +154,9 @@ const App: React.FC = () => {
             onZoomToLayer={handleZoomToLayer}
             onToggleEditLayer={handleToggleEditLayer}
             editingLayerId={editingTarget.layerId}
+            editingFeatureSelected={editingTarget.featureIndex !== null}
+            onSaveEdit={handleSaveEdit}
+            onDiscardEdit={handleDiscardEdit}
           />
         </aside>
         <main className="flex-1 bg-gray-900 h-full">

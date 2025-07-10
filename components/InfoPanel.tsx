@@ -11,9 +11,12 @@ interface InfoPanelProps {
   onZoomToLayer?: (id: string) => void;
   onToggleEditLayer?: (id: string) => void;
   editingLayerId?: string | null;
+  editingFeatureSelected?: boolean;
+  onSaveEdit?: () => void;
+  onDiscardEdit?: () => void;
 }
 
-const InfoPanel: React.FC<InfoPanelProps> = ({ layers, error, logs, onRemoveLayer, onZoomToLayer, onToggleEditLayer, editingLayerId }) => {
+const InfoPanel: React.FC<InfoPanelProps> = ({ layers, error, logs, onRemoveLayer, onZoomToLayer, onToggleEditLayer, editingLayerId, editingFeatureSelected, onSaveEdit, onDiscardEdit }) => {
 
   const getFeatureTypeSummary = (geojson: LayerData['geojson']) => {
     if (!geojson) return {};
@@ -75,6 +78,22 @@ const InfoPanel: React.FC<InfoPanelProps> = ({ layers, error, logs, onRemoveLaye
                         <TrashIcon className="w-5 h-5" />
                       </button>
                     </div>
+                    {editingLayerId === layer.id && editingFeatureSelected && (
+                      <div className="flex space-x-2 mt-2">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onSaveEdit && onSaveEdit(); }}
+                          className="text-green-400 hover:text-green-500 text-xs bg-gray-700 px-2 py-1 rounded"
+                        >
+                          Guardar
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onDiscardEdit && onDiscardEdit(); }}
+                          className="text-red-400 hover:text-red-500 text-xs bg-gray-700 px-2 py-1 rounded"
+                        >
+                          Descartar
+                        </button>
+                      </div>
+                    )}
                   </div>
                   <div className="text-gray-300 space-y-2 text-sm">
                      <p><strong>Total Features:</strong> <span className="font-mono bg-gray-900 px-2 py-1 rounded">{featureCount}</span></p>
