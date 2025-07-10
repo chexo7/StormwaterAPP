@@ -17,6 +17,8 @@ interface MapComponentProps {
   editingTarget?: { layerId: string | null; featureIndex: number | null };
   onSelectFeatureForEditing?: (layerId: string, index: number) => void;
   onUpdateLayerGeojson?: (id: string, geojson: LayerData['geojson']) => void;
+  onSaveEdits?: () => void;
+  onDiscardEdits?: () => void;
 }
 
 // This component renders a single GeoJSON layer and handles the auto-zooming effect.
@@ -79,6 +81,7 @@ const ManagedGeoJsonLayer = ({
   useEffect(() => {
     if (!geoJsonRef.current || !onUpdateLayerGeojson) return;
     const handler = () => {
+      if (!isEditingLayer) return;
       const updated = geoJsonRef.current!.toGeoJSON() as LayerData['geojson'];
       onUpdateLayerGeojson(id, updated);
     };
@@ -86,7 +89,7 @@ const ManagedGeoJsonLayer = ({
     return () => {
       geoJsonRef.current?.off('edit', handler);
     };
-  }, [id, onUpdateLayerGeojson]);
+  }, [id, onUpdateLayerGeojson, isEditingLayer]);
 
   const onEachFeature = (feature: GeoJSON.Feature, layer: Layer) => {
     if (feature.properties) {
@@ -204,7 +207,16 @@ const ZoomToLayerHandler = ({ layers, target }: { layers: LayerData[]; target: {
   return null;
 };
 
-const MapComponent: React.FC<MapComponentProps> = ({ layers, onUpdateFeatureHsg, zoomToLayer, editingTarget, onSelectFeatureForEditing, onUpdateLayerGeojson }) => {
+const MapComponent: React.FC<MapComponentProps> = ({
+  layers,
+  onUpdateFeatureHsg,
+  zoomToLayer,
+  editingTarget,
+  onSelectFeatureForEditing,
+  onUpdateLayerGeojson,
+  onSaveEdits,
+  onDiscardEdits,
+}) => {
   return (
     <MapContainer center={[20, 0]} zoom={2} scrollWheelZoom={true} className="h-full w-full relative">
       <ZoomToLayerHandler layers={layers} target={zoomToLayer ?? null} />
@@ -214,6 +226,22 @@ const MapComponent: React.FC<MapComponentProps> = ({ layers, onUpdateFeatureHsg,
       {editingTarget?.layerId && editingTarget.featureIndex === null && (
         <div className="absolute top-2 left-1/2 -translate-x-1/2 z-[1000] bg-gray-800/90 text-white px-3 py-1 rounded shadow">
           Haz clic en un polígono para editarlo
+        </div>
+      )}
+      {editingTarget?.layerId && (
+        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-[1000] space-x-2">
+          <button
+            onClick={onSaveEdits}
+            className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded shadow"
+          >
+            Guardar
+          </button>
+          <button
+            onClick={onDiscardEdits}
+            className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded shadow"
+          >
+            Descartar
+          </button>
         </div>
       )}
       <LayersControl position="topright">
