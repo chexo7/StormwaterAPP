@@ -47,12 +47,21 @@ const ManagedGeoJsonLayer = ({
   useEffect(() => {
     if (!geoJsonRef.current) return;
     geoJsonRef.current.eachLayer((layer: any) => {
+      const idx = data.features.indexOf(layer.feature as any);
+      const shouldEdit = isEditingLayer && editingFeatureIndex === idx;
+
       if (layer.editing && typeof layer.editing.enable === 'function') {
-        const idx = data.features.indexOf(layer.feature as any);
-        if (isEditingLayer && editingFeatureIndex === idx) {
-          layer.editing.enable();
-        } else {
-          layer.editing.disable();
+        shouldEdit ? layer.editing.enable() : layer.editing.disable();
+      }
+
+      if (shouldEdit) {
+        if (layer.getPopup()) {
+          layer.closePopup();
+          layer.unbindPopup();
+        }
+      } else {
+        if (!layer.getPopup() && (layer as any)._originalPopupContent) {
+          layer.bindPopup((layer as any)._originalPopupContent);
         }
       }
     });
@@ -147,6 +156,7 @@ const ManagedGeoJsonLayer = ({
       }
 
       layer.bindPopup(container);
+      (layer as any)._originalPopupContent = container;
 
       if (isEditingLayer && editingFeatureIndex === null && onSelectFeature) {
         const handler = () => {
@@ -205,6 +215,8 @@ const ZoomToLayerHandler = ({ layers, target }: { layers: LayerData[]; target: {
 };
 
 const MapComponent: React.FC<MapComponentProps> = ({ layers, onUpdateFeatureHsg, zoomToLayer, editingTarget, onSelectFeatureForEditing, onUpdateLayerGeojson }) => {
+  const visibleLayers = editingTarget?.layerId ? layers.filter(l => l.id === editingTarget.layerId) : layers;
+
   return (
     <MapContainer center={[20, 0]} zoom={2} scrollWheelZoom={true} className="h-full w-full relative">
       <ZoomToLayerHandler layers={layers} target={zoomToLayer ?? null} />
@@ -263,12 +275,12 @@ const MapComponent: React.FC<MapComponentProps> = ({ layers, onUpdateFeatureHsg,
         </LayersControl.BaseLayer>
 
         {/* Overlay Layers */}
-        {layers.map((layer, index) => (
+        {visibleLayers.map((layer, index) => (
           <LayersControl.Overlay checked name={layer.name} key={layer.id}>
              <ManagedGeoJsonLayer
                 id={layer.id}
                 data={layer.geojson}
-                isLastAdded={index === layers.length - 1}
+                isLastAdded={index === visibleLayers.length - 1}
                 onUpdateFeatureHsg={onUpdateFeatureHsg}
                 isEditingLayer={editingTarget?.layerId === layer.id}
                 editingFeatureIndex={editingTarget?.layerId === layer.id ? editingTarget.featureIndex : null}
