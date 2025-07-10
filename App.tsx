@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import type { FeatureCollection } from 'geojson';
 import type { LayerData, LogEntry } from './types';
 import Header from './components/Header';
@@ -16,6 +16,13 @@ const App: React.FC = () => {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [zoomToLayer, setZoomToLayer] = useState<{ id: string; ts: number } | null>(null);
   const [editingTarget, setEditingTarget] = useState<{ layerId: string | null; featureIndex: number | null }>({ layerId: null, featureIndex: null });
+  const [editingDraft, setEditingDraft] = useState<{ id: string; geojson: FeatureCollection } | null>(null);
+  const [editingSnapshot, setEditingSnapshot] = useState<{ id: string; geojson: FeatureCollection } | null>(null);
+
+  const mapLayers = useMemo(() => {
+    if (!editingDraft) return layers;
+    return layers.map(l => l.id === editingDraft.id ? { ...l, geojson: editingDraft.geojson } : l);
+  }, [layers, editingDraft]);
 
   const addLog = useCallback((message: string, type: 'info' | 'error' = 'info') => {
     setLogs(prev => [...prev, { message, type, source: 'frontend' }]);
@@ -73,7 +80,11 @@ const App: React.FC = () => {
   const handleRemoveLayer = useCallback((id: string) => {
     setLayers(prevLayers => prevLayers.filter(layer => layer.id !== id));
     addLog(`Removed layer ${id}`);
-    if (editingTarget.layerId === id) setEditingTarget({ layerId: null, featureIndex: null });
+    if (editingTarget.layerId === id) {
+      setEditingTarget({ layerId: null, featureIndex: null });
+      setEditingDraft(null);
+      setEditingSnapshot(null);
+    }
   }, [addLog, editingTarget]);
 
   const handleZoomToLayer = useCallback((id: string) => {
@@ -93,11 +104,16 @@ const App: React.FC = () => {
   }, [addLog]);
 
   const handleToggleEditLayer = useCallback((id: string) => {
-    setEditingTarget(prev => prev.layerId === id ? { layerId: null, featureIndex: null } : { layerId: id, featureIndex: null });
-    if (editingTarget.layerId !== id) {
-      addLog(`Selecciona un pol\u00edgono de ${id} para editarlo`);
-    }
-  }, [addLog, editingTarget.layerId]);
+    if (editingDraft) return;
+    const layer = layers.find(l => l.id === id);
+    if (!layer) return;
+    const snapshot = JSON.parse(JSON.stringify(layer.geojson)) as FeatureCollection;
+    const draft = JSON.parse(JSON.stringify(layer.geojson)) as FeatureCollection;
+    setEditingSnapshot({ id, geojson: snapshot });
+    setEditingDraft({ id, geojson: draft });
+    setEditingTarget({ layerId: id, featureIndex: null });
+    addLog(`Selecciona un pol\u00edgono de ${id} para editarlo`);
+  }, [addLog, layers, editingDraft]);
 
   const handleSelectFeatureForEditing = useCallback((layerId: string, index: number) => {
     setEditingTarget({ layerId, featureIndex: index });
@@ -105,9 +121,33 @@ const App: React.FC = () => {
   }, [addLog]);
 
   const handleUpdateLayerGeojson = useCallback((id: string, geojson: FeatureCollection) => {
-    setLayers(prev => prev.map(layer => layer.id === id ? { ...layer, geojson } : layer));
+    if (editingDraft && editingDraft.id === id) {
+      setEditingDraft({ id, geojson });
+    } else {
+      setLayers(prev => prev.map(layer => layer.id === id ? { ...layer, geojson } : layer));
+    }
     addLog(`Updated geometry for layer ${id}`);
-  }, [addLog]);
+  }, [addLog, editingDraft]);
+
+  const handleSaveEditLayer = useCallback(() => {
+    if (!editingDraft) return;
+    setLayers(prev => prev.map(l => l.id === editingDraft.id ? { ...l, geojson: editingDraft.geojson } : l));
+    addLog(`Saved edits to layer ${editingDraft.id}`);
+    setEditingDraft(null);
+    setEditingSnapshot(null);
+    setEditingTarget({ layerId: null, featureIndex: null });
+  }, [editingDraft, addLog]);
+
+  const handleDiscardEditLayer = useCallback(() => {
+    if (!editingDraft) return;
+    if (editingSnapshot) {
+      setLayers(prev => prev.map(l => l.id === editingSnapshot.id ? { ...l, geojson: editingSnapshot.geojson } : l));
+    }
+    addLog(`Discarded edits to layer ${editingDraft.id}`);
+    setEditingDraft(null);
+    setEditingSnapshot(null);
+    setEditingTarget({ layerId: null, featureIndex: null });
+  }, [editingDraft, editingSnapshot, addLog]);
 
   return (
     <div className="flex flex-col h-screen bg-gray-900 text-gray-100 font-sans">
@@ -128,13 +168,15 @@ const App: React.FC = () => {
             onRemoveLayer={handleRemoveLayer}
             onZoomToLayer={handleZoomToLayer}
             onToggleEditLayer={handleToggleEditLayer}
+            onSaveEditLayer={handleSaveEditLayer}
+            onDiscardEditLayer={handleDiscardEditLayer}
             editingLayerId={editingTarget.layerId}
           />
         </aside>
         <main className="flex-1 bg-gray-900 h-full">
-          {layers.length > 0 ? (
+          {mapLayers.length > 0 ? (
             <MapComponent
-              layers={layers}
+              layers={mapLayers}
               onUpdateFeatureHsg={handleUpdateFeatureHsg}
               zoomToLayer={zoomToLayer}
               editingTarget={editingTarget}
