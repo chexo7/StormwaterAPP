@@ -17,6 +17,7 @@ const App: React.FC = () => {
   const [zoomToLayer, setZoomToLayer] = useState<{ id: string; ts: number } | null>(null);
   const [editingTarget, setEditingTarget] = useState<{ layerId: string | null; featureIndex: number | null }>({ layerId: null, featureIndex: null });
   const [editingDraft, setEditingDraft] = useState<{ id: string; geojson: FeatureCollection } | null>(null);
+  const [editingSnapshot, setEditingSnapshot] = useState<{ id: string; geojson: FeatureCollection } | null>(null);
 
   const mapLayers = useMemo(() => {
     if (!editingDraft) return layers;
@@ -82,6 +83,7 @@ const App: React.FC = () => {
     if (editingTarget.layerId === id) {
       setEditingTarget({ layerId: null, featureIndex: null });
       setEditingDraft(null);
+      setEditingSnapshot(null);
     }
   }, [addLog, editingTarget]);
 
@@ -105,7 +107,9 @@ const App: React.FC = () => {
     if (editingDraft) return;
     const layer = layers.find(l => l.id === id);
     if (!layer) return;
-    setEditingDraft({ id, geojson: JSON.parse(JSON.stringify(layer.geojson)) });
+    const snapshot = JSON.parse(JSON.stringify(layer.geojson)) as FeatureCollection;
+    setEditingSnapshot({ id, geojson: snapshot });
+    setEditingDraft({ id, geojson: snapshot });
     setEditingTarget({ layerId: id, featureIndex: null });
     addLog(`Selecciona un pol\u00edgono de ${id} para editarlo`);
   }, [addLog, layers, editingDraft]);
@@ -129,15 +133,20 @@ const App: React.FC = () => {
     setLayers(prev => prev.map(l => l.id === editingDraft.id ? { ...l, geojson: editingDraft.geojson } : l));
     addLog(`Saved edits to layer ${editingDraft.id}`);
     setEditingDraft(null);
+    setEditingSnapshot(null);
     setEditingTarget({ layerId: null, featureIndex: null });
   }, [editingDraft, addLog]);
 
   const handleDiscardEditLayer = useCallback(() => {
     if (!editingDraft) return;
+    if (editingSnapshot) {
+      setLayers(prev => prev.map(l => l.id === editingSnapshot.id ? { ...l, geojson: editingSnapshot.geojson } : l));
+    }
     addLog(`Discarded edits to layer ${editingDraft.id}`);
     setEditingDraft(null);
+    setEditingSnapshot(null);
     setEditingTarget({ layerId: null, featureIndex: null });
-  }, [editingDraft, addLog]);
+  }, [editingDraft, editingSnapshot, addLog]);
 
   return (
     <div className="flex flex-col h-screen bg-gray-900 text-gray-100 font-sans">
