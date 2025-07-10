@@ -1,16 +1,20 @@
-import React, { useEffect, useRef } from 'react';
-import { MapContainer, TileLayer, GeoJSON, useMap, LayersControl, LayerGroup } from 'react-leaflet';
+import React, { useEffect, useRef, useCallback } from 'react';
+import { MapContainer, TileLayer, GeoJSON, useMap, LayersControl, LayerGroup, FeatureGroup } from 'react-leaflet';
+import { EditControl } from 'react-leaflet-draw';
 import L from 'leaflet';
 import AddressSearch from './AddressSearch';
 import ReactLeafletGoogleLayer from 'react-leaflet-google-layer';
 import type { LayerData } from '../types';
-import type { GeoJSON as LeafletGeoJSON, Layer } from 'leaflet';
+import type { GeoJSON as LeafletGeoJSON, Layer, FeatureGroup as LeafletFeatureGroup } from 'leaflet';
+import type { FeatureCollection } from 'geojson';
 
 const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY as string | undefined;
 
 interface MapComponentProps {
   layers: LayerData[];
+  lodLayer: FeatureCollection | null;
   onUpdateFeatureHsg: (layerId: string, featureIndex: number, hsg: string) => void;
+  onLodChange: (data: FeatureCollection) => void;
   zoomToLayer?: { id: string; ts: number } | null;
 }
 
@@ -104,27 +108,42 @@ const ManagedGeoJsonLayer = ({
   );
 };
 
-const ZoomToLayerHandler = ({ layers, target }: { layers: LayerData[]; target: { id: string; ts: number } | null }) => {
+const ZoomToLayerHandler = ({ layers, lod, target }: { layers: LayerData[]; lod: FeatureCollection | null; target: { id: string; ts: number } | null }) => {
   const map = useMap();
 
   useEffect(() => {
     if (!target) return;
-    const layer = layers.find(l => l.id === target.id);
-    if (layer) {
-      const bounds = L.geoJSON(layer.geojson).getBounds();
+    if (target.id === 'lod' && lod) {
+      const bounds = L.geoJSON(lod).getBounds();
       if (bounds.isValid()) {
         map.flyToBounds(bounds, { padding: [50, 50], maxZoom: 16 });
       }
+    } else {
+      const layer = layers.find(l => l.id === target.id);
+      if (layer) {
+        const bounds = L.geoJSON(layer.geojson).getBounds();
+        if (bounds.isValid()) {
+          map.flyToBounds(bounds, { padding: [50, 50], maxZoom: 16 });
+        }
+      }
     }
-  }, [target, layers, map]);
+  }, [target, layers, lod, map]);
 
   return null;
 };
 
-const MapComponent: React.FC<MapComponentProps> = ({ layers, onUpdateFeatureHsg, zoomToLayer }) => {
+const MapComponent: React.FC<MapComponentProps> = ({ layers, lodLayer, onUpdateFeatureHsg, onLodChange, zoomToLayer }) => {
+  const lodGroupRef = useRef<LeafletFeatureGroup | null>(null);
+
+  const handleLodUpdate = useCallback(() => {
+    if (lodGroupRef.current) {
+      const data = lodGroupRef.current.toGeoJSON() as FeatureCollection;
+      onLodChange(data);
+    }
+  }, [onLodChange]);
   return (
     <MapContainer center={[20, 0]} zoom={2} scrollWheelZoom={true} className="h-full w-full relative">
-      <ZoomToLayerHandler layers={layers} target={zoomToLayer ?? null} />
+      <ZoomToLayerHandler layers={layers} lod={lodLayer} target={zoomToLayer ?? null} />
       <div className="absolute top-2 left-2 z-[1000] w-64">
         <AddressSearch />
       </div>
@@ -175,6 +194,25 @@ const MapComponent: React.FC<MapComponentProps> = ({ layers, onUpdateFeatureHsg,
         </LayersControl.BaseLayer>
 
         {/* Overlay Layers */}
+        <LayersControl.Overlay checked name="Limit of Disturbance (LOD)">
+          <FeatureGroup ref={lodGroupRef}>
+            <EditControl
+              position="topright"
+              onCreated={handleLodUpdate}
+              onEdited={handleLodUpdate}
+              onDeleted={handleLodUpdate}
+              draw={{
+                polyline: false,
+                rectangle: false,
+                circle: false,
+                circlemarker: false,
+                marker: false,
+                polygon: true,
+              }}
+            />
+            {lodLayer && <GeoJSON data={lodLayer} />}
+          </FeatureGroup>
+        </LayersControl.Overlay>
         {layers.map((layer, index) => (
           <LayersControl.Overlay checked name={layer.name} key={layer.id}>
              <ManagedGeoJsonLayer

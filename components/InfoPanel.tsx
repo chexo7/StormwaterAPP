@@ -1,17 +1,21 @@
 import React from 'react';
 import type { LayerData, LogEntry } from '../types';
+import type { FeatureCollection } from 'geojson';
 import { XCircleIcon, InfoIcon, TrashIcon } from './Icons';
 import LogPanel from './LogPanel';
 
 interface InfoPanelProps {
   layers: LayerData[];
+  lodLayer: FeatureCollection | null;
   error: string | null;
   logs: LogEntry[];
   onRemoveLayer: (id: string) => void;
+  onClearLod: () => void;
   onZoomToLayer?: (id: string) => void;
+  onZoomToLod?: () => void;
 }
 
-const InfoPanel: React.FC<InfoPanelProps> = ({ layers, error, logs, onRemoveLayer, onZoomToLayer }) => {
+const InfoPanel: React.FC<InfoPanelProps> = ({ layers, lodLayer, error, logs, onRemoveLayer, onClearLod, onZoomToLayer, onZoomToLod }) => {
 
   const getFeatureTypeSummary = (geojson: LayerData['geojson']) => {
     if (!geojson) return {};
@@ -38,13 +42,31 @@ const InfoPanel: React.FC<InfoPanelProps> = ({ layers, error, logs, onRemoveLaye
             </div>
           </div>
         )}
-        {!error && layers.length === 0 && (
+        {!error && layers.length === 0 && !lodLayer && (
           <div className="bg-blue-900/50 border border-blue-700 text-blue-300 px-4 py-3 rounded-lg h-full flex items-center justify-center" role="status">
             <div className="flex items-center">
               <InfoIcon className="w-6 h-6 mr-3 text-blue-400"/>
               <p>Ready to visualize. Upload a layer.</p>
             </div>
           </div>
+        )}
+        {lodLayer && (
+           <div className="space-y-3">
+              <div
+                className="bg-gray-800 p-4 rounded-lg border border-gray-600/50 cursor-pointer hover:border-cyan-400"
+                onClick={() => onZoomToLod && onZoomToLod()}
+              >
+                <div className="flex justify-between items-start">
+                  <h3 className="text-md font-bold text-cyan-400 mb-2 break-all pr-2">Limit of Disturbance (LOD)</h3>
+                  <button onClick={onClearLod} className="text-gray-500 hover:text-red-400 transition-colors flex-shrink-0" aria-label="Remove LOD">
+                    <TrashIcon className="w-5 h-5" />
+                  </button>
+                </div>
+                <div className="text-gray-300 space-y-2 text-sm">
+                   <p><strong>Total Features:</strong> <span className="font-mono bg-gray-900 px-2 py-1 rounded">{lodLayer.features.length}</span></p>
+                </div>
+              </div>
+           </div>
         )}
         {layers.length > 0 && (
            <div className="space-y-3">
