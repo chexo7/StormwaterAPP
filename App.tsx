@@ -3,6 +3,7 @@ import type { FeatureCollection } from 'geojson';
 import type { LayerData, LogEntry } from './types';
 import Header from './components/Header';
 import FileUpload from './components/FileUpload';
+import LodUpload from './components/LodUpload';
 import InfoPanel from './components/InfoPanel';
 import MapComponent from './components/MapComponent';
 import InstructionsPage from './components/InstructionsPage';
@@ -11,6 +12,7 @@ type UpdateHsgFn = (layerId: string, featureIndex: number, hsg: string) => void;
 
 const App: React.FC = () => {
   const [layers, setLayers] = useState<LayerData[]>([]);
+  const [lodLayer, setLodLayer] = useState<FeatureCollection | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -54,6 +56,19 @@ const App: React.FC = () => {
       };
       setLayers(prevLayers => [...prevLayers, newLayer]);
       addLog(`Loaded layer ${name}`);
+    }
+  }, [addLog]);
+
+  const handleLodAdded = useCallback((geojson: FeatureCollection) => {
+    setIsLoading(false);
+    setError(null);
+    if (geojson.features.length === 0) {
+      const msg = 'The LOD file appears to be empty or could not be read correctly.';
+      setError(msg);
+      addLog(msg, 'error');
+    } else {
+      setLodLayer(geojson);
+      addLog('Loaded Limit of Disturbance (LOD)');
     }
   }, [addLog]);
 
@@ -102,19 +117,31 @@ const App: React.FC = () => {
             onLog={addLog}
             isLoading={isLoading}
           />
+          <LodUpload
+            onLodAdded={handleLodAdded}
+            onLoading={handleLoading}
+            onError={handleError}
+            onLog={addLog}
+            isLoading={isLoading}
+          />
           <InfoPanel
             layers={layers}
+            lodLayer={lodLayer}
             error={error}
             logs={logs}
             onRemoveLayer={handleRemoveLayer}
+            onClearLod={() => setLodLayer(null)}
             onZoomToLayer={handleZoomToLayer}
+            onZoomToLod={() => setZoomToLayer({ id: 'lod', ts: Date.now() })}
           />
         </aside>
         <main className="flex-1 bg-gray-900 h-full">
-          {layers.length > 0 ? (
+          {layers.length > 0 || lodLayer ? (
             <MapComponent
               layers={layers}
+              lodLayer={lodLayer}
               onUpdateFeatureHsg={handleUpdateFeatureHsg}
+              onLodChange={setLodLayer}
               zoomToLayer={zoomToLayer}
             />
           ) : (
