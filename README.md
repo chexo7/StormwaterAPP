@@ -53,3 +53,18 @@ python scripts/update_soil_hsg_map.py --areas CA630 CA649
 The default styles target 1080p displays but scale gracefully up to 4K
 monitors. Base font sizes and sidebar widths increase on very large
 screens to keep the interface readable while remaining fully responsive.
+
+## Polygon processing API
+
+The backend exposes simple geospatial utilities powered by Turf.js. Two
+endpoints are available for use by the front end or other clients:
+
+* `POST /api/intersect` – Provide `polygonA` and `polygonB` GeoJSON
+  polygons and receive the intersection geometry and its area in square
+  meters.
+* `POST /api/area` – Send a single `polygon` GeoJSON object to calculate
+  its area in square meters.
+
+These endpoints perform all calculations on the server, enabling future
+interfaces to request polygon analytics without embedding Turf.js in the
+client.
