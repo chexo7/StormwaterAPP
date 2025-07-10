@@ -9,9 +9,19 @@ interface InfoPanelProps {
   logs: LogEntry[];
   onRemoveLayer: (id: string) => void;
   onZoomToLayer?: (id: string) => void;
+  onToggleDrawLod: () => void;
+  isDrawingLod: boolean;
 }
 
-const InfoPanel: React.FC<InfoPanelProps> = ({ layers, error, logs, onRemoveLayer, onZoomToLayer }) => {
+const InfoPanel: React.FC<InfoPanelProps> = ({
+  layers,
+  error,
+  logs,
+  onRemoveLayer,
+  onZoomToLayer,
+  onToggleDrawLod,
+  isDrawingLod,
+}) => {
 
   const getFeatureTypeSummary = (geojson: LayerData['geojson']) => {
     if (!geojson) return {};
@@ -79,7 +89,15 @@ const InfoPanel: React.FC<InfoPanelProps> = ({ layers, error, logs, onRemoveLaye
           </div>
         )}
       </div>
-      <LogPanel logs={logs} />
+      <div>
+        <button
+          onClick={onToggleDrawLod}
+          className="w-full bg-cyan-600 hover:bg-cyan-700 text-white py-2 px-3 rounded mb-4"
+        >
+          {isDrawingLod ? 'Finish LOD Drawing' : 'Draw Limit of Disturbance'}
+        </button>
+        <LogPanel logs={logs} />
+      </div>
     </div>
   );
 };
