@@ -93,11 +93,40 @@ const App: React.FC = () => {
   }, [addLog]);
 
   const handleToggleEditLayer = useCallback((id: string) => {
+    setLayers(prev => prev.map(layer => {
+      if (layer.id !== id) return layer;
+      if (editingTarget.layerId === id) {
+        // exiting editing without saving: revert
+        return layer.originalGeojson ? { ...layer, geojson: layer.originalGeojson, originalGeojson: undefined } : layer;
+      } else {
+        // entering editing: keep copy
+        return { ...layer, originalGeojson: JSON.parse(JSON.stringify(layer.geojson)) };
+      }
+    }));
     setEditingTarget(prev => prev.layerId === id ? { layerId: null, featureIndex: null } : { layerId: id, featureIndex: null });
     if (editingTarget.layerId !== id) {
       addLog(`Selecciona un pol\u00edgono de ${id} para editarlo`);
     }
   }, [addLog, editingTarget.layerId]);
+
+  const handleSaveLayerEdits = useCallback((id: string) => {
+    setLayers(prev => prev.map(layer => {
+      if (layer.id !== id) return layer;
+      const { originalGeojson, ...rest } = layer as any;
+      return rest;
+    }));
+    setEditingTarget({ layerId: null, featureIndex: null });
+    addLog(`Saved edits for ${id}`);
+  }, [addLog]);
+
+  const handleDiscardLayerEdits = useCallback((id: string) => {
+    setLayers(prev => prev.map(layer => {
+      if (layer.id !== id) return layer;
+      return layer.originalGeojson ? { ...layer, geojson: layer.originalGeojson, originalGeojson: undefined } : layer;
+    }));
+    setEditingTarget({ layerId: null, featureIndex: null });
+    addLog(`Discarded edits for ${id}`);
+  }, [addLog]);
 
   const handleSelectFeatureForEditing = useCallback((layerId: string, index: number) => {
     setEditingTarget({ layerId, featureIndex: index });
@@ -140,6 +169,8 @@ const App: React.FC = () => {
               editingTarget={editingTarget}
               onSelectFeatureForEditing={handleSelectFeatureForEditing}
               onUpdateLayerGeojson={handleUpdateLayerGeojson}
+              onSaveEdits={handleSaveLayerEdits}
+              onDiscardEdits={handleDiscardLayerEdits}
             />
           ) : (
             <InstructionsPage />
