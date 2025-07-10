@@ -1,6 +1,6 @@
 import React from 'react';
 import type { LayerData, LogEntry } from '../types';
-import { XCircleIcon, InfoIcon, TrashIcon } from './Icons';
+import { XCircleIcon, InfoIcon, TrashIcon, PencilIcon } from './Icons';
 import LogPanel from './LogPanel';
 
 interface InfoPanelProps {
@@ -9,9 +9,11 @@ interface InfoPanelProps {
   logs: LogEntry[];
   onRemoveLayer: (id: string) => void;
   onZoomToLayer?: (id: string) => void;
+  onToggleEditLayer?: (id: string) => void;
+  editingLayerId?: string | null;
 }
 
-const InfoPanel: React.FC<InfoPanelProps> = ({ layers, error, logs, onRemoveLayer, onZoomToLayer }) => {
+const InfoPanel: React.FC<InfoPanelProps> = ({ layers, error, logs, onRemoveLayer, onZoomToLayer, onToggleEditLayer, editingLayerId }) => {
 
   const getFeatureTypeSummary = (geojson: LayerData['geojson']) => {
     if (!geojson) return {};
@@ -57,9 +59,16 @@ const InfoPanel: React.FC<InfoPanelProps> = ({ layers, error, logs, onRemoveLaye
                   className="bg-gray-800 p-4 rounded-lg border border-gray-600/50 cursor-pointer hover:border-cyan-400"
                   onClick={() => onZoomToLayer && onZoomToLayer(layer.id)}
                 >
-                  <div className="flex justify-between items-start">
-                    <h3 className="text-md font-bold text-cyan-400 mb-2 break-all pr-2">{layer.name}</h3>
-                    <button onClick={() => onRemoveLayer(layer.id)} className="text-gray-500 hover:text-red-400 transition-colors flex-shrink-0" aria-label={`Remove layer ${layer.name}`}>
+                  <div className="flex justify-between items-start space-x-2">
+                    <h3 className="text-md font-bold text-cyan-400 mb-2 break-all pr-2 flex-1">{layer.name}</h3>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onToggleEditLayer && onToggleEditLayer(layer.id); }}
+                      className={`text-gray-500 hover:text-cyan-400 transition-colors flex-shrink-0 ${editingLayerId === layer.id ? 'text-cyan-400' : ''}`}
+                      aria-label={editingLayerId === layer.id ? `Stop editing ${layer.name}` : `Edit layer ${layer.name}`}
+                    >
+                      <PencilIcon className="w-5 h-5" />
+                    </button>
+                    <button onClick={(e) => { e.stopPropagation(); onRemoveLayer(layer.id); }} className="text-gray-500 hover:text-red-400 transition-colors flex-shrink-0" aria-label={`Remove layer ${layer.name}`}>
                       <TrashIcon className="w-5 h-5" />
                     </button>
                   </div>
