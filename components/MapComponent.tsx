@@ -17,6 +17,7 @@ interface MapComponentProps {
   editingTarget?: { layerId: string | null; featureIndex: number | null };
   onSelectFeatureForEditing?: (layerId: string, index: number) => void;
   onUpdateLayerGeojson?: (id: string, geojson: LayerData['geojson']) => void;
+  onStopFeatureEditing?: (layerId: string) => void;
 }
 
 // This component renders a single GeoJSON layer and handles the auto-zooming effect.
@@ -39,6 +40,7 @@ const ManagedGeoJsonLayer = ({
   editingFeatureIndex: number | null;
   onSelectFeature?: (index: number) => void;
   onUpdateLayerGeojson?: (id: string, geojson: LayerData['geojson']) => void;
+  onStopFeatureEditing?: () => void;
 }) => {
   const geoJsonRef = useRef<LeafletGeoJSON | null>(null);
   const map = useMap();
@@ -53,6 +55,12 @@ const ManagedGeoJsonLayer = ({
           layer.editing.enable();
         } else {
           layer.editing.disable();
+        }
+        if (layer._editButton) {
+          layer._editButton.textContent =
+            isEditingLayer && editingFeatureIndex === idx
+              ? 'Guardar'
+              : 'Editar v\u00e9rtices';
         }
       }
     });
@@ -129,6 +137,32 @@ const ManagedGeoJsonLayer = ({
         });
       }
 
+      // Vertex edit button when layer editing is active
+      if (isEditingLayer) {
+        const editRow = L.DomUtil.create('div', '', container);
+        editRow.style.marginTop = '4px';
+        const btn = L.DomUtil.create('button', '', editRow) as HTMLButtonElement;
+        btn.textContent = 'Editar v\u00e9rtices';
+        btn.style.padding = '4px 8px';
+        btn.style.background = '#2563eb';
+        btn.style.color = 'white';
+        btn.style.border = 'none';
+        btn.style.borderRadius = '4px';
+        btn.style.cursor = 'pointer';
+        (layer as any)._editButton = btn;
+
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const idx = data.features.indexOf(feature);
+          if (editingFeatureIndex === idx) {
+            layer.editing.disable();
+            onStopFeatureEditing && onStopFeatureEditing();
+          } else {
+            onSelectFeature && onSelectFeature(idx);
+          }
+        });
+      }
+
       layer.bindPopup(container);
 
       if (isEditingLayer && editingFeatureIndex === null && onSelectFeature) {
@@ -187,7 +221,7 @@ const ZoomToLayerHandler = ({ layers, target }: { layers: LayerData[]; target: {
   return null;
 };
 
-const MapComponent: React.FC<MapComponentProps> = ({ layers, onUpdateFeatureHsg, zoomToLayer, editingTarget, onSelectFeatureForEditing, onUpdateLayerGeojson }) => {
+const MapComponent: React.FC<MapComponentProps> = ({ layers, onUpdateFeatureHsg, zoomToLayer, editingTarget, onSelectFeatureForEditing, onUpdateLayerGeojson, onStopFeatureEditing }) => {
   return (
     <MapContainer center={[20, 0]} zoom={2} scrollWheelZoom={true} className="h-full w-full relative">
       <ZoomToLayerHandler layers={layers} target={zoomToLayer ?? null} />
@@ -257,6 +291,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ layers, onUpdateFeatureHsg,
                 editingFeatureIndex={editingTarget?.layerId === layer.id ? editingTarget.featureIndex : null}
                 onSelectFeature={idx => onSelectFeatureForEditing && onSelectFeatureForEditing(layer.id, idx)}
                 onUpdateLayerGeojson={onUpdateLayerGeojson}
+                onStopFeatureEditing={onStopFeatureEditing ? () => onStopFeatureEditing(layer.id) : undefined}
              />
           </LayersControl.Overlay>
         ))}
