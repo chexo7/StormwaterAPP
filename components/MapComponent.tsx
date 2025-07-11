@@ -223,6 +223,64 @@ const ZoomToLayerHandler = ({ layers, target }: { layers: LayerData[]; target: {
   return null;
 };
 
+const DrawControls = ({
+  layer,
+  layerId,
+  onUpdateLayerGeojson,
+}: {
+  layer: L.GeoJSON | null;
+  layerId: string | null | undefined;
+  onUpdateLayerGeojson?: (id: string, geojson: LayerData['geojson']) => void;
+}) => {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!layer || !layerId) return;
+    const options: L.Control.DrawConstructorOptions = {
+      draw: {
+        polygon: true,
+        polyline: false,
+        rectangle: false,
+        circle: false,
+        marker: false,
+        circlemarker: false,
+      },
+      edit: {
+        featureGroup: layer,
+        edit: false,
+        remove: true,
+      },
+    };
+    const drawControl = new L.Control.Draw(options);
+    map.addControl(drawControl);
+
+    const handleCreated = (e: any) => {
+      layer.addData(e.layer.toGeoJSON());
+      if (onUpdateLayerGeojson) {
+        const updated = layer.toGeoJSON() as LayerData['geojson'];
+        onUpdateLayerGeojson(layerId, updated);
+      }
+    };
+    const handleDeleted = () => {
+      if (onUpdateLayerGeojson) {
+        const updated = layer.toGeoJSON() as LayerData['geojson'];
+        onUpdateLayerGeojson(layerId, updated);
+      }
+    };
+
+    map.on(L.Draw.Event.CREATED, handleCreated);
+    map.on(L.Draw.Event.DELETED, handleDeleted);
+
+    return () => {
+      map.off(L.Draw.Event.CREATED, handleCreated);
+      map.off(L.Draw.Event.DELETED, handleDeleted);
+      map.removeControl(drawControl);
+    };
+  }, [map, layer, layerId, onUpdateLayerGeojson]);
+
+  return null;
+};
+
 const MapComponent: React.FC<MapComponentProps> = ({
   layers,
   onUpdateFeatureHsg,
@@ -248,6 +306,13 @@ const MapComponent: React.FC<MapComponentProps> = ({
   return (
     <MapContainer center={[20, 0]} zoom={2} scrollWheelZoom={true} className="h-full w-full relative">
       <ZoomToLayerHandler layers={layers} target={zoomToLayer ?? null} />
+      {editingTarget?.layerId && (
+        <DrawControls
+          layer={layerRefs.current[editingTarget.layerId] || null}
+          layerId={editingTarget.layerId}
+          onUpdateLayerGeojson={onUpdateLayerGeojson}
+        />
+      )}
       <div className="absolute top-2 left-2 z-[1000] w-64">
         <AddressSearch />
       </div>
