@@ -237,17 +237,34 @@ const GeomanControls = ({
 
     map.pm.addControls({
       position: 'topleft',
-      drawMarker: false,
-      drawPolyline: false,
-      drawCircle: false,
-      drawRectangle: false,
-      drawCircleMarker: false,
-      cutPolygon: false,
-      dragMode: false,
-      editMode: true,
-      removalMode: true,
+      drawMarker: true,
+      drawPolyline: true,
+      drawCircle: true,
+      drawRectangle: true,
+      drawCircleMarker: true,
       drawPolygon: true,
+      editMode: true,
+      dragMode: true,
+      cutPolygon: true,
+      rotateMode: true,
+      removalMode: true,
+      snappingOption: true,
     });
+
+    map.pm.Toolbar.changeControlOrder([
+      'drawPolygon',
+      'drawRectangle',
+      'drawCircle',
+      'drawPolyline',
+      'drawMarker',
+      'drawCircleMarker',
+      'editMode',
+      'dragMode',
+      'cutPolygon',
+      'rotateMode',
+      'removalMode',
+      'snappingOption',
+    ]);
 
     map.pm.setGlobalOptions({
       layerGroup: layer,
