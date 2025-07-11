@@ -1,5 +1,12 @@
 import React, { useEffect, useRef } from 'react';
-import { MapContainer, TileLayer, GeoJSON, useMap, LayersControl, LayerGroup } from 'react-leaflet';
+import {
+  MapContainer,
+  TileLayer,
+  GeoJSON,
+  useMap,
+  LayersControl,
+  LayerGroup,
+} from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet-draw';
 import { area as turfArea } from '@turf/turf';
@@ -7,6 +14,7 @@ import AddressSearch from './AddressSearch';
 import ReactLeafletGoogleLayer from 'react-leaflet-google-layer';
 import type { LayerData } from '../types';
 import type { GeoJSON as LeafletGeoJSON, Layer } from 'leaflet';
+import type { FeatureCollection } from 'geojson';
 
 const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY as string | undefined;
 
@@ -223,6 +231,65 @@ const ZoomToLayerHandler = ({ layers, target }: { layers: LayerData[]; target: {
   return null;
 };
 
+const DrawControls = ({
+  activeLayerId,
+  getLayer,
+  onUpdate,
+}: {
+  activeLayerId: string | null;
+  getLayer: (id: string) => L.GeoJSON | null;
+  onUpdate?: (id: string, geojson: FeatureCollection) => void;
+}) => {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!activeLayerId) return;
+    const layer = getLayer(activeLayerId);
+    if (!layer) return;
+
+    const drawControl = new L.Control.Draw({
+      edit: {
+        featureGroup: layer,
+        remove: true,
+      },
+      draw: {
+        polygon: true,
+        polyline: false,
+        rectangle: false,
+        circle: false,
+        marker: false,
+        circlemarker: false,
+      },
+    });
+
+    map.addControl(drawControl);
+
+    const handleCreated = (e: any) => {
+      layer.addData((e.layer as L.Layer).toGeoJSON() as any);
+      if (onUpdate) {
+        onUpdate(activeLayerId, layer.toGeoJSON() as FeatureCollection);
+      }
+    };
+
+    const handleDeleted = () => {
+      if (onUpdate) {
+        onUpdate(activeLayerId, layer.toGeoJSON() as FeatureCollection);
+      }
+    };
+
+    map.on(L.Draw.Event.CREATED, handleCreated);
+    map.on(L.Draw.Event.DELETED, handleDeleted);
+
+    return () => {
+      map.off(L.Draw.Event.CREATED, handleCreated);
+      map.off(L.Draw.Event.DELETED, handleDeleted);
+      map.removeControl(drawControl);
+    };
+  }, [map, activeLayerId, getLayer, onUpdate]);
+
+  return null;
+};
+
 const MapComponent: React.FC<MapComponentProps> = ({
   layers,
   onUpdateFeatureHsg,
@@ -248,6 +315,11 @@ const MapComponent: React.FC<MapComponentProps> = ({
   return (
     <MapContainer center={[20, 0]} zoom={2} scrollWheelZoom={true} className="h-full w-full relative">
       <ZoomToLayerHandler layers={layers} target={zoomToLayer ?? null} />
+      <DrawControls
+        activeLayerId={editingTarget?.layerId ?? null}
+        getLayer={id => layerRefs.current[id] ?? null}
+        onUpdate={onUpdateLayerGeojson}
+      />
       <div className="absolute top-2 left-2 z-[1000] w-64">
         <AddressSearch />
       </div>
