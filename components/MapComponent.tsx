@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, GeoJSON, useMap, LayersControl, LayerGroup } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet-draw';
+import '@geoman-io/leaflet-geoman-free';
 import { area as turfArea } from '@turf/turf';
 import AddressSearch from './AddressSearch';
 import ReactLeafletGoogleLayer from 'react-leaflet-google-layer';
@@ -223,7 +224,7 @@ const ZoomToLayerHandler = ({ layers, target }: { layers: LayerData[]; target: {
   return null;
 };
 
-const DrawControls = ({
+const GeomanControls = ({
   active,
   layer,
   onChange,
@@ -233,50 +234,40 @@ const DrawControls = ({
   onChange?: (geojson: LayerData['geojson']) => void;
 }) => {
   const map = useMap();
-  const controlRef = useRef<L.Control.Draw | null>(null);
-
   useEffect(() => {
     if (!active || !layer) return;
 
-    const options: L.Control.DrawConstructorOptions = {
-      draw: {
-        polygon: true,
-        polyline: false,
-        rectangle: false,
-        circle: false,
-        marker: false,
-        circlemarker: false,
-      },
-      edit: {
-        featureGroup: layer as any,
-        edit: false,
-        remove: true,
-      },
-    };
+    map.pm.addControls({
+      drawMarker: false,
+      drawPolyline: false,
+      drawCircle: false,
+      drawRectangle: false,
+      drawCircleMarker: false,
+      cutPolygon: false,
+      dragMode: false,
+      editMode: false,
+      removalMode: true,
+      drawPolygon: true,
+    });
 
-    const control = new L.Control.Draw(options);
-    controlRef.current = control;
-    map.addControl(control);
+    map.pm.setGlobalOptions({ layerGroup: layer, snappable: true });
 
-    const handleCreated = (e: any) => {
-      layer.addLayer(e.layer);
+    const handleCreate = () => {
       onChange && onChange(layer.toGeoJSON() as LayerData['geojson']);
     };
-    const handleDeleted = () => {
+    const handleRemove = () => {
       onChange && onChange(layer.toGeoJSON() as LayerData['geojson']);
     };
 
-    map.on(L.Draw.Event.CREATED, handleCreated);
-    map.on(L.Draw.Event.DELETED, handleDeleted);
+    map.on('pm:create', handleCreate);
+    map.on('pm:remove', handleRemove);
 
     return () => {
-      map.off(L.Draw.Event.CREATED, handleCreated);
-      map.off(L.Draw.Event.DELETED, handleDeleted);
-      if (controlRef.current) map.removeControl(controlRef.current);
-      controlRef.current = null;
+      map.off('pm:create', handleCreate);
+      map.off('pm:remove', handleRemove);
+      map.pm.removeControls();
     };
   }, [active, layer, map, onChange]);
-
   return null;
 };
 
@@ -305,7 +296,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
   return (
     <MapContainer center={[20, 0]} zoom={2} scrollWheelZoom={true} className="h-full w-full relative">
       <ZoomToLayerHandler layers={layers} target={zoomToLayer ?? null} />
-      <DrawControls
+      <GeomanControls
         active={!!editingTarget?.layerId}
         layer={editingTarget?.layerId ? layerRefs.current[editingTarget.layerId] : null}
         onChange={(geo) => {
