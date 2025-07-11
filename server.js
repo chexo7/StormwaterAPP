@@ -14,7 +14,9 @@ const logLimit = parseInt(process.env.LOG_LIMIT || '100', 10);
 
 const logs = [];
 const toFeature = (poly) =>
-  poly.type === 'Feature' ? poly : { type: 'Feature', properties: {}, geometry: poly };
+  poly.type === 'Feature'
+    ? poly
+    : { type: 'Feature', properties: {}, geometry: poly };
 const intersect = (poly1, poly2) =>
   turfIntersect(toFeature(poly1), toFeature(poly2));
 function addLog(message, type = 'info') {
