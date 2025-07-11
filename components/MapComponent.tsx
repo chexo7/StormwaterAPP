@@ -230,10 +230,12 @@ const GeomanControls = ({
   active,
   layer,
   onChange,
+  onCancel,
 }: {
   active: boolean;
   layer: L.GeoJSON | null;
   onChange?: (geojson: LayerData['geojson']) => void;
+  onCancel?: () => void;
 }) => {
   const map = useMap();
   useEffect(() => {
@@ -304,14 +306,38 @@ const GeomanControls = ({
     map.on('pm:remove', handleRemove);
     map.on('pm:edit', handleEdit);
 
+    const addCancelAction = () => {
+      if (!onCancel) return;
+      const containers = document.querySelectorAll('.leaflet-pm-actions-container');
+      containers.forEach(container => {
+        if (!(container as HTMLElement).querySelector('.pm-cancel-action')) {
+          const btn = L.DomUtil.create('a', 'leaflet-pm-action pm-cancel-action', container as HTMLElement);
+          btn.setAttribute('href', '#');
+          btn.textContent = 'Cancel';
+          btn.title = 'Cancel';
+          L.DomEvent.on(btn, 'click', (e) => {
+            L.DomEvent.stop(e);
+            onCancel();
+          });
+        }
+      });
+    };
+
+    addCancelAction();
+    map.on('pm:globaleditmodetoggled', addCancelAction);
+    map.on('pm:globaldragmodetoggled', addCancelAction);
+
     return () => {
       map.off('pm:create', handleCreate);
       map.off('pm:remove', handleRemove);
       map.off('pm:edit', handleEdit);
+      map.off('pm:globaleditmodetoggled', addCancelAction);
+      map.off('pm:globaldragmodetoggled', addCancelAction);
+      document.querySelectorAll('.pm-cancel-action').forEach(el => el.remove());
       map.pm.disableGlobalEditMode();
       map.pm.removeControls();
     };
-  }, [active, layer, map, onChange]);
+  }, [active, layer, map, onChange, onCancel]);
   return null;
 };
 
@@ -348,6 +374,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
             onUpdateLayerGeojson(editingTarget.layerId, geo);
           }
         }}
+        onCancel={onDiscardEdits}
       />
       <div className="absolute top-2 left-2 z-[1000] w-64">
         <AddressSearch />
