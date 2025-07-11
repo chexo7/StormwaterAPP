@@ -3,7 +3,7 @@ import { MapContainer, TileLayer, GeoJSON, useMap, LayersControl, LayerGroup } f
 import L from 'leaflet';
 import 'leaflet-draw';
 import '@geoman-io/leaflet-geoman-free';
-import { area as turfArea } from '@turf/turf';
+import { area as turfArea, intersect as turfIntersect } from '@turf/turf';
 import AddressSearch from './AddressSearch';
 import ReactLeafletGoogleLayer from 'react-leaflet-google-layer';
 import type { LayerData } from '../types';
@@ -56,20 +56,6 @@ const ManagedGeoJsonLayer = ({
     };
   }, [layerRef]);
 
-  // Enable or disable vertex editing based on `isEditingLayer` and `editingFeatureIndex`
-  useEffect(() => {
-    if (!geoJsonRef.current) return;
-    geoJsonRef.current.eachLayer((layer: any) => {
-      if (layer.editing && typeof layer.editing.enable === 'function') {
-        const idx = data.features.indexOf(layer.feature as any);
-        if (isEditingLayer && editingFeatureIndex === idx) {
-          layer.editing.enable();
-        } else {
-          layer.editing.disable();
-        }
-      }
-    });
-  }, [isEditingLayer, editingFeatureIndex, data]);
 
   // Refresh geometry when `data` changes so edits or discards show immediately
   useEffect(() => {
@@ -95,16 +81,16 @@ const ManagedGeoJsonLayer = ({
     };
   }, [isEditingLayer, onSelectFeature, data]);
 
-  // When geometry is edited, propagate changes up
+  // When geometry is edited via Geoman, propagate changes up
   useEffect(() => {
     if (!geoJsonRef.current || !onUpdateLayerGeojson) return;
     const handler = () => {
       const updated = geoJsonRef.current!.toGeoJSON() as LayerData['geojson'];
       onUpdateLayerGeojson(id, updated);
     };
-    geoJsonRef.current.on('edit', handler);
+    geoJsonRef.current.on('pm:update', handler);
     return () => {
-      geoJsonRef.current?.off('edit', handler);
+      geoJsonRef.current?.off('pm:update', handler);
     };
   }, [id, onUpdateLayerGeojson]);
 
@@ -139,7 +125,7 @@ const ManagedGeoJsonLayer = ({
       };
       updateArea();
       layer.on('popupopen', updateArea);
-      layer.on('edit', updateArea);
+      layer.on('pm:update', updateArea);
 
       // Special editable field for HSG
       if ('HSG' in feature.properties) {
@@ -238,33 +224,70 @@ const GeomanControls = ({
     if (!active || !layer) return;
 
     map.pm.addControls({
+      position: 'topleft',
       drawMarker: false,
       drawPolyline: false,
       drawCircle: false,
       drawRectangle: false,
       drawCircleMarker: false,
-      cutPolygon: false,
-      dragMode: false,
-      editMode: false,
-      removalMode: true,
+      drawText: false,
       drawPolygon: true,
+      editMode: true,
+      dragMode: true,
+      cutPolygon: true,
+      removalMode: true,
     });
 
-    map.pm.setGlobalOptions({ layerGroup: layer, snappable: true });
+    // Order the toolbar: create, edit tools, then delete
+    const toolOrder = ['drawPolygon', 'editMode', 'dragMode', 'cutPolygon', 'removalMode'];
+    try {
+      // changeControlOrder is only available in newer versions
+      (map.pm as any).Toolbar.changeControlOrder(toolOrder);
+    } catch {
+      /* noop */
+    }
 
-    const handleCreate = () => {
+    map.pm.setGlobalOptions({
+      layerGroup: layer,
+      snappable: true,
+      snapDistance: 20,
+      snapSegment: true,
+      allowSelfIntersection: false,
+      allowRemoval: true,
+      removeVertexOn: 'click',
+    });
+
+    const checkOverlap = (target: L.Layer) => {
+      const newPoly = (target as any).toGeoJSON();
+      let hasOverlap = false;
+      layer.eachLayer((other: any) => {
+        if (other === target) return;
+        const overlap = turfIntersect(newPoly as any, other.toGeoJSON());
+        if (overlap) hasOverlap = true;
+      });
+      if (hasOverlap) alert('¡Cuidado! El polígono se solapa.');
+    };
+
+    const handleCreate = (e: any) => {
+      checkOverlap(e.layer);
       onChange && onChange(layer.toGeoJSON() as LayerData['geojson']);
     };
     const handleRemove = () => {
       onChange && onChange(layer.toGeoJSON() as LayerData['geojson']);
     };
+    const handleEdit = (e: any) => {
+      checkOverlap(e.layer);
+      onChange && onChange(layer.toGeoJSON() as LayerData['geojson']);
+    };
 
     map.on('pm:create', handleCreate);
     map.on('pm:remove', handleRemove);
+    map.on('pm:edit', handleEdit);
 
     return () => {
       map.off('pm:create', handleCreate);
       map.off('pm:remove', handleRemove);
+      map.off('pm:edit', handleEdit);
       map.pm.removeControls();
     };
   }, [active, layer, map, onChange]);
