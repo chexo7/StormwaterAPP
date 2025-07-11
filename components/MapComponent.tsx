@@ -6,16 +6,21 @@ import { area as turfArea } from '@turf/turf';
 import AddressSearch from './AddressSearch';
 import ReactLeafletGoogleLayer from 'react-leaflet-google-layer';
 import type { LayerData } from '../types';
-import type { GeoJSON as LeafletGeoJSON, Layer } from 'leaflet';
+import type { GeoJSON as LeafletGeoJSON, Layer, Map as LeafletMap } from 'leaflet';
+import type { Feature } from 'geojson';
 
 const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY as string | undefined;
 
 interface MapComponentProps {
   layers: LayerData[];
-  onUpdateFeatureHsg: (layerId: string, featureIndex: number, hsg: string) => void;
+  onUpdateFeatureHsg: (
+    layerId: string,
+    featureIndex: number,
+    hsg: string,
+  ) => void;
   zoomToLayer?: { id: string; ts: number } | null;
   editingTarget?: { layerId: string | null; featureIndex: number | null };
-  onSelectFeatureForEditing?: (layerId: string, index: number) => void;
+  onSelectFeatureForEditing?: (layerId: string, index: number | null) => void;
   onUpdateLayerGeojson?: (id: string, geojson: LayerData['geojson']) => void;
   onSaveEdits?: () => void;
   onDiscardEdits?: () => void;
@@ -234,6 +239,49 @@ const MapComponent: React.FC<MapComponentProps> = ({
   onDiscardEdits,
 }) => {
   const layerRefs = useRef<Record<string, L.GeoJSON | null>>({});
+  const mapRef = useRef<LeafletMap | null>(null);
+  const drawRef = useRef<L.Draw.Polygon | null>(null);
+
+  const handleAddPolygon = () => {
+    if (!editingTarget?.layerId || !mapRef.current) return;
+    if (drawRef.current) {
+      drawRef.current.disable();
+    }
+    const draw = new L.Draw.Polygon(mapRef.current);
+    drawRef.current = draw;
+    mapRef.current.once(L.Draw.Event.CREATED, (e: any) => {
+      const layer = (e as any).layer as L.Layer;
+      const feature = (layer as any).toGeoJSON() as GeoJSON.Feature;
+      const layerData = layers.find(l => l.id === editingTarget.layerId);
+      if (!layerData || !onUpdateLayerGeojson) return;
+      const newFeatures = [...layerData.geojson.features, feature];
+      onUpdateLayerGeojson(editingTarget.layerId!, {
+        ...layerData.geojson,
+        features: newFeatures,
+      });
+      onSelectFeatureForEditing?.(editingTarget.layerId!, newFeatures.length - 1);
+    });
+    draw.enable();
+  };
+
+  const handleDeletePolygon = () => {
+    if (
+      !editingTarget?.layerId ||
+      editingTarget.featureIndex === null ||
+      !onUpdateLayerGeojson
+    )
+      return;
+    const layerData = layers.find(l => l.id === editingTarget.layerId);
+    if (!layerData) return;
+    const newFeatures = layerData.geojson.features.filter(
+      (_, idx) => idx !== editingTarget.featureIndex,
+    );
+    onUpdateLayerGeojson(editingTarget.layerId!, {
+      ...layerData.geojson,
+      features: newFeatures,
+    });
+    onSelectFeatureForEditing?.(editingTarget.layerId!, null);
+  };
 
   const handleSaveClick = () => {
     if (editingTarget?.layerId) {
@@ -246,7 +294,15 @@ const MapComponent: React.FC<MapComponentProps> = ({
     if (onSaveEdits) onSaveEdits();
   };
   return (
-    <MapContainer center={[20, 0]} zoom={2} scrollWheelZoom={true} className="h-full w-full relative">
+    <MapContainer
+      center={[20, 0]}
+      zoom={2}
+      scrollWheelZoom={true}
+      className="h-full w-full relative"
+      whenCreated={map => {
+        mapRef.current = map;
+      }}
+    >
       <ZoomToLayerHandler layers={layers} target={zoomToLayer ?? null} />
       <div className="absolute top-2 left-2 z-[1000] w-64">
         <AddressSearch />
@@ -258,6 +314,20 @@ const MapComponent: React.FC<MapComponentProps> = ({
       )}
       {editingTarget?.layerId && (
         <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-[1000] space-x-2">
+          <button
+            onClick={handleAddPolygon}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded shadow"
+          >
+            Nuevo
+          </button>
+          {editingTarget.featureIndex !== null && (
+            <button
+              onClick={handleDeletePolygon}
+              className="bg-yellow-600 hover:bg-yellow-700 text-white px-3 py-1 rounded shadow"
+            >
+              Eliminar
+            </button>
+          )}
           <button
             onClick={handleSaveClick}
             className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded shadow"

@@ -126,10 +126,17 @@ const App: React.FC = () => {
     addLog(`Selecciona un pol\u00edgono de ${id} para editarlo`);
   }, [addLog, editingTarget.layerId, layers, handleDiscardEditing]);
 
-  const handleSelectFeatureForEditing = useCallback((layerId: string, index: number) => {
-    setEditingTarget({ layerId, featureIndex: index });
-    addLog(`Editando pol\u00edgono ${index} en ${layerId}`);
-  }, [addLog]);
+  const handleSelectFeatureForEditing = useCallback(
+    (layerId: string, index: number | null) => {
+      setEditingTarget({ layerId, featureIndex: index });
+      if (index === null) {
+        addLog(`Selección borrada en ${layerId}`);
+      } else {
+        addLog(`Editando pol\u00edgono ${index} en ${layerId}`);
+      }
+    },
+    [addLog],
+  );
 
   const handleUpdateLayerGeojson = useCallback((id: string, geojson: FeatureCollection) => {
     setLayers(prev => prev.map(layer => layer.id === id ? { ...layer, geojson } : layer));
