@@ -77,22 +77,22 @@ const ManagedGeoJsonLayer = ({
     geoJsonRef.current.addData(data as any);
   }, [data]);
 
-  // When entering selection mode for a layer, add click handlers to choose a feature
+  // Allow switching the polygon being edited by clicking any feature
   useEffect(() => {
     if (!geoJsonRef.current || !onSelectFeature) return;
     const handlers: [Layer, () => void][] = [];
-    if (isEditingLayer && editingFeatureIndex === null) {
+    if (isEditingLayer) {
       geoJsonRef.current.eachLayer((layer: any) => {
         const idx = data.features.indexOf(layer.feature as any);
         const handler = () => onSelectFeature(idx);
-        layer.once('click', handler);
+        layer.on('click', handler);
         handlers.push([layer, handler]);
       });
     }
     return () => {
       handlers.forEach(([layer, handler]) => layer.off('click', handler));
     };
-  }, [isEditingLayer, editingFeatureIndex, onSelectFeature, data]);
+  }, [isEditingLayer, onSelectFeature, data]);
 
   // When geometry is edited, propagate changes up
   useEffect(() => {
