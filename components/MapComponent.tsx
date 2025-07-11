@@ -234,6 +234,63 @@ const MapComponent: React.FC<MapComponentProps> = ({
   onDiscardEdits,
 }) => {
   const layerRefs = useRef<Record<string, L.GeoJSON | null>>({});
+  const mapRef = useRef<L.Map | null>(null);
+  const drawControlRef = useRef<L.Control.Draw | null>(null);
+
+  // Setup drawing controls when a layer is being edited
+  useEffect(() => {
+    const map = mapRef.current;
+    const layerId = editingTarget?.layerId;
+    if (!map) return;
+
+    // Cleanup existing control
+    if (drawControlRef.current) {
+      map.removeControl(drawControlRef.current);
+      drawControlRef.current = null;
+    }
+
+    if (!layerId) return;
+    const featureGroup = layerRefs.current[layerId];
+    if (!featureGroup) return;
+
+    const drawControl = new L.Control.Draw({
+      edit: { featureGroup: featureGroup as any, edit: false, remove: true },
+      draw: {
+        polygon: true,
+        polyline: false,
+        rectangle: false,
+        circle: false,
+        marker: false,
+        circlemarker: false,
+      },
+    });
+    drawControlRef.current = drawControl;
+    map.addControl(drawControl);
+
+    const handleCreated = (e: any) => {
+      featureGroup.addLayer(e.layer);
+      if (onUpdateLayerGeojson) {
+        const updated = featureGroup.toGeoJSON() as LayerData['geojson'];
+        onUpdateLayerGeojson(layerId, updated);
+      }
+    };
+
+    const handleDeleted = () => {
+      if (onUpdateLayerGeojson) {
+        const updated = featureGroup.toGeoJSON() as LayerData['geojson'];
+        onUpdateLayerGeojson(layerId, updated);
+      }
+    };
+
+    map.on('draw:created', handleCreated);
+    map.on('draw:deleted', handleDeleted);
+
+    return () => {
+      map.off('draw:created', handleCreated);
+      map.off('draw:deleted', handleDeleted);
+      map.removeControl(drawControl);
+    };
+  }, [editingTarget?.layerId, onUpdateLayerGeojson]);
 
   const handleSaveClick = () => {
     if (editingTarget?.layerId) {
@@ -246,7 +303,13 @@ const MapComponent: React.FC<MapComponentProps> = ({
     if (onSaveEdits) onSaveEdits();
   };
   return (
-    <MapContainer center={[20, 0]} zoom={2} scrollWheelZoom={true} className="h-full w-full relative">
+    <MapContainer
+      center={[20, 0]}
+      zoom={2}
+      scrollWheelZoom={true}
+      className="h-full w-full relative"
+      whenCreated={map => { mapRef.current = map; }}
+    >
       <ZoomToLayerHandler layers={layers} target={zoomToLayer ?? null} />
       <div className="absolute top-2 left-2 z-[1000] w-64">
         <AddressSearch />
