@@ -77,22 +77,22 @@ const ManagedGeoJsonLayer = ({
     geoJsonRef.current.addData(data as any);
   }, [data]);
 
-  // When entering selection mode for a layer, add click handlers to choose a feature
+  // Allow switching the polygon being edited by clicking any feature
   useEffect(() => {
     if (!geoJsonRef.current || !onSelectFeature) return;
     const handlers: [Layer, () => void][] = [];
-    if (isEditingLayer && editingFeatureIndex === null) {
+    if (isEditingLayer) {
       geoJsonRef.current.eachLayer((layer: any) => {
         const idx = data.features.indexOf(layer.feature as any);
         const handler = () => onSelectFeature(idx);
-        layer.once('click', handler);
+        layer.on('click', handler);
         handlers.push([layer, handler]);
       });
     }
     return () => {
       handlers.forEach(([layer, handler]) => layer.off('click', handler));
     };
-  }, [isEditingLayer, editingFeatureIndex, onSelectFeature, data]);
+  }, [isEditingLayer, onSelectFeature, data]);
 
   // When geometry is edited, propagate changes up
   useEffect(() => {
@@ -223,6 +223,63 @@ const ZoomToLayerHandler = ({ layers, target }: { layers: LayerData[]; target: {
   return null;
 };
 
+const DrawControls = ({
+  active,
+  layer,
+  onChange,
+}: {
+  active: boolean;
+  layer: L.GeoJSON | null;
+  onChange?: (geojson: LayerData['geojson']) => void;
+}) => {
+  const map = useMap();
+  const controlRef = useRef<L.Control.Draw | null>(null);
+
+  useEffect(() => {
+    if (!active || !layer) return;
+
+    const options: L.Control.DrawConstructorOptions = {
+      draw: {
+        polygon: true,
+        polyline: false,
+        rectangle: false,
+        circle: false,
+        marker: false,
+        circlemarker: false,
+      },
+      edit: {
+        featureGroup: layer as any,
+        edit: false,
+        remove: true,
+      },
+    };
+
+    const control = new L.Control.Draw(options);
+    controlRef.current = control;
+    map.addControl(control);
+
+    const handleCreated = (e: any) => {
+      layer.addLayer(e.layer);
+      onChange && onChange(layer.toGeoJSON() as LayerData['geojson']);
+    };
+    const handleDeleted = () => {
+      onChange && onChange(layer.toGeoJSON() as LayerData['geojson']);
+    };
+
+    map.on(L.Draw.Event.CREATED, handleCreated);
+    map.on(L.Draw.Event.DELETED, handleDeleted);
+
+    return () => {
+      map.off(L.Draw.Event.CREATED, handleCreated);
+      map.off(L.Draw.Event.DELETED, handleDeleted);
+      if (controlRef.current) map.removeControl(controlRef.current);
+      controlRef.current = null;
+    };
+  }, [active, layer, map, onChange]);
+
+  return null;
+};
+
 const MapComponent: React.FC<MapComponentProps> = ({
   layers,
   onUpdateFeatureHsg,
@@ -248,6 +305,15 @@ const MapComponent: React.FC<MapComponentProps> = ({
   return (
     <MapContainer center={[20, 0]} zoom={2} scrollWheelZoom={true} className="h-full w-full relative">
       <ZoomToLayerHandler layers={layers} target={zoomToLayer ?? null} />
+      <DrawControls
+        active={!!editingTarget?.layerId}
+        layer={editingTarget?.layerId ? layerRefs.current[editingTarget.layerId] : null}
+        onChange={(geo) => {
+          if (editingTarget?.layerId && onUpdateLayerGeojson) {
+            onUpdateLayerGeojson(editingTarget.layerId, geo);
+          }
+        }}
+      />
       <div className="absolute top-2 left-2 z-[1000] w-64">
         <AddressSearch />
       </div>
