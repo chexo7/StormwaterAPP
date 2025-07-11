@@ -1,9 +1,8 @@
 import React, { useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, GeoJSON, useMap, LayersControl, LayerGroup } from 'react-leaflet';
 import L from 'leaflet';
-import 'leaflet-draw';
 import '@geoman-io/leaflet-geoman-free';
-import { area as turfArea } from '@turf/turf';
+import { area as turfArea, intersect as turfIntersect } from '@turf/turf';
 import AddressSearch from './AddressSearch';
 import ReactLeafletGoogleLayer from 'react-leaflet-google-layer';
 import type { LayerData } from '../types';
@@ -56,16 +55,20 @@ const ManagedGeoJsonLayer = ({
     };
   }, [layerRef]);
 
-  // Enable or disable vertex editing based on `isEditingLayer` and `editingFeatureIndex`
+  // Enable or disable vertex editing using Leaflet-Geoman
   useEffect(() => {
     if (!geoJsonRef.current) return;
     geoJsonRef.current.eachLayer((layer: any) => {
-      if (layer.editing && typeof layer.editing.enable === 'function') {
+      if (layer.pm) {
         const idx = data.features.indexOf(layer.feature as any);
         if (isEditingLayer && editingFeatureIndex === idx) {
-          layer.editing.enable();
+          if (!layer.pm.enabled()) {
+            layer.pm.enable({ snappable: true });
+          }
         } else {
-          layer.editing.disable();
+          if (layer.pm.enabled()) {
+            layer.pm.disable();
+          }
         }
       }
     });
@@ -103,8 +106,10 @@ const ManagedGeoJsonLayer = ({
       onUpdateLayerGeojson(id, updated);
     };
     geoJsonRef.current.on('edit', handler);
+    geoJsonRef.current.on('pm:edit', handler);
     return () => {
       geoJsonRef.current?.off('edit', handler);
+      geoJsonRef.current?.off('pm:edit', handler);
     };
   }, [id, onUpdateLayerGeojson]);
 
@@ -140,6 +145,7 @@ const ManagedGeoJsonLayer = ({
       updateArea();
       layer.on('popupopen', updateArea);
       layer.on('edit', updateArea);
+      layer.on('pm:edit', updateArea);
 
       // Special editable field for HSG
       if ('HSG' in feature.properties) {
@@ -238,6 +244,7 @@ const GeomanControls = ({
     if (!active || !layer) return;
 
     map.pm.addControls({
+      position: 'topleft',
       drawMarker: false,
       drawPolyline: false,
       drawCircle: false,
@@ -250,21 +257,51 @@ const GeomanControls = ({
       drawPolygon: true,
     });
 
-    map.pm.setGlobalOptions({ layerGroup: layer, snappable: true });
+    map.pm.setGlobalOptions({
+      layerGroup: layer,
+      snappable: true,
+      snapDistance: 20,
+      snapSegment: true,
+      allowSelfIntersection: false,
+    });
 
-    const handleCreate = () => {
+    const updateGeojson = () => {
       onChange && onChange(layer.toGeoJSON() as LayerData['geojson']);
     };
-    const handleRemove = () => {
-      onChange && onChange(layer.toGeoJSON() as LayerData['geojson']);
+
+    const checkOverlap = (changed: L.Layer) => {
+      const newPoly = (changed as any).toGeoJSON();
+      layer.eachLayer(other => {
+        if (other === changed) return;
+        const overlap = turfIntersect(newPoly as any, (other as any).toGeoJSON());
+        if (overlap) {
+          alert('¡Cuidado! El polígono se solapa.');
+        }
+      });
+    };
+
+    const handleCreate = (e: any) => {
+      updateGeojson();
+      if (e.layer) checkOverlap(e.layer);
+    };
+    const handleRemove = updateGeojson;
+    const handleEdit = (e: any) => {
+      updateGeojson();
+      if (e.layer) {
+        checkOverlap(e.layer);
+      } else if (e.layers) {
+        e.layers.eachLayer((lyr: any) => checkOverlap(lyr));
+      }
     };
 
     map.on('pm:create', handleCreate);
     map.on('pm:remove', handleRemove);
+    map.on('pm:edit', handleEdit);
 
     return () => {
       map.off('pm:create', handleCreate);
       map.off('pm:remove', handleRemove);
+      map.off('pm:edit', handleEdit);
       map.pm.removeControls();
     };
   }, [active, layer, map, onChange]);
