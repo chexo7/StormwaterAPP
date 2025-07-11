@@ -1,22 +1,33 @@
-import React, { useEffect, useRef } from 'react';
-import { MapContainer, TileLayer, GeoJSON, useMap, LayersControl, LayerGroup } from 'react-leaflet';
-import L from 'leaflet';
-import 'leaflet-draw';
-import { area as turfArea } from '@turf/turf';
-import AddressSearch from './AddressSearch';
-import ReactLeafletGoogleLayer from 'react-leaflet-google-layer';
-import type { LayerData } from '../types';
-import type { GeoJSON as LeafletGeoJSON, Layer } from 'leaflet';
+import React, { useEffect, useRef } from "react";
+import {
+  MapContainer,
+  TileLayer,
+  GeoJSON,
+  useMap,
+  LayersControl,
+  LayerGroup,
+} from "react-leaflet";
+import L from "leaflet";
+import "leaflet-draw";
+import { area as turfArea } from "@turf/turf";
+import AddressSearch from "./AddressSearch";
+import ReactLeafletGoogleLayer from "react-leaflet-google-layer";
+import type { LayerData } from "../types";
+import type { GeoJSON as LeafletGeoJSON, Layer } from "leaflet";
 
 const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY as string | undefined;
 
 interface MapComponentProps {
   layers: LayerData[];
-  onUpdateFeatureHsg: (layerId: string, featureIndex: number, hsg: string) => void;
+  onUpdateFeatureHsg: (
+    layerId: string,
+    featureIndex: number,
+    hsg: string,
+  ) => void;
   zoomToLayer?: { id: string; ts: number } | null;
   editingTarget?: { layerId: string | null; featureIndex: number | null };
   onSelectFeatureForEditing?: (layerId: string, index: number) => void;
-  onUpdateLayerGeojson?: (id: string, geojson: LayerData['geojson']) => void;
+  onUpdateLayerGeojson?: (id: string, geojson: LayerData["geojson"]) => void;
   onSaveEdits?: () => void;
   onDiscardEdits?: () => void;
 }
@@ -35,13 +46,17 @@ const ManagedGeoJsonLayer = ({
   layerRef,
 }: {
   id: string;
-  data: LayerData['geojson'];
+  data: LayerData["geojson"];
   isLastAdded: boolean;
-  onUpdateFeatureHsg: (layerId: string, featureIndex: number, hsg: string) => void;
+  onUpdateFeatureHsg: (
+    layerId: string,
+    featureIndex: number,
+    hsg: string,
+  ) => void;
   isEditingLayer: boolean;
   editingFeatureIndex: number | null;
   onSelectFeature?: (index: number) => void;
-  onUpdateLayerGeojson?: (id: string, geojson: LayerData['geojson']) => void;
+  onUpdateLayerGeojson?: (id: string, geojson: LayerData["geojson"]) => void;
   layerRef?: (ref: LeafletGeoJSON | null) => void;
 }) => {
   const geoJsonRef = useRef<LeafletGeoJSON | null>(null);
@@ -59,7 +74,7 @@ const ManagedGeoJsonLayer = ({
   useEffect(() => {
     if (!geoJsonRef.current) return;
     geoJsonRef.current.eachLayer((layer: any) => {
-      if (layer.editing && typeof layer.editing.enable === 'function') {
+      if (layer.editing && typeof layer.editing.enable === "function") {
         const idx = data.features.indexOf(layer.feature as any);
         if (isEditingLayer && editingFeatureIndex === idx) {
           layer.editing.enable();
@@ -85,12 +100,12 @@ const ManagedGeoJsonLayer = ({
       geoJsonRef.current.eachLayer((layer: any) => {
         const idx = data.features.indexOf(layer.feature as any);
         const handler = () => onSelectFeature(idx);
-        layer.once('click', handler);
+        layer.once("click", handler);
         handlers.push([layer, handler]);
       });
     }
     return () => {
-      handlers.forEach(([layer, handler]) => layer.off('click', handler));
+      handlers.forEach(([layer, handler]) => layer.off("click", handler));
     };
   }, [isEditingLayer, editingFeatureIndex, onSelectFeature, data]);
 
@@ -98,33 +113,33 @@ const ManagedGeoJsonLayer = ({
   useEffect(() => {
     if (!geoJsonRef.current || !onUpdateLayerGeojson) return;
     const handler = () => {
-      const updated = geoJsonRef.current!.toGeoJSON() as LayerData['geojson'];
+      const updated = geoJsonRef.current!.toGeoJSON() as LayerData["geojson"];
       onUpdateLayerGeojson(id, updated);
     };
-    geoJsonRef.current.on('edit', handler);
+    geoJsonRef.current.on("edit", handler);
     return () => {
-      geoJsonRef.current?.off('edit', handler);
+      geoJsonRef.current?.off("edit", handler);
     };
   }, [id, onUpdateLayerGeojson]);
 
   const onEachFeature = (feature: GeoJSON.Feature, layer: Layer) => {
     if (feature.properties) {
-      const container = L.DomUtil.create('div');
-      container.style.maxHeight = '150px';
-      container.style.overflowY = 'auto';
-      container.style.fontFamily = 'sans-serif';
+      const container = L.DomUtil.create("div");
+      container.style.maxHeight = "150px";
+      container.style.overflowY = "auto";
+      container.style.fontFamily = "sans-serif";
 
-      const propsDiv = L.DomUtil.create('div', '', container);
+      const propsDiv = L.DomUtil.create("div", "", container);
 
       // Render all properties except HSG
       Object.entries(feature.properties).forEach(([k, v]) => {
-        if (k === 'HSG') return;
-        const row = L.DomUtil.create('div', '', propsDiv);
+        if (k === "HSG") return;
+        const row = L.DomUtil.create("div", "", propsDiv);
         row.innerHTML = `<b>${k}:</b> ${v}`;
       });
 
       // Area display
-      const areaRow = L.DomUtil.create('div', '', propsDiv);
+      const areaRow = L.DomUtil.create("div", "", propsDiv);
       const updateArea = () => {
         try {
           const poly = layer.toGeoJSON() as any;
@@ -133,31 +148,39 @@ const ManagedGeoJsonLayer = ({
           const areaAc = areaSqM / 4046.8564224;
           areaRow.innerHTML = `<b>Area:</b> ${areaSqFt.toLocaleString(undefined, { maximumFractionDigits: 2 })} sf (${areaAc.toLocaleString(undefined, { maximumFractionDigits: 4 })} ac)`;
         } catch {
-          areaRow.innerHTML = '<b>Area:</b> n/a';
+          areaRow.innerHTML = "<b>Area:</b> n/a";
         }
       };
       updateArea();
-      layer.on('popupopen', updateArea);
-      layer.on('edit', updateArea);
+      layer.on("popupopen", updateArea);
+      layer.on("edit", updateArea);
 
       // Special editable field for HSG
-      if ('HSG' in feature.properties) {
-        const hsgRow = L.DomUtil.create('div', '', propsDiv);
-        const label = L.DomUtil.create('b', '', hsgRow);
-        label.textContent = 'HSG: ';
-        const select = L.DomUtil.create('select', '', hsgRow) as HTMLSelectElement;
-        select.title = 'Cambiar HSG';
-        select.style.marginLeft = '4px';
-        select.style.border = '2px solid #f59e0b';
-        select.style.backgroundColor = '#fef3c7';
-        select.style.fontWeight = 'bold';
-        ['A', 'B', 'C', 'D'].forEach(val => {
-          const opt = L.DomUtil.create('option', '', select) as HTMLOptionElement;
+      if ("HSG" in feature.properties) {
+        const hsgRow = L.DomUtil.create("div", "", propsDiv);
+        const label = L.DomUtil.create("b", "", hsgRow);
+        label.textContent = "HSG: ";
+        const select = L.DomUtil.create(
+          "select",
+          "",
+          hsgRow,
+        ) as HTMLSelectElement;
+        select.title = "Cambiar HSG";
+        select.style.marginLeft = "4px";
+        select.style.border = "2px solid #f59e0b";
+        select.style.backgroundColor = "#fef3c7";
+        select.style.fontWeight = "bold";
+        ["A", "B", "C", "D"].forEach((val) => {
+          const opt = L.DomUtil.create(
+            "option",
+            "",
+            select,
+          ) as HTMLOptionElement;
           opt.value = val;
           opt.textContent = val;
           if (feature.properties!.HSG === val) opt.selected = true;
         });
-        select.addEventListener('change', (e) => {
+        select.addEventListener("change", (e) => {
           const newVal = (e.target as HTMLSelectElement).value;
           const idx = data.features.indexOf(feature);
           onUpdateFeatureHsg(id, idx, newVal);
@@ -172,16 +195,16 @@ const ManagedGeoJsonLayer = ({
           const idx = data.features.indexOf(feature);
           onSelectFeature(idx);
         };
-        layer.once('click', handler);
+        layer.once("click", handler);
       }
     }
   };
 
   const geoJsonStyle = {
-    color: '#06b6d4',      // cyan-500
+    color: "#06b6d4", // cyan-500
     weight: 2,
     opacity: 1,
-    fillColor: '#67e8f9',  // cyan-300
+    fillColor: "#67e8f9", // cyan-300
     fillOpacity: 0.5,
   };
 
@@ -206,12 +229,18 @@ const ManagedGeoJsonLayer = ({
   );
 };
 
-const ZoomToLayerHandler = ({ layers, target }: { layers: LayerData[]; target: { id: string; ts: number } | null }) => {
+const ZoomToLayerHandler = ({
+  layers,
+  target,
+}: {
+  layers: LayerData[];
+  target: { id: string; ts: number } | null;
+}) => {
   const map = useMap();
 
   useEffect(() => {
     if (!target) return;
-    const layer = layers.find(l => l.id === target.id);
+    const layer = layers.find((l) => l.id === target.id);
     if (layer) {
       const bounds = L.geoJSON(layer.geojson).getBounds();
       if (bounds.isValid()) {
@@ -219,6 +248,79 @@ const ZoomToLayerHandler = ({ layers, target }: { layers: LayerData[]; target: {
       }
     }
   }, [target, layers, map]);
+
+  return null;
+};
+
+const DrawControls = ({
+  active,
+  layer,
+  onChange,
+  editingFeatureIndex,
+}: {
+  active: boolean;
+  layer: L.GeoJSON | null;
+  onChange?: (geojson: LayerData["geojson"]) => void;
+  editingFeatureIndex: number | null;
+}) => {
+  const map = useMap();
+  const controlRef = useRef<L.Control.Draw | null>(null);
+
+  useEffect(() => {
+    if (!active || !layer) return;
+
+    const options: L.Control.DrawConstructorOptions = {
+      draw: {
+        polygon: true,
+        polyline: false,
+        rectangle: false,
+        circle: false,
+        marker: false,
+        circlemarker: false,
+      },
+      edit: {
+        featureGroup: layer as any,
+        edit: false,
+        remove: true,
+      },
+    };
+
+    const control = new L.Control.Draw(options);
+    controlRef.current = control;
+    map.addControl(control);
+
+    const refreshEditing = () => {
+      if (editingFeatureIndex === null) return;
+      const layersArr: L.Layer[] = [];
+      layer.eachLayer((l) => layersArr.push(l));
+      layersArr.forEach((l: any, idx) => {
+        if (l.editing && typeof l.editing.enable === "function") {
+          if (idx === editingFeatureIndex) l.editing.enable();
+          else l.editing.disable();
+        }
+      });
+    };
+
+    const handleCreated = (e: any) => {
+      layer.addLayer(e.layer);
+      onChange && onChange(layer.toGeoJSON() as LayerData["geojson"]);
+      refreshEditing();
+    };
+    const handleDeleted = () => {
+      onChange && onChange(layer.toGeoJSON() as LayerData["geojson"]);
+      refreshEditing();
+    };
+
+    map.on(L.Draw.Event.CREATED, handleCreated);
+    map.on(L.Draw.Event.DELETED, handleDeleted);
+
+    return () => {
+      map.off(L.Draw.Event.CREATED, handleCreated);
+      map.off(L.Draw.Event.DELETED, handleDeleted);
+      if (controlRef.current) map.removeControl(controlRef.current);
+      controlRef.current = null;
+    };
+  }, [active, layer, map, onChange, editingFeatureIndex]);
 
   return null;
 };
@@ -239,15 +341,34 @@ const MapComponent: React.FC<MapComponentProps> = ({
     if (editingTarget?.layerId) {
       const ref = layerRefs.current[editingTarget.layerId];
       if (ref && onUpdateLayerGeojson) {
-        const latest = ref.toGeoJSON() as LayerData['geojson'];
+        const latest = ref.toGeoJSON() as LayerData["geojson"];
         onUpdateLayerGeojson(editingTarget.layerId, latest);
       }
     }
     if (onSaveEdits) onSaveEdits();
   };
   return (
-    <MapContainer center={[20, 0]} zoom={2} scrollWheelZoom={true} className="h-full w-full relative">
+    <MapContainer
+      center={[20, 0]}
+      zoom={2}
+      scrollWheelZoom={true}
+      className="h-full w-full relative"
+    >
       <ZoomToLayerHandler layers={layers} target={zoomToLayer ?? null} />
+      <DrawControls
+        active={!!editingTarget?.layerId}
+        layer={
+          editingTarget?.layerId
+            ? layerRefs.current[editingTarget.layerId]
+            : null
+        }
+        editingFeatureIndex={editingTarget?.featureIndex ?? null}
+        onChange={(geo) => {
+          if (editingTarget?.layerId && onUpdateLayerGeojson) {
+            onUpdateLayerGeojson(editingTarget.layerId, geo);
+          }
+        }}
+      />
       <div className="absolute top-2 left-2 z-[1000] w-64">
         <AddressSearch />
       </div>
@@ -287,10 +408,10 @@ const MapComponent: React.FC<MapComponentProps> = ({
           />
         </LayersControl.BaseLayer>
         <LayersControl.BaseLayer name="Satellite">
-             <TileLayer
-                url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-                attribution="Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community"
-            />
+          <TileLayer
+            url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+            attribution="Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community"
+          />
         </LayersControl.BaseLayer>
         <LayersControl.BaseLayer name="Google Roadmap">
           <ReactLeafletGoogleLayer apiKey={googleMapsApiKey} type="roadmap" />
@@ -305,33 +426,42 @@ const MapComponent: React.FC<MapComponentProps> = ({
           <ReactLeafletGoogleLayer apiKey={googleMapsApiKey} type="hybrid" />
         </LayersControl.BaseLayer>
         <LayersControl.BaseLayer name="Hybrid">
-            <LayerGroup>
-                <TileLayer
-                    url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-                    attribution="Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community"
-                />
-                 <TileLayer
-                    url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png"
-                    attribution='&copy; <a href="https://carto.com/attributions">CARTO</a>'
-                    pane="shadowPane" 
-                />
-            </LayerGroup>
+          <LayerGroup>
+            <TileLayer
+              url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+              attribution="Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community"
+            />
+            <TileLayer
+              url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png"
+              attribution='&copy; <a href="https://carto.com/attributions">CARTO</a>'
+              pane="shadowPane"
+            />
+          </LayerGroup>
         </LayersControl.BaseLayer>
 
         {/* Overlay Layers */}
         {layers.map((layer, index) => (
           <LayersControl.Overlay checked name={layer.name} key={layer.id}>
-             <ManagedGeoJsonLayer
-                id={layer.id}
-                data={layer.geojson}
-                isLastAdded={index === layers.length - 1}
-                onUpdateFeatureHsg={onUpdateFeatureHsg}
-                isEditingLayer={editingTarget?.layerId === layer.id}
-                editingFeatureIndex={editingTarget?.layerId === layer.id ? editingTarget.featureIndex : null}
-                onSelectFeature={idx => onSelectFeatureForEditing && onSelectFeatureForEditing(layer.id, idx)}
-                onUpdateLayerGeojson={onUpdateLayerGeojson}
-                layerRef={ref => { layerRefs.current[layer.id] = ref; }}
-             />
+            <ManagedGeoJsonLayer
+              id={layer.id}
+              data={layer.geojson}
+              isLastAdded={index === layers.length - 1}
+              onUpdateFeatureHsg={onUpdateFeatureHsg}
+              isEditingLayer={editingTarget?.layerId === layer.id}
+              editingFeatureIndex={
+                editingTarget?.layerId === layer.id
+                  ? editingTarget.featureIndex
+                  : null
+              }
+              onSelectFeature={(idx) =>
+                onSelectFeatureForEditing &&
+                onSelectFeatureForEditing(layer.id, idx)
+              }
+              onUpdateLayerGeojson={onUpdateLayerGeojson}
+              layerRef={(ref) => {
+                layerRefs.current[layer.id] = ref;
+              }}
+            />
           </LayersControl.Overlay>
         ))}
       </LayersControl>
