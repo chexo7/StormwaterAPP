@@ -236,6 +236,8 @@ const GeomanControls = ({
   onChange?: (geojson: LayerData['geojson']) => void;
 }) => {
   const map = useMap();
+  const editBackup = useRef<LayerData['geojson'] | null>(null);
+  const dragBackup = useRef<LayerData['geojson'] | null>(null);
   useEffect(() => {
     if (!active || !layer) return;
 
@@ -277,6 +279,54 @@ const GeomanControls = ({
       /* noop */
     }
 
+    // Add Cancel actions for edit and drag modes
+    try {
+      (map.pm as any).Toolbar.changeActionsOfControl('editMode', [
+        {
+          text: 'Cancel',
+          onClick: () => {
+            if (editBackup.current) {
+              layer.clearLayers();
+              layer.addData(editBackup.current as any);
+              onChange && onChange(layer.toGeoJSON() as LayerData['geojson']);
+            }
+            map.pm.disableGlobalEditMode();
+          },
+        },
+        'finishMode',
+      ]);
+      (map.pm as any).Toolbar.changeActionsOfControl('dragMode', [
+        {
+          text: 'Cancel',
+          onClick: () => {
+            if (dragBackup.current) {
+              layer.clearLayers();
+              layer.addData(dragBackup.current as any);
+              onChange && onChange(layer.toGeoJSON() as LayerData['geojson']);
+            }
+            map.pm.disableGlobalDragMode();
+          },
+        },
+        'finishMode',
+      ]);
+    } catch {
+      /* noop */
+    }
+
+    const handleEditToggle = (e: any) => {
+      if (e.enabled) {
+        editBackup.current = layer.toGeoJSON() as LayerData['geojson'];
+      }
+    };
+    const handleDragToggle = (e: any) => {
+      if (e.enabled) {
+        dragBackup.current = layer.toGeoJSON() as LayerData['geojson'];
+      }
+    };
+
+    map.on('pm:globaleditmodetoggled', handleEditToggle);
+    map.on('pm:globaldragmodetoggled', handleDragToggle);
+
     const checkOverlap = (target: L.Layer) => {
       const newPoly = (target as any).toGeoJSON();
       let hasOverlap = false;
@@ -308,7 +358,10 @@ const GeomanControls = ({
       map.off('pm:create', handleCreate);
       map.off('pm:remove', handleRemove);
       map.off('pm:edit', handleEdit);
+      map.off('pm:globaleditmodetoggled', handleEditToggle);
+      map.off('pm:globaldragmodetoggled', handleDragToggle);
       map.pm.disableGlobalEditMode();
+      map.pm.disableGlobalDragMode();
       map.pm.removeControls();
     };
   }, [active, layer, map, onChange]);
