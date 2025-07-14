@@ -6,6 +6,7 @@ import FileUpload from './components/FileUpload';
 import InfoPanel from './components/InfoPanel';
 import MapComponent from './components/MapComponent';
 import InstructionsPage from './components/InstructionsPage';
+import { KNOWN_LAYER_NAMES } from './utils/constants';
 
 type UpdateHsgFn = (layerId: string, featureIndex: number, hsg: string) => void;
 
@@ -49,13 +50,15 @@ const App: React.FC = () => {
       setError(msg);
       addLog(msg, 'error');
     } else {
+      const editable = KNOWN_LAYER_NAMES.includes(name);
       const newLayer: LayerData = {
         id: `${Date.now()}-${name}`,
-        name: name,
-        geojson: geojson,
+        name,
+        geojson,
+        editable,
       };
       setLayers(prevLayers => [...prevLayers, newLayer]);
-      addLog(`Loaded layer ${name}`);
+      addLog(`Loaded layer ${name}${editable ? '' : ' (view only)'}`);
     }
   }, [addLog]);
 
@@ -69,6 +72,17 @@ const App: React.FC = () => {
     setIsLoading(false);
     setError(message);
     addLog(message, 'error');
+  }, [addLog]);
+
+  const handleCreateLayer = useCallback((name: string) => {
+    const newLayer: LayerData = {
+      id: `${Date.now()}-${name}`,
+      name,
+      geojson: { type: 'FeatureCollection', features: [] },
+      editable: true,
+    };
+    setLayers(prev => [...prev, newLayer]);
+    addLog(`Created new layer ${name}`);
   }, [addLog]);
 
   const handleRemoveLayer = useCallback((id: string) => {
@@ -119,6 +133,10 @@ const App: React.FC = () => {
     }
     const layer = layers.find(l => l.id === id);
     if (!layer) return;
+    if (!layer.editable) {
+      addLog(`${layer.name} is view-only and cannot be edited`, 'error');
+      return;
+    }
     setEditingBackup({ layerId: id, geojson: JSON.parse(JSON.stringify(layer.geojson)) });
     const copy = JSON.parse(JSON.stringify(layer.geojson)) as FeatureCollection;
     setLayers(prev => prev.map(l => l.id === id ? { ...l, geojson: copy } : l));
@@ -147,6 +165,7 @@ const App: React.FC = () => {
             onError={handleError}
             onLog={addLog}
             isLoading={isLoading}
+            onCreateLayer={handleCreateLayer}
           />
           <InfoPanel
             layers={layers}
