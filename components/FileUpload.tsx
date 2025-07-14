@@ -34,8 +34,18 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
 
     try {
       let buffer = await file.arrayBuffer();
+      const baseName = file.name.replace(/\.zip$/i, '');
       let displayName = file.name;
-      const isWssFile = file.name.toLowerCase().startsWith('wss_aoi_');
+      const lowerBase = baseName.toLowerCase();
+      const isWssFile = lowerBase.startsWith('wss_aoi_');
+
+      if (lowerBase === 'da') {
+        displayName = 'Drainage Areas';
+      } else if (lowerBase === 'landcover') {
+        displayName = 'Land Cover';
+      } else if (lowerBase === 'lod') {
+        displayName = 'LOD';
+      }
 
       // Special handling for Web Soil Survey files
       if (isWssFile) {
@@ -58,7 +68,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
         }
         
         buffer = await newZip.generateAsync({ type: 'arraybuffer' });
-        displayName = `${targetBasename}.shp`;
+        displayName = 'Soil Layer from Web Soil Survey';
       }
 
       let geojson = await shp.parseZip(buffer) as FeatureCollection;
