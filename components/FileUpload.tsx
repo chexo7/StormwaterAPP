@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import * as shp from 'shpjs';
 import JSZip from 'jszip';
 import type { FeatureCollection } from 'geojson';
@@ -13,11 +13,19 @@ interface FileUploadProps {
   onLog: (message: string, type?: 'info' | 'error') => void;
   isLoading: boolean;
   onCreateLayer?: (name: string) => void;
+  existingLayerNames?: string[];
 }
 
-const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onError, onLog, isLoading, onCreateLayer }) => {
+const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onError, onLog, isLoading, onCreateLayer, existingLayerNames = [] }) => {
   const [isDragging, setIsDragging] = useState(false);
-  const [newLayerName, setNewLayerName] = useState(KNOWN_LAYER_NAMES[0]);
+  const availableNames = KNOWN_LAYER_NAMES.filter(n => !existingLayerNames.includes(n));
+  const [newLayerName, setNewLayerName] = useState(availableNames[0] || '');
+
+  useEffect(() => {
+    if (!availableNames.includes(newLayerName)) {
+      setNewLayerName(availableNames[0] || '');
+    }
+  }, [availableNames, newLayerName]);
 
   const processFile = useCallback(async (file: File) => {
     if (!file) {
@@ -173,14 +181,14 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
       <p className="mt-4 text-xs text-gray-500">
         Upload one or more shapefiles. WSS Soil Survey zips are handled automatically.
       </p>
-      {onCreateLayer && (
+      {onCreateLayer && availableNames.length > 0 && (
         <div className="mt-4 flex space-x-2 items-center">
           <select
             value={newLayerName}
             onChange={e => setNewLayerName(e.target.value)}
             className="flex-grow bg-gray-800 border border-gray-600 text-gray-200 rounded px-2 py-1"
           >
-            {KNOWN_LAYER_NAMES.map(name => (
+            {availableNames.map(name => (
               <option key={name} value={name}>{name}</option>
             ))}
           </select>

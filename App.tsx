@@ -49,17 +49,26 @@ const App: React.FC = () => {
       const msg = `The file "${name}" appears to be empty or could not be read correctly.`;
       setError(msg);
       addLog(msg, 'error');
-    } else {
-      const editable = KNOWN_LAYER_NAMES.includes(name);
+      return;
+    }
+
+    const editable = KNOWN_LAYER_NAMES.includes(name);
+    setLayers(prevLayers => {
+      const existing = prevLayers.find(l => l.name === name);
+      if (existing) {
+        const updated = prevLayers.map(l => l.name === name ? { ...l, geojson, editable } : l);
+        addLog(`Updated layer ${name} with uploaded data`);
+        return updated;
+      }
       const newLayer: LayerData = {
         id: `${Date.now()}-${name}`,
         name,
         geojson,
         editable,
       };
-      setLayers(prevLayers => [...prevLayers, newLayer]);
       addLog(`Loaded layer ${name}${editable ? '' : ' (view only)'}`);
-    }
+      return [...prevLayers, newLayer];
+    });
   }, [addLog]);
 
   const handleLoading = useCallback(() => {
@@ -75,14 +84,20 @@ const App: React.FC = () => {
   }, [addLog]);
 
   const handleCreateLayer = useCallback((name: string) => {
-    const newLayer: LayerData = {
-      id: `${Date.now()}-${name}`,
-      name,
-      geojson: { type: 'FeatureCollection', features: [] },
-      editable: true,
-    };
-    setLayers(prev => [...prev, newLayer]);
-    addLog(`Created new layer ${name}`);
+    setLayers(prev => {
+      if (prev.some(l => l.name === name)) {
+        addLog(`Layer ${name} already exists`, 'error');
+        return prev;
+      }
+      const newLayer: LayerData = {
+        id: `${Date.now()}-${name}`,
+        name,
+        geojson: { type: 'FeatureCollection', features: [] },
+        editable: true,
+      };
+      addLog(`Created new layer ${name}`);
+      return [...prev, newLayer];
+    });
   }, [addLog]);
 
   const handleRemoveLayer = useCallback((id: string) => {
@@ -166,6 +181,7 @@ const App: React.FC = () => {
             onLog={addLog}
             isLoading={isLoading}
             onCreateLayer={handleCreateLayer}
+            existingLayerNames={layers.map(l => l.name)}
           />
           <InfoPanel
             layers={layers}
