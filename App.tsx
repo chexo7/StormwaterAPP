@@ -3,6 +3,7 @@ import type { FeatureCollection } from 'geojson';
 import type { LayerData, LogEntry } from './types';
 import Header from './components/Header';
 import FileUpload from './components/FileUpload';
+import CreateLayer from './components/CreateLayer';
 import InfoPanel from './components/InfoPanel';
 import MapComponent from './components/MapComponent';
 import InstructionsPage from './components/InstructionsPage';
@@ -19,7 +20,7 @@ const App: React.FC = () => {
   const [editingBackup, setEditingBackup] = useState<{ layerId: string; geojson: FeatureCollection } | null>(null);
 
   const addLog = useCallback((message: string, type: 'info' | 'error' = 'info') => {
-    setLogs(prev => [...prev, { message, type, source: 'frontend' }]);
+    setLogs(prev => [...prev, { message, type, source: 'frontend' as const }]);
   }, []);
 
   useEffect(() => {
@@ -29,7 +30,7 @@ const App: React.FC = () => {
         if (res.ok) {
           const data: LogEntry[] = await res.json();
           if (data.length > 0) {
-            setLogs(prev => [...prev, ...data.map(l => ({ ...l, source: 'backend' }))]);
+            setLogs(prev => [...prev, ...data.map(l => ({ ...l, source: 'backend' as const }))]);
           }
         }
       } catch (err) {
@@ -41,7 +42,7 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  const handleLayerAdded = useCallback((geojson: FeatureCollection, name: string) => {
+  const handleLayerAdded = useCallback((geojson: FeatureCollection, name: string, editable: boolean) => {
     setIsLoading(false);
     setError(null);
     if (geojson.features.length === 0) {
@@ -53,6 +54,7 @@ const App: React.FC = () => {
         id: `${Date.now()}-${name}`,
         name: name,
         geojson: geojson,
+        editable,
       };
       setLayers(prevLayers => [...prevLayers, newLayer]);
       addLog(`Loaded layer ${name}`);
@@ -69,6 +71,17 @@ const App: React.FC = () => {
     setIsLoading(false);
     setError(message);
     addLog(message, 'error');
+  }, [addLog]);
+
+  const handleCreateLayer = useCallback((name: string) => {
+    const newLayer: LayerData = {
+      id: `${Date.now()}-${name}`,
+      name,
+      geojson: { type: 'FeatureCollection', features: [] },
+      editable: true,
+    };
+    setLayers(prev => [...prev, newLayer]);
+    addLog(`Created new layer ${name}`);
   }, [addLog]);
 
   const handleRemoveLayer = useCallback((id: string) => {
@@ -119,6 +132,7 @@ const App: React.FC = () => {
     }
     const layer = layers.find(l => l.id === id);
     if (!layer) return;
+    if (!layer.editable) { addLog(`Layer ${layer.name} is read-only`, 'error'); return; }
     setEditingBackup({ layerId: id, geojson: JSON.parse(JSON.stringify(layer.geojson)) });
     const copy = JSON.parse(JSON.stringify(layer.geojson)) as FeatureCollection;
     setLayers(prev => prev.map(l => l.id === id ? { ...l, geojson: copy } : l));
@@ -148,6 +162,7 @@ const App: React.FC = () => {
             onLog={addLog}
             isLoading={isLoading}
           />
+          <CreateLayer onCreate={handleCreateLayer} />
           <InfoPanel
             layers={layers}
             error={error}

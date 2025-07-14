@@ -6,7 +6,7 @@ import { UploadIcon } from './Icons';
 import { loadHsgMap } from '../utils/soil';
 
 interface FileUploadProps {
-  onLayerAdded: (data: FeatureCollection, fileName: string) => void;
+  onLayerAdded: (data: FeatureCollection, fileName: string, editable: boolean) => void;
   onLoading: () => void;
   onError: (message: string) => void;
   onLog: (message: string, type?: 'info' | 'error') => void;
@@ -35,7 +35,14 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
     try {
       let buffer = await file.arrayBuffer();
       let displayName = file.name;
-      const isWssFile = file.name.toLowerCase().startsWith('wss_aoi_');
+      const lowerName = file.name.toLowerCase();
+      const isWssFile = lowerName.startsWith('wss_aoi_');
+      let isEditable = false;
+
+      // Assign official layer names based on known archives
+      if (lowerName === 'da.zip') { displayName = 'Drainage Areas'; isEditable = true; }
+      else if (lowerName === 'landcover.zip') { displayName = 'Land Cover'; isEditable = true; }
+      else if (lowerName === 'lod.zip') { displayName = 'LOD'; isEditable = true; }
 
       // Special handling for Web Soil Survey files
       if (isWssFile) {
@@ -58,7 +65,8 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
         }
         
         buffer = await newZip.generateAsync({ type: 'arraybuffer' });
-        displayName = `${targetBasename}.shp`;
+        displayName = 'Soil Layer from Web Soil Survey';
+        isEditable = true;
       }
 
       let geojson = await shp.parseZip(buffer) as FeatureCollection;
@@ -89,7 +97,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
       }
       // --- END OF ENRICHMENT LOGIC ---
 
-      onLayerAdded(geojson, displayName);
+      onLayerAdded(geojson, displayName, isEditable);
       onLog(`Loaded ${displayName}`);
     } catch (e) {
       console.error("File parsing error:", e);

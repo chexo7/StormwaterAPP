@@ -62,7 +62,7 @@ const InfoPanel: React.FC<InfoPanelProps> = ({ layers, error, logs, onRemoveLaye
                   <div className="flex justify-between items-start">
                     <h3 className="text-md font-bold text-cyan-400 mb-2 break-all pr-2">{layer.name}</h3>
                     <div className="flex space-x-2">
-                      {onToggleEditLayer && (
+                      {onToggleEditLayer && layer.editable && (
                         <button
                           onClick={(e) => { e.stopPropagation(); onToggleEditLayer(layer.id); }}
                           className="text-gray-500 hover:text-green-400 transition-colors flex-shrink-0"

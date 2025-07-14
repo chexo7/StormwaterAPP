@@ -130,7 +130,7 @@ const ManagedGeoJsonLayer = ({
       const areaRow = L.DomUtil.create('div', '', propsDiv);
       const updateArea = () => {
         try {
-          const poly = layer.toGeoJSON() as any;
+          const poly = (layer as any).toGeoJSON() as any;
           const areaSqM = turfArea(poly);
           const areaSqFt = areaSqM * 10.7639;
           const areaAc = areaSqM / 4046.8564224;
