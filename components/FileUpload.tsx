@@ -1,9 +1,10 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import * as shp from 'shpjs';
 import JSZip from 'jszip';
 import type { FeatureCollection } from 'geojson';
 import { UploadIcon } from './Icons';
 import { loadHsgMap } from '../utils/soil';
+import { ARCHIVE_NAME_MAP, KNOWN_LAYER_NAMES } from '../utils/constants';
 
 interface FileUploadProps {
   onLayerAdded: (data: FeatureCollection, fileName: string) => void;
@@ -11,10 +12,19 @@ interface FileUploadProps {
   onError: (message: string) => void;
   onLog: (message: string, type?: 'info' | 'error') => void;
   isLoading: boolean;
+  onCreateLayer?: (name: string) => void;
+  existingLayerNames?: string[];
 }
 
-const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onError, onLog, isLoading }) => {
+const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onError, onLog, isLoading, onCreateLayer, existingLayerNames = [] }) => {
   const [isDragging, setIsDragging] = useState(false);
+  const [newLayerName, setNewLayerName] = useState('');
+
+  const availableNames = KNOWN_LAYER_NAMES.filter(n => !existingLayerNames.includes(n));
+
+  useEffect(() => {
+    setNewLayerName(prev => availableNames.includes(prev) ? prev : (availableNames[0] ?? ''));
+  }, [existingLayerNames]);
 
   const processFile = useCallback(async (file: File) => {
     if (!file) {
@@ -34,8 +44,9 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
 
     try {
       let buffer = await file.arrayBuffer();
-      let displayName = file.name;
-      const isWssFile = file.name.toLowerCase().startsWith('wss_aoi_');
+      const lowerName = file.name.toLowerCase();
+      let displayName = ARCHIVE_NAME_MAP[lowerName] ?? file.name;
+      const isWssFile = lowerName.startsWith('wss_aoi_');
 
       // Special handling for Web Soil Survey files
       if (isWssFile) {
@@ -58,7 +69,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
         }
         
         buffer = await newZip.generateAsync({ type: 'arraybuffer' });
-        displayName = `${targetBasename}.shp`;
+        displayName = 'Soil Layer from Web Soil Survey';
       }
 
       let geojson = await shp.parseZip(buffer) as FeatureCollection;
@@ -169,6 +180,29 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
       <p className="mt-4 text-xs text-gray-500">
         Upload one or more shapefiles. WSS Soil Survey zips are handled automatically.
       </p>
+      {onCreateLayer && (
+        <div className="mt-4 flex space-x-2 items-center">
+          <select
+            value={newLayerName}
+            onChange={e => setNewLayerName(e.target.value)}
+            className="flex-grow bg-gray-800 border border-gray-600 text-gray-200 rounded px-2 py-1"
+          >
+            {KNOWN_LAYER_NAMES.map(name => (
+              <option key={name} value={name} disabled={existingLayerNames.includes(name)}>
+                {name}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={() => onCreateLayer && newLayerName && onCreateLayer(newLayerName)}
+            className="bg-cyan-600 hover:bg-cyan-700 text-white px-3 py-1 rounded disabled:opacity-50"
+            disabled={!newLayerName || existingLayerNames.includes(newLayerName)}
+          >
+            Create
+          </button>
+        </div>
+      )}
     </div>
   );
 };
