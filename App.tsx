@@ -41,6 +41,13 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
+  const editableLayerNames = [
+    'Soil Layer from Web Soil Survey',
+    'Drainage Areas',
+    'Land Cover',
+    'LOD',
+  ];
+
   const handleLayerAdded = useCallback((geojson: FeatureCollection, name: string) => {
     setIsLoading(false);
     setError(null);
@@ -53,6 +60,7 @@ const App: React.FC = () => {
         id: `${Date.now()}-${name}`,
         name: name,
         geojson: geojson,
+        editable: editableLayerNames.includes(name),
       };
       setLayers(prevLayers => [...prevLayers, newLayer]);
       addLog(`Loaded layer ${name}`);
@@ -119,6 +127,10 @@ const App: React.FC = () => {
     }
     const layer = layers.find(l => l.id === id);
     if (!layer) return;
+    if (!layer.editable) {
+      addLog(`Layer ${id} is view-only`, 'error');
+      return;
+    }
     setEditingBackup({ layerId: id, geojson: JSON.parse(JSON.stringify(layer.geojson)) });
     const copy = JSON.parse(JSON.stringify(layer.geojson)) as FeatureCollection;
     setLayers(prev => prev.map(l => l.id === id ? { ...l, geojson: copy } : l));
