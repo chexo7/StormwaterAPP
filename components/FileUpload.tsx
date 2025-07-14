@@ -5,6 +5,8 @@ import type { FeatureCollection } from 'geojson';
 import { UploadIcon } from './Icons';
 import { loadHsgMap } from '../utils/soil';
 
+const editableLayerNames = ['Drainage Areas', 'Land Cover', 'LOD', 'Soil Layer from Web Soil Survey'];
+
 interface FileUploadProps {
   onLayerAdded: (data: FeatureCollection, fileName: string) => void;
   onLoading: () => void;
@@ -15,6 +17,11 @@ interface FileUploadProps {
 
 const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onError, onLog, isLoading }) => {
   const [isDragging, setIsDragging] = useState(false);
+
+  const createEmptyLayer = useCallback((name: string) => {
+    const empty: FeatureCollection = { type: 'FeatureCollection', features: [] };
+    onLayerAdded(empty, name);
+  }, [onLayerAdded]);
 
   const processFile = useCallback(async (file: File) => {
     if (!file) {
@@ -35,7 +42,13 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
     try {
       let buffer = await file.arrayBuffer();
       let displayName = file.name;
-      const isWssFile = file.name.toLowerCase().startsWith('wss_aoi_');
+      const lowerName = file.name.toLowerCase();
+      const isWssFile = lowerName.startsWith('wss_aoi_');
+
+      // Assign official layer names based on known archives
+      if (lowerName === 'da.zip') displayName = 'Drainage Areas';
+      else if (lowerName === 'landcover.zip') displayName = 'Land Cover';
+      else if (lowerName === 'lod.zip') displayName = 'LOD';
 
       // Special handling for Web Soil Survey files
       if (isWssFile) {
@@ -58,7 +71,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
         }
         
         buffer = await newZip.generateAsync({ type: 'arraybuffer' });
-        displayName = `${targetBasename}.shp`;
+        displayName = 'Soil Layer from Web Soil Survey';
       }
 
       let geojson = await shp.parseZip(buffer) as FeatureCollection;
@@ -169,6 +182,19 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
       <p className="mt-4 text-xs text-gray-500">
         Upload one or more shapefiles. WSS Soil Survey zips are handled automatically.
       </p>
+      <div className="mt-4 space-y-2">
+        <h3 className="text-sm text-white font-semibold">Create new layer</h3>
+        {['Drainage Areas','Land Cover','LOD','Soil Layer from Web Soil Survey'].map(name => (
+          <button
+            key={name}
+            disabled={isLoading}
+            onClick={() => createEmptyLayer(name)}
+            className="block text-left text-cyan-400 hover:underline text-sm disabled:text-gray-500"
+          >
+            New {name}
+          </button>
+        ))}
+      </div>
     </div>
   );
 };

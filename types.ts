@@ -7,6 +7,8 @@ export interface LayerData {
   id: string;
   name: string;
   geojson: FeatureCollection;
+  /** whether the layer can be edited */
+  editable: boolean;
 }
 
 export interface LogEntry {
