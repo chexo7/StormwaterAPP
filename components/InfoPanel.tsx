@@ -1,6 +1,6 @@
 import React from 'react';
 import type { LayerData, LogEntry } from '../types';
-import { XCircleIcon, InfoIcon, TrashIcon, EditIcon } from './Icons';
+import { XCircleIcon, InfoIcon, TrashIcon, EditIcon, LockClosedIcon } from './Icons';
 import LogPanel from './LogPanel';
 
 interface InfoPanelProps {
@@ -62,7 +62,7 @@ const InfoPanel: React.FC<InfoPanelProps> = ({ layers, error, logs, onRemoveLaye
                   <div className="flex justify-between items-start">
                     <h3 className="text-md font-bold text-cyan-400 mb-2 break-all pr-2">{layer.name}</h3>
                     <div className="flex space-x-2">
-                      {onToggleEditLayer && (
+                      {onToggleEditLayer && (layer.editable ? (
                         <button
                           onClick={(e) => { e.stopPropagation(); onToggleEditLayer(layer.id); }}
                           className="text-gray-500 hover:text-green-400 transition-colors flex-shrink-0"
@@ -70,7 +70,9 @@ const InfoPanel: React.FC<InfoPanelProps> = ({ layers, error, logs, onRemoveLaye
                         >
                           {editingLayerId === layer.id ? <XCircleIcon className="w-5 h-5" /> : <EditIcon className="w-5 h-5" />}
                         </button>
-                      )}
+                      ) : (
+                        <LockClosedIcon className="w-5 h-5 text-gray-600" />
+                      ))}
                       <button onClick={(e) => { e.stopPropagation(); onRemoveLayer(layer.id); }} className="text-gray-500 hover:text-red-400 transition-colors flex-shrink-0" aria-label={`Remove layer ${layer.name}`}>
                         <TrashIcon className="w-5 h-5" />
                       </button>
@@ -98,3 +100,4 @@ const InfoPanel: React.FC<InfoPanelProps> = ({ layers, error, logs, onRemoveLaye
 };
 
 export default InfoPanel;
+

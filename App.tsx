@@ -6,6 +6,7 @@ import FileUpload from './components/FileUpload';
 import InfoPanel from './components/InfoPanel';
 import MapComponent from './components/MapComponent';
 import InstructionsPage from './components/InstructionsPage';
+import { KNOWN_LAYER_NAMES } from './utils/constants';
 
 type UpdateHsgFn = (layerId: string, featureIndex: number, hsg: string) => void;
 
@@ -48,16 +49,26 @@ const App: React.FC = () => {
       const msg = `The file "${name}" appears to be empty or could not be read correctly.`;
       setError(msg);
       addLog(msg, 'error');
-    } else {
-      const newLayer: LayerData = {
-        id: `${Date.now()}-${name}`,
-        name: name,
-        geojson: geojson,
-      };
-      setLayers(prevLayers => [...prevLayers, newLayer]);
-      addLog(`Loaded layer ${name}`);
+      return;
     }
-  }, [addLog]);
+
+    if (KNOWN_LAYER_NAMES.includes(name) && layers.some(l => l.name === name)) {
+      const msg = `${name} layer already exists.`;
+      setError(msg);
+      addLog(msg, 'error');
+      return;
+    }
+
+    const editable = KNOWN_LAYER_NAMES.includes(name);
+    const newLayer: LayerData = {
+      id: `${Date.now()}-${name}`,
+      name,
+      geojson,
+      editable,
+    };
+    setLayers(prevLayers => [...prevLayers, newLayer]);
+    addLog(`Loaded layer ${name}${editable ? '' : ' (view only)'}`);
+  }, [addLog, layers]);
 
   const handleLoading = useCallback(() => {
     setIsLoading(true);
@@ -70,6 +81,25 @@ const App: React.FC = () => {
     setError(message);
     addLog(message, 'error');
   }, [addLog]);
+
+  const handleCreateLayer = useCallback((name: string) => {
+    setError(null);
+    if (KNOWN_LAYER_NAMES.includes(name) && layers.some(l => l.name === name)) {
+      const msg = `${name} layer already exists.`;
+      setError(msg);
+      addLog(msg, 'error');
+      return;
+    }
+
+    const newLayer: LayerData = {
+      id: `${Date.now()}-${name}`,
+      name,
+      geojson: { type: 'FeatureCollection', features: [] },
+      editable: true,
+    };
+    setLayers(prev => [...prev, newLayer]);
+    addLog(`Created new layer ${name}`);
+  }, [addLog, layers]);
 
   const handleRemoveLayer = useCallback((id: string) => {
     setLayers(prevLayers => prevLayers.filter(layer => layer.id !== id));
@@ -119,6 +149,10 @@ const App: React.FC = () => {
     }
     const layer = layers.find(l => l.id === id);
     if (!layer) return;
+    if (!layer.editable) {
+      addLog(`${layer.name} is view-only and cannot be edited`, 'error');
+      return;
+    }
     setEditingBackup({ layerId: id, geojson: JSON.parse(JSON.stringify(layer.geojson)) });
     const copy = JSON.parse(JSON.stringify(layer.geojson)) as FeatureCollection;
     setLayers(prev => prev.map(l => l.id === id ? { ...l, geojson: copy } : l));
@@ -147,6 +181,8 @@ const App: React.FC = () => {
             onError={handleError}
             onLog={addLog}
             isLoading={isLoading}
+            onCreateLayer={handleCreateLayer}
+            existingLayerNames={layers.map(l => l.name)}
           />
           <InfoPanel
             layers={layers}
