@@ -226,6 +226,18 @@ const ZoomToLayerHandler = ({ layers, target }: { layers: LayerData[]; target: {
   return null;
 };
 
+const MapPmOptIn = () => {
+  const map = useMap();
+  useEffect(() => {
+    try {
+      (map.pm as any).setOptIn(true);
+    } catch {
+      /* noop */
+    }
+  }, [map]);
+  return null;
+};
+
 const GeomanControls = ({
   active,
   layer,
@@ -392,6 +404,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
   };
   return (
     <MapContainer center={[20, 0]} zoom={2} scrollWheelZoom={true} className="h-full w-full relative">
+      <MapPmOptIn />
       <ZoomToLayerHandler layers={layers} target={zoomToLayer ?? null} />
       <GeomanControls
         active={!!editingTarget?.layerId}
