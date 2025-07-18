@@ -9,6 +9,9 @@ import ReactLeafletGoogleLayer from 'react-leaflet-google-layer';
 import type { LayerData } from '../types';
 import type { GeoJSON as LeafletGeoJSON, Layer } from 'leaflet';
 
+// Require explicit enabling of editing features
+L.PM.setOptIn(true);
+
 const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY as string | undefined;
 
 interface MapComponentProps {
