@@ -3,6 +3,9 @@ import { MapContainer, TileLayer, GeoJSON, useMap, LayersControl, LayerGroup } f
 import L from 'leaflet';
 import 'leaflet-draw';
 import '@geoman-io/leaflet-geoman-free';
+
+// Require explicit activation of Leaflet-Geoman on layers
+L.PM.setOptIn(true);
 import { area as turfArea, intersect as turfIntersect } from '@turf/turf';
 import AddressSearch from './AddressSearch';
 import ReactLeafletGoogleLayer from 'react-leaflet-google-layer';
