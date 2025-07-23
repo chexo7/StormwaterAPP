@@ -158,7 +158,8 @@ const ManagedGeoJsonLayer = ({
       layer.on('pm:update', updateArea);
 
       // Special editable field for HSG
-      if ('HSG' in feature.properties) {
+      if (layerName === 'Soil Layer from Web Soil Survey' || 'HSG' in feature.properties) {
+        feature.properties = { ...(feature.properties || {}), HSG: feature.properties?.HSG ?? '' };
         const hsgRow = L.DomUtil.create('div', '', propsDiv);
         const label = L.DomUtil.create('b', '', hsgRow);
         label.textContent = 'HSG: ';
@@ -168,12 +169,16 @@ const ManagedGeoJsonLayer = ({
         select.style.border = '2px solid #f59e0b';
         select.style.backgroundColor = '#fef3c7';
         select.style.fontWeight = 'bold';
+        const blank = L.DomUtil.create('option', '', select) as HTMLOptionElement;
+        blank.value = '';
+        blank.textContent = '-';
         ['A', 'B', 'C', 'D'].forEach(val => {
           const opt = L.DomUtil.create('option', '', select) as HTMLOptionElement;
           opt.value = val;
           opt.textContent = val;
           if (feature.properties!.HSG === val) opt.selected = true;
         });
+        if (!feature.properties!.HSG) blank.selected = true;
         select.addEventListener('change', (e) => {
           const newVal = (e.target as HTMLSelectElement).value;
           const idx = data.features.indexOf(feature);
