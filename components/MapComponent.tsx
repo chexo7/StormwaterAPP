@@ -127,6 +127,9 @@ const ManagedGeoJsonLayer = ({
       container.style.maxHeight = '150px';
       container.style.overflowY = 'auto';
       container.style.fontFamily = 'sans-serif';
+      if (layerName === 'Land Cover') {
+        container.style.minWidth = '320px';
+      }
 
       const propsDiv = L.DomUtil.create('div', '', container);
 
@@ -225,6 +228,7 @@ const ManagedGeoJsonLayer = ({
         select.style.border = '2px solid #f97316';
         select.style.backgroundColor = '#ffedd5';
         select.style.fontWeight = 'bold';
+        select.style.width = '280px';
         const blank = L.DomUtil.create('option', '', select) as HTMLOptionElement;
         blank.value = '';
         blank.textContent = '--';
