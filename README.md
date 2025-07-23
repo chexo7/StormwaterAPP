@@ -45,6 +45,14 @@ This allows the frontend to fetch the table of CN values based on soil group.
 
 These routes are ready for future integration with the frontend.
 
+## Layer categories
+
+When uploading shapefiles, the app attempts to identify the appropriate
+category (e.g. a Web Soil Survey file will map to *Soil Layer from Web Soil Survey*).
+Before the layer is added you can confirm or change this category. A new
+"Other" category is available for reference layers; any number of these may
+be added and they remain view-only.
+
 ## Update soil HSG mapping
 
 The file `public/data/soil-hsg-map.json` contains a mapping from soil map unit

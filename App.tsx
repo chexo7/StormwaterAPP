@@ -60,7 +60,7 @@ const App: React.FC = () => {
       return;
     }
 
-    const editable = KNOWN_LAYER_NAMES.includes(name);
+    const editable = name !== 'Other' && KNOWN_LAYER_NAMES.includes(name);
 
     if (name === 'Drainage Areas') {
       geojson = {
@@ -92,11 +92,13 @@ const App: React.FC = () => {
       } as FeatureCollection;
     }
     setLayers(prevLayers => {
-      const existing = prevLayers.find(l => l.name === name);
-      if (existing) {
-        const updated = prevLayers.map(l => l.name === name ? { ...l, geojson, editable } : l);
-        addLog(`Updated layer ${name} with uploaded data`);
-        return updated;
+      if (name !== 'Other') {
+        const existing = prevLayers.find(l => l.name === name);
+        if (existing) {
+          const updated = prevLayers.map(l => l.name === name ? { ...l, geojson, editable } : l);
+          addLog(`Updated layer ${name} with uploaded data`);
+          return updated;
+        }
       }
       const newLayer: LayerData = {
         id: `${Date.now()}-${name}`,
