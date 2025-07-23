@@ -7,6 +7,7 @@ import InfoPanel from './components/InfoPanel';
 import MapComponent from './components/MapComponent';
 import InstructionsPage from './components/InstructionsPage';
 import { KNOWN_LAYER_NAMES } from './utils/constants';
+import LayerPreview from './components/LayerPreview';
 import { loadLandCoverList } from './utils/landcover';
 
 type UpdateHsgFn = (layerId: string, featureIndex: number, hsg: string) => void;
@@ -22,6 +23,7 @@ const App: React.FC = () => {
   const [editingTarget, setEditingTarget] = useState<{ layerId: string | null; featureIndex: number | null }>({ layerId: null, featureIndex: null });
   const [editingBackup, setEditingBackup] = useState<{ layerId: string; geojson: FeatureCollection } | null>(null);
   const [landCoverOptions, setLandCoverOptions] = useState<string[]>([]);
+  const [previewLayer, setPreviewLayer] = useState<{ data: FeatureCollection; fileName: string; detectedName: string } | null>(null);
 
   const addLog = useCallback((message: string, type: 'info' | 'error' = 'info') => {
     setLogs(prev => [...prev, { message, type, source: 'frontend' }]);
@@ -107,6 +109,13 @@ const App: React.FC = () => {
       addLog(`Loaded layer ${name}${editable ? '' : ' (view only)'}`);
       return [...prevLayers, newLayer];
     });
+  }, [addLog]);
+
+  const handlePreviewReady = useCallback((geojson: FeatureCollection, fileName: string, detectedName: string) => {
+    setIsLoading(false);
+    setError(null);
+    setPreviewLayer({ data: geojson, fileName, detectedName });
+    addLog(`Preview ready for ${fileName}`);
   }, [addLog]);
 
   const handleLoading = useCallback(() => {
@@ -231,6 +240,16 @@ const App: React.FC = () => {
     addLog(`Updated geometry for layer ${id}`);
   }, [addLog]);
 
+  const handleConfirmPreview = useCallback((name: string, data: FeatureCollection) => {
+    handleLayerAdded(data, name);
+    setPreviewLayer(null);
+  }, [handleLayerAdded]);
+
+  const handleCancelPreview = useCallback(() => {
+    setPreviewLayer(null);
+    addLog('Preview canceled');
+  }, [addLog]);
+
   return (
     <div className="flex flex-col h-screen bg-gray-900 text-gray-100 font-sans">
       <Header />
@@ -244,7 +263,17 @@ const App: React.FC = () => {
             isLoading={isLoading}
             onCreateLayer={handleCreateLayer}
             existingLayerNames={layers.map(l => l.name)}
+            onPreviewReady={handlePreviewReady}
           />
+          {previewLayer && (
+            <LayerPreview
+              data={previewLayer.data}
+              fileName={previewLayer.fileName}
+              detectedName={previewLayer.detectedName}
+              onConfirm={handleConfirmPreview}
+              onCancel={handleCancelPreview}
+            />
+          )}
           <InfoPanel
             layers={layers}
             error={error}
