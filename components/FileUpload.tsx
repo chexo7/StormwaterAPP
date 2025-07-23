@@ -4,7 +4,7 @@ import JSZip from 'jszip';
 import type { FeatureCollection } from 'geojson';
 import { UploadIcon } from './Icons';
 import { loadHsgMap } from '../utils/soil';
-import { ARCHIVE_NAME_MAP, KNOWN_LAYER_NAMES } from '../utils/constants';
+import { ARCHIVE_NAME_MAP, KNOWN_LAYER_NAMES, ALL_LAYER_NAMES } from '../utils/constants';
 
 interface FileUploadProps {
   onLayerAdded: (data: FeatureCollection, fileName: string) => void;
@@ -101,8 +101,13 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
       }
       // --- END OF ENRICHMENT LOGIC ---
 
-      onLayerAdded(geojson, displayName);
-      onLog(`Loaded ${displayName}`);
+      const defaultCategory = ARCHIVE_NAME_MAP[lowerName] ?? (isWssFile ? 'Soil Layer from Web Soil Survey' : 'Other');
+      const promptMsg = `Detected ${geojson.features.length} features.\nAssign to category (${ALL_LAYER_NAMES.join(', ')}):`;
+      let chosen = window.prompt(promptMsg, defaultCategory) || defaultCategory;
+      if (!ALL_LAYER_NAMES.includes(chosen)) chosen = defaultCategory;
+
+      onLayerAdded(geojson, chosen);
+      onLog(`Loaded ${displayName} as ${chosen}`);
     } catch (e) {
       console.error("File parsing error:", e);
       const errMsg = "Failed to parse shapefile. Ensure the .zip contains valid .shp and .dbf files, and for WSS zips, that 'soilmu_a_aoi.shp' is present.";

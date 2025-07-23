@@ -10,3 +10,8 @@ export const KNOWN_LAYER_NAMES = [
   'LOD',
   'Soil Layer from Web Soil Survey',
 ];
+
+export const ALL_LAYER_NAMES = [
+  ...KNOWN_LAYER_NAMES,
+  'Other',
+];
