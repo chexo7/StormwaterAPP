@@ -4,6 +4,7 @@ import JSZip from 'jszip';
 import type { FeatureCollection } from 'geojson';
 import { UploadIcon } from './Icons';
 import { loadHsgMap } from '../utils/soil';
+import { loadCnValues } from '../utils/cn';
 import { ARCHIVE_NAME_MAP, KNOWN_LAYER_NAMES } from '../utils/constants';
 
 interface FileUploadProps {
@@ -100,6 +101,30 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
         }
       }
       // --- END OF ENRICHMENT LOGIC ---
+
+      if (displayName === 'Land Cover') {
+        const field = window.prompt('Nombre de la columna para Land Cover (deje vacío para omitir)')?.trim();
+        let cnValues: { Description: string }[] | null = null;
+        if (field) {
+          cnValues = await loadCnValues();
+        }
+        const descriptions = new Set((cnValues || []).map(v => v.Description.toLowerCase()));
+        geojson = {
+          ...geojson,
+          features: geojson.features.map(f => {
+            const props = { ...(f.properties || {}) } as any;
+            let val = '';
+            if (field && props[field]) {
+              const txt = String(props[field]);
+              if (descriptions.has(txt.toLowerCase())) {
+                val = txt;
+              }
+            }
+            props.LAND_COVER = props.LAND_COVER || val || '';
+            return { ...f, properties: props };
+          })
+        } as FeatureCollection;
+      }
 
       onLayerAdded(geojson, displayName);
       onLog(`Loaded ${displayName}`);
