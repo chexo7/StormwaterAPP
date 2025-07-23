@@ -4,6 +4,7 @@ import JSZip from 'jszip';
 import type { FeatureCollection } from 'geojson';
 import { UploadIcon } from './Icons';
 import { loadHsgMap } from '../utils/soil';
+import { loadCnValues } from '../utils/cn';
 import { ARCHIVE_NAME_MAP, KNOWN_LAYER_NAMES } from '../utils/constants';
 
 interface FileUploadProps {
@@ -20,6 +21,10 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
   const [isDragging, setIsDragging] = useState(false);
   const availableNames = KNOWN_LAYER_NAMES.filter(n => !existingLayerNames.includes(n));
   const [newLayerName, setNewLayerName] = useState(availableNames[0] || '');
+  const [pendingLayer, setPendingLayer] = useState<{ geojson: FeatureCollection; name: string } | null>(null);
+  const [fieldOptions, setFieldOptions] = useState<string[]>([]);
+  const [fieldSamples, setFieldSamples] = useState<Record<string, string[]>>({});
+  const [selectedField, setSelectedField] = useState<string>('');
 
   useEffect(() => {
     if (!availableNames.includes(newLayerName)) {
@@ -101,6 +106,29 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
       }
       // --- END OF ENRICHMENT LOGIC ---
 
+      if (displayName === 'Land Cover') {
+        const propsSample = geojson.features[0]?.properties || {};
+        const fieldNames = Object.keys(propsSample).filter(f => f !== 'LAND_COVER');
+        const samples: Record<string, string[]> = {};
+        fieldNames.forEach(name => {
+          samples[name] = geojson.features.slice(0, 3).map(f => String(f.properties?.[name] ?? '')).filter(Boolean);
+        });
+        const cnValues = await loadCnValues();
+        const descSet = new Set((cnValues ?? []).map(v => v.Description.toLowerCase()));
+        let autoField = '';
+        for (const name of fieldNames) {
+          if (geojson.features.some(f => descSet.has(String(f.properties?.[name] ?? '').toLowerCase()))) {
+            autoField = name;
+            break;
+          }
+        }
+        setPendingLayer({ geojson, name: displayName });
+        setFieldOptions(fieldNames);
+        setFieldSamples(samples);
+        setSelectedField(autoField);
+        return;
+      }
+
       onLayerAdded(geojson, displayName);
       onLog(`Loaded ${displayName}`);
     } catch (e) {
@@ -111,6 +139,33 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
     }
   }, [onLayerAdded, onLoading, onError, onLog]);
 
+  const finalizeLandCover = useCallback(async (field: string | null) => {
+    if (!pendingLayer) return;
+    const cnValues = await loadCnValues();
+    const descSet = new Set((cnValues ?? []).map(v => v.Description.toLowerCase()));
+    let { geojson, name } = pendingLayer;
+    geojson = {
+      ...geojson,
+      features: geojson.features.map(f => {
+        const props = { ...(f.properties || {}) };
+        let val = props.LAND_COVER ?? '';
+        if (field && props[field] && typeof props[field] !== 'object') {
+          const txt = String(props[field]).toLowerCase();
+          if (descSet.has(txt)) {
+            val = (cnValues ?? []).find(v => v.Description.toLowerCase() === txt)!.Description;
+          }
+        }
+        return { ...f, properties: { ...props, LAND_COVER: val } };
+      })
+    } as FeatureCollection;
+    setPendingLayer(null);
+    setFieldOptions([]);
+    setFieldSamples({});
+    setSelectedField('');
+    onLayerAdded(geojson, name);
+    onLog(`Loaded ${name}`);
+  }, [pendingLayer, onLayerAdded, onLog]);
+
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
@@ -118,6 +173,14 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
     }
     event.target.value = ''; // Reset input to allow re-uploading the same file
   };
+
+  const handleConfirmField = useCallback(() => {
+    finalizeLandCover(selectedField || null);
+  }, [finalizeLandCover, selectedField]);
+
+  const handleSkipField = useCallback(() => {
+    finalizeLandCover(null);
+  }, [finalizeLandCover]);
 
   const handleDragEnter = (e: React.DragEvent<HTMLLabelElement>) => {
     e.preventDefault();
@@ -199,6 +262,34 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
           >
             Create
           </button>
+        </div>
+      )}
+      {pendingLayer && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+          <div className="bg-gray-800 border border-gray-600 p-4 rounded-lg space-y-3 w-80">
+            <h3 className="text-lg font-semibold text-white">Select land cover field</h3>
+            <select
+              className="w-full bg-gray-900 border border-gray-600 text-gray-200 rounded px-2 py-1"
+              value={selectedField}
+              onChange={e => setSelectedField(e.target.value)}
+            >
+              <option value="">-- none --</option>
+              {fieldOptions.map(f => (
+                <option key={f} value={f}>{f}</option>
+              ))}
+            </select>
+            {selectedField && fieldSamples[selectedField] && (
+              <div className="text-xs text-gray-400 space-y-1">
+                {fieldSamples[selectedField].map((v, i) => (
+                  <div key={i} className="font-mono">{v}</div>
+                ))}
+              </div>
+            )}
+            <div className="flex justify-end space-x-2 pt-2">
+              <button className="bg-gray-700 text-gray-200 px-3 py-1 rounded" onClick={handleSkipField}>Skip</button>
+              <button className="bg-cyan-600 hover:bg-cyan-700 text-white px-3 py-1 rounded" onClick={handleConfirmField}>OK</button>
+            </div>
+          </div>
         </div>
       )}
     </div>
