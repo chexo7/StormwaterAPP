@@ -11,15 +11,18 @@ interface FileUploadProps {
   onLoading: () => void;
   onError: (message: string) => void;
   onLog: (message: string, type?: 'info' | 'error') => void;
+  onParsingComplete?: () => void;
   isLoading: boolean;
   onCreateLayer?: (name: string) => void;
   existingLayerNames?: string[];
 }
 
-const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onError, onLog, isLoading, onCreateLayer, existingLayerNames = [] }) => {
+const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onError, onLog, onParsingComplete, isLoading, onCreateLayer, existingLayerNames = [] }) => {
   const [isDragging, setIsDragging] = useState(false);
   const availableNames = KNOWN_LAYER_NAMES.filter(n => !existingLayerNames.includes(n));
   const [newLayerName, setNewLayerName] = useState(availableNames[0] || '');
+  const [preview, setPreview] = useState<{ geojson: FeatureCollection; suggested: string } | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string>('Other');
 
   useEffect(() => {
     if (!availableNames.includes(newLayerName)) {
@@ -101,15 +104,16 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
       }
       // --- END OF ENRICHMENT LOGIC ---
 
-      onLayerAdded(geojson, displayName);
-      onLog(`Loaded ${displayName}`);
+      setPreview({ geojson, suggested: displayName });
+      setSelectedCategory(KNOWN_LAYER_NAMES.includes(displayName) ? displayName : 'Other');
+      onParsingComplete && onParsingComplete();
     } catch (e) {
       console.error("File parsing error:", e);
       const errMsg = "Failed to parse shapefile. Ensure the .zip contains valid .shp and .dbf files, and for WSS zips, that 'soilmu_a_aoi.shp' is present.";
       onError(errMsg);
       onLog(errMsg, 'error');
     }
-  }, [onLayerAdded, onLoading, onError, onLog]);
+  }, [onLoading, onError, onLog, onParsingComplete]);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -145,6 +149,21 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
     if (file) {
       processFile(file);
     }
+  };
+
+  const handleConfirm = () => {
+    if (!preview) return;
+    let finalName = selectedCategory;
+    if (selectedCategory === 'Other') {
+      finalName = `Other - ${preview.suggested}`;
+    }
+    onLayerAdded(preview.geojson, finalName);
+    onLog(`Loaded ${finalName}`);
+    setPreview(null);
+  };
+
+  const handleCancel = () => {
+    setPreview(null);
   };
 
   return (
@@ -199,6 +218,26 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
           >
             Create
           </button>
+        </div>
+      )}
+      {preview && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-gray-800 p-6 rounded-lg space-y-4 border border-gray-600 w-80">
+            <p className="text-white text-sm">Assign category for <span className="font-bold">{preview.suggested}</span> ({preview.geojson.features.length} features)</p>
+            <select
+              className="w-full bg-gray-700 border border-gray-600 text-gray-200 rounded px-2 py-1"
+              value={selectedCategory}
+              onChange={e => setSelectedCategory(e.target.value)}
+            >
+              {[...KNOWN_LAYER_NAMES, 'Other'].map(name => (
+                <option key={name} value={name}>{name}</option>
+              ))}
+            </select>
+            <div className="flex justify-end space-x-2">
+              <button onClick={handleConfirm} className="bg-cyan-600 hover:bg-cyan-700 text-white px-3 py-1 rounded">Add</button>
+              <button onClick={handleCancel} className="bg-gray-600 hover:bg-gray-700 text-white px-3 py-1 rounded">Cancel</button>
+            </div>
+          </div>
         </div>
       )}
     </div>

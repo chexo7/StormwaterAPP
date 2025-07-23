@@ -115,6 +115,10 @@ const App: React.FC = () => {
     addLog('Loading file...');
   }, [addLog]);
 
+  const handleParsingComplete = useCallback(() => {
+    setIsLoading(false);
+  }, []);
+
   const handleError = useCallback((message: string) => {
     setIsLoading(false);
     setError(message);
@@ -241,6 +245,7 @@ const App: React.FC = () => {
             onLoading={handleLoading}
             onError={handleError}
             onLog={addLog}
+            onParsingComplete={handleParsingComplete}
             isLoading={isLoading}
             onCreateLayer={handleCreateLayer}
             existingLayerNames={layers.map(l => l.name)}
