@@ -9,6 +9,7 @@ import InstructionsPage from './components/InstructionsPage';
 import { KNOWN_LAYER_NAMES } from './utils/constants';
 
 type UpdateHsgFn = (layerId: string, featureIndex: number, hsg: string) => void;
+type UpdateDaNameFn = (layerId: string, featureIndex: number, name: string) => void;
 
 const App: React.FC = () => {
   const [layers, setLayers] = useState<LayerData[]>([]);
@@ -53,6 +54,16 @@ const App: React.FC = () => {
     }
 
     const editable = KNOWN_LAYER_NAMES.includes(name);
+
+    if (name === 'Drainage Areas') {
+      geojson = {
+        ...geojson,
+        features: geojson.features.map(f => ({
+          ...f,
+          properties: { ...(f.properties || {}), DA_NAME: f.properties?.DA_NAME ?? '' }
+        }))
+      } as FeatureCollection;
+    }
     setLayers(prevLayers => {
       const existing = prevLayers.find(l => l.name === name);
       if (existing) {
@@ -120,6 +131,18 @@ const App: React.FC = () => {
       return { ...layer, geojson: { ...layer.geojson, features } };
     }));
     addLog(`Set HSG for feature ${featureIndex} in ${layerId} to ${hsg}`);
+  }, [addLog]);
+
+  const handleUpdateFeatureDaName = useCallback<UpdateDaNameFn>((layerId, featureIndex, nameVal) => {
+    setLayers(prev => prev.map(layer => {
+      if (layer.id !== layerId) return layer;
+      const features = [...layer.geojson.features];
+      const feature = { ...features[featureIndex] };
+      feature.properties = { ...(feature.properties || {}), DA_NAME: nameVal };
+      features[featureIndex] = feature;
+      return { ...layer, geojson: { ...layer.geojson, features } };
+    }));
+    addLog(`Set Drainage Area name for feature ${featureIndex} in ${layerId} to ${nameVal}`);
   }, [addLog]);
 
   const handleDiscardEditing = useCallback(() => {
@@ -198,6 +221,7 @@ const App: React.FC = () => {
             <MapComponent
               layers={layers}
               onUpdateFeatureHsg={handleUpdateFeatureHsg}
+              onUpdateFeatureDaName={handleUpdateFeatureDaName}
               zoomToLayer={zoomToLayer}
               editingTarget={editingTarget}
               onSelectFeatureForEditing={handleSelectFeatureForEditing}

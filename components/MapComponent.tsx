@@ -14,6 +14,7 @@ const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY as string | undefined;
 interface MapComponentProps {
   layers: LayerData[];
   onUpdateFeatureHsg: (layerId: string, featureIndex: number, hsg: string) => void;
+  onUpdateFeatureDaName: (layerId: string, featureIndex: number, name: string) => void;
   zoomToLayer?: { id: string; ts: number } | null;
   editingTarget?: { layerId: string | null; featureIndex: number | null };
   onSelectFeatureForEditing?: (layerId: string, index: number) => void;
@@ -29,6 +30,8 @@ const ManagedGeoJsonLayer = ({
   data,
   isLastAdded,
   onUpdateFeatureHsg,
+  onUpdateFeatureDaName,
+  layerName,
   isEditingLayer,
   editingFeatureIndex,
   onSelectFeature,
@@ -39,6 +42,8 @@ const ManagedGeoJsonLayer = ({
   data: LayerData['geojson'];
   isLastAdded: boolean;
   onUpdateFeatureHsg: (layerId: string, featureIndex: number, hsg: string) => void;
+  onUpdateFeatureDaName: (layerId: string, featureIndex: number, name: string) => void;
+  layerName: string;
   isEditingLayer: boolean;
   editingFeatureIndex: number | null;
   onSelectFeature?: (index: number) => void;
@@ -165,6 +170,36 @@ const ManagedGeoJsonLayer = ({
           const idx = data.features.indexOf(feature);
           onUpdateFeatureHsg(id, idx, newVal);
           feature.properties!.HSG = newVal;
+        });
+      }
+
+      // Editable name for Drainage Areas
+      if (layerName === 'Drainage Areas') {
+        const nameRow = L.DomUtil.create('div', '', propsDiv);
+        const nLabel = L.DomUtil.create('b', '', nameRow);
+        nLabel.textContent = 'Name: ';
+        const select = L.DomUtil.create('select', '', nameRow) as HTMLSelectElement;
+        select.title = 'Seleccionar nombre';
+        select.style.marginLeft = '4px';
+        select.style.border = '2px solid #3b82f6';
+        select.style.backgroundColor = '#dbeafe';
+        select.style.fontWeight = 'bold';
+        const blank = L.DomUtil.create('option', '', select) as HTMLOptionElement;
+        blank.value = '';
+        blank.textContent = '--';
+        const names = Array.from({ length: 26 }, (_, i) => `DA-${String.fromCharCode(65 + i)}`);
+        names.forEach(val => {
+          const opt = L.DomUtil.create('option', '', select) as HTMLOptionElement;
+          opt.value = val;
+          opt.textContent = val;
+          if (feature.properties!.DA_NAME === val) opt.selected = true;
+        });
+        if (!feature.properties!.DA_NAME) blank.selected = true;
+        select.addEventListener('change', (e) => {
+          const newVal = (e.target as HTMLSelectElement).value;
+          const idx = data.features.indexOf(feature);
+          onUpdateFeatureDaName(id, idx, newVal);
+          feature.properties!.DA_NAME = newVal;
         });
       }
 
@@ -371,6 +406,7 @@ const GeomanControls = ({
 const MapComponent: React.FC<MapComponentProps> = ({
   layers,
   onUpdateFeatureHsg,
+  onUpdateFeatureDaName,
   zoomToLayer,
   editingTarget,
   onSelectFeatureForEditing,
@@ -480,6 +516,8 @@ const MapComponent: React.FC<MapComponentProps> = ({
                 data={layer.geojson}
                 isLastAdded={index === layers.length - 1}
                 onUpdateFeatureHsg={onUpdateFeatureHsg}
+                onUpdateFeatureDaName={onUpdateFeatureDaName}
+                layerName={layer.name}
                 isEditingLayer={editingTarget?.layerId === layer.id}
                 editingFeatureIndex={editingTarget?.layerId === layer.id ? editingTarget.featureIndex : null}
                 onSelectFeature={idx => onSelectFeatureForEditing && onSelectFeatureForEditing(layer.id, idx)}
