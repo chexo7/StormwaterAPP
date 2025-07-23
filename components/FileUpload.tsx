@@ -101,6 +101,14 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
       }
       // --- END OF ENRICHMENT LOGIC ---
 
+      if (displayName === 'Drainage Areas') {
+        geojson.features = geojson.features.map(feature => {
+          const props = { ...(feature.properties || {}) } as Record<string, any>;
+          if (!('DA_NAME' in props)) props.DA_NAME = '';
+          return { ...feature, properties: props } as any;
+        });
+      }
+
       onLayerAdded(geojson, displayName);
       onLog(`Loaded ${displayName}`);
     } catch (e) {

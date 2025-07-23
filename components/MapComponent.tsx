@@ -8,12 +8,14 @@ import AddressSearch from './AddressSearch';
 import ReactLeafletGoogleLayer from 'react-leaflet-google-layer';
 import type { LayerData } from '../types';
 import type { GeoJSON as LeafletGeoJSON, Layer } from 'leaflet';
+import { DRAINAGE_AREA_NAME_OPTIONS } from '../utils/constants';
 
 const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY as string | undefined;
 
 interface MapComponentProps {
   layers: LayerData[];
   onUpdateFeatureHsg: (layerId: string, featureIndex: number, hsg: string) => void;
+  onUpdateFeatureDaName: (layerId: string, featureIndex: number, name: string) => void;
   zoomToLayer?: { id: string; ts: number } | null;
   editingTarget?: { layerId: string | null; featureIndex: number | null };
   onSelectFeatureForEditing?: (layerId: string, index: number) => void;
@@ -29,6 +31,7 @@ const ManagedGeoJsonLayer = ({
   data,
   isLastAdded,
   onUpdateFeatureHsg,
+  onUpdateFeatureDaName,
   isEditingLayer,
   editingFeatureIndex,
   onSelectFeature,
@@ -39,6 +42,7 @@ const ManagedGeoJsonLayer = ({
   data: LayerData['geojson'];
   isLastAdded: boolean;
   onUpdateFeatureHsg: (layerId: string, featureIndex: number, hsg: string) => void;
+  onUpdateFeatureDaName: (layerId: string, featureIndex: number, name: string) => void;
   isEditingLayer: boolean;
   editingFeatureIndex: number | null;
   onSelectFeature?: (index: number) => void;
@@ -119,9 +123,9 @@ const ManagedGeoJsonLayer = ({
 
       const propsDiv = L.DomUtil.create('div', '', container);
 
-      // Render all properties except HSG
+      // Render all properties except HSG and DA_NAME
       Object.entries(feature.properties).forEach(([k, v]) => {
-        if (k === 'HSG') return;
+        if (k === 'HSG' || k === 'DA_NAME') return;
         const row = L.DomUtil.create('div', '', propsDiv);
         row.innerHTML = `<b>${k}:</b> ${v}`;
       });
@@ -165,6 +169,35 @@ const ManagedGeoJsonLayer = ({
           const idx = data.features.indexOf(feature);
           onUpdateFeatureHsg(id, idx, newVal);
           feature.properties!.HSG = newVal;
+        });
+      }
+
+      // Editable field for Drainage Area name
+      if ('DA_NAME' in feature.properties) {
+        const daRow = L.DomUtil.create('div', '', propsDiv);
+        const daLabel = L.DomUtil.create('b', '', daRow);
+        daLabel.textContent = 'Name: ';
+        const daSelect = L.DomUtil.create('select', '', daRow) as HTMLSelectElement;
+        daSelect.title = 'Set Drainage Area Name';
+        daSelect.style.marginLeft = '4px';
+        daSelect.style.border = '2px solid #3b82f6';
+        daSelect.style.backgroundColor = '#dbeafe';
+        daSelect.style.fontWeight = 'bold';
+        const blankOpt = L.DomUtil.create('option', '', daSelect) as HTMLOptionElement;
+        blankOpt.value = '';
+        blankOpt.textContent = '';
+        if (!feature.properties!.DA_NAME) blankOpt.selected = true;
+        DRAINAGE_AREA_NAME_OPTIONS.forEach(val => {
+          const opt = L.DomUtil.create('option', '', daSelect) as HTMLOptionElement;
+          opt.value = val;
+          opt.textContent = val;
+          if (feature.properties!.DA_NAME === val) opt.selected = true;
+        });
+        daSelect.addEventListener('change', (e) => {
+          const newVal = (e.target as HTMLSelectElement).value;
+          const idx = data.features.indexOf(feature);
+          onUpdateFeatureDaName(id, idx, newVal);
+          feature.properties!.DA_NAME = newVal;
         });
       }
 
@@ -371,6 +404,7 @@ const GeomanControls = ({
 const MapComponent: React.FC<MapComponentProps> = ({
   layers,
   onUpdateFeatureHsg,
+  onUpdateFeatureDaName,
   zoomToLayer,
   editingTarget,
   onSelectFeatureForEditing,
@@ -480,6 +514,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
                 data={layer.geojson}
                 isLastAdded={index === layers.length - 1}
                 onUpdateFeatureHsg={onUpdateFeatureHsg}
+                onUpdateFeatureDaName={onUpdateFeatureDaName}
                 isEditingLayer={editingTarget?.layerId === layer.id}
                 editingFeatureIndex={editingTarget?.layerId === layer.id ? editingTarget.featureIndex : null}
                 onSelectFeature={idx => onSelectFeatureForEditing && onSelectFeatureForEditing(layer.id, idx)}
