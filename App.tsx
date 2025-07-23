@@ -255,6 +255,7 @@ const App: React.FC = () => {
     addLog('Preview canceled');
   }, [addLog]);
 
+
   const runCompute = useCallback(() => {
     const lod = layers.find(l => l.name === 'LOD');
     if (!lod) return;
@@ -276,6 +277,60 @@ const App: React.FC = () => {
       addLog('LOD layer must contain exactly one polygon', 'error');
     }
   }, [layers, addLog]);
+
+  const runCompute = useCallback(async () => {
+    const lod = layers.find(l => l.name === 'LOD');
+    const da = layers.find(l => l.name === 'Drainage Areas');
+    const lc = layers.find(l => l.name === 'Land Cover');
+    const wss = layers.find(l => l.name === 'Soil Layer from Web Soil Survey');
+    if (!lod || !da || !lc || !wss) return;
+
+    const taskId = 'intersect1';
+    setComputeTasks([{ id: taskId, name: 'Intersect LOD with other polygons', status: 'pending' }]);
+
+    try {
+      const { intersect } = await import('@turf/turf');
+      const resultFeatures: any[] = [];
+      let contributed = 0;
+      const lodFeatures = lod.geojson.features;
+      const processLayer = (layer: LayerData) => {
+        let added = 0;
+        layer.geojson.features.forEach(f => {
+          lodFeatures.forEach(lf => {
+            const inter = intersect(f as any, lf as any);
+            if (inter) {
+              added++;
+              resultFeatures.push({ ...inter, properties: { ...(f.properties || {}), source: layer.name } });
+            }
+          });
+        });
+        if (added > 0) contributed++;
+      };
+
+      processLayer(da);
+      processLayer(lc);
+      processLayer(wss);
+
+      if (contributed === 3 && resultFeatures.length > 0) {
+        const newLayer: LayerData = {
+          id: `${Date.now()}-Intersection 1`,
+          name: 'Intersection 1',
+          geojson: { type: 'FeatureCollection', features: resultFeatures } as FeatureCollection,
+          editable: false,
+        };
+        setLayers(prev => [...prev, newLayer]);
+        setComputeTasks([{ id: taskId, name: 'Intersect LOD with other polygons', status: 'success' }]);
+        addLog('Intersection 1 created');
+      } else {
+        setComputeTasks([{ id: taskId, name: 'Intersect LOD with other polygons', status: 'error' }]);
+        addLog('Intersection 1 could not be created', 'error');
+      }
+    } catch (err) {
+      setComputeTasks([{ id: taskId, name: 'Intersect LOD with other polygons', status: 'error' }]);
+      addLog('Intersection failed', 'error');
+    }
+  }, [layers, setLayers, addLog]);
+
 
   const handleCompute = useCallback(() => {
     runCompute();
