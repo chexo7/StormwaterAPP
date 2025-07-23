@@ -10,6 +10,7 @@ import { KNOWN_LAYER_NAMES } from './utils/constants';
 
 type UpdateHsgFn = (layerId: string, featureIndex: number, hsg: string) => void;
 type UpdateDaNameFn = (layerId: string, featureIndex: number, name: string) => void;
+type UpdateLandCoverFn = (layerId: string, featureIndex: number, value: string) => void;
 
 const App: React.FC = () => {
   const [layers, setLayers] = useState<LayerData[]>([]);
@@ -19,6 +20,7 @@ const App: React.FC = () => {
   const [zoomToLayer, setZoomToLayer] = useState<{ id: string; ts: number } | null>(null);
   const [editingTarget, setEditingTarget] = useState<{ layerId: string | null; featureIndex: number | null }>({ layerId: null, featureIndex: null });
   const [editingBackup, setEditingBackup] = useState<{ layerId: string; geojson: FeatureCollection } | null>(null);
+  const [landCoverOptions, setLandCoverOptions] = useState<string[]>([]);
 
   const addLog = useCallback((message: string, type: 'info' | 'error' = 'info') => {
     setLogs(prev => [...prev, { message, type, source: 'frontend' }]);
@@ -43,6 +45,22 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    const loadLandCovers = async () => {
+      try {
+        const res = await fetch('/api/cn-values');
+        if (res.ok) {
+          const data = await res.json();
+          const covers = Array.from(new Set(data.map((d: any) => d.LandCover)));
+          setLandCoverOptions(covers);
+        }
+      } catch (err) {
+        console.error('Failed to fetch land cover options', err);
+      }
+    };
+    loadLandCovers();
+  }, []);
+
   const handleLayerAdded = useCallback((geojson: FeatureCollection, name: string) => {
     setIsLoading(false);
     setError(null);
@@ -61,6 +79,16 @@ const App: React.FC = () => {
         features: geojson.features.map(f => ({
           ...f,
           properties: { ...(f.properties || {}), DA_NAME: f.properties?.DA_NAME ?? '' }
+        }))
+      } as FeatureCollection;
+    }
+
+    if (name === 'Land Cover') {
+      geojson = {
+        ...geojson,
+        features: geojson.features.map(f => ({
+          ...f,
+          properties: { ...(f.properties || {}), LAND_COVER: f.properties?.LAND_COVER ?? '' }
         }))
       } as FeatureCollection;
     }
@@ -145,6 +173,18 @@ const App: React.FC = () => {
     addLog(`Set Drainage Area name for feature ${featureIndex} in ${layerId} to ${nameVal}`);
   }, [addLog]);
 
+  const handleUpdateFeatureLandCover = useCallback<UpdateLandCoverFn>((layerId, featureIndex, value) => {
+    setLayers(prev => prev.map(layer => {
+      if (layer.id !== layerId) return layer;
+      const features = [...layer.geojson.features];
+      const feature = { ...features[featureIndex] };
+      feature.properties = { ...(feature.properties || {}), LAND_COVER: value };
+      features[featureIndex] = feature;
+      return { ...layer, geojson: { ...layer.geojson, features } };
+    }));
+    addLog(`Set Land Cover for feature ${featureIndex} in ${layerId} to ${value}`);
+  }, [addLog]);
+
   const handleDiscardEditing = useCallback(() => {
     if (!editingTarget.layerId) return;
     const id = editingTarget.layerId;
@@ -222,6 +262,8 @@ const App: React.FC = () => {
               layers={layers}
               onUpdateFeatureHsg={handleUpdateFeatureHsg}
               onUpdateFeatureDaName={handleUpdateFeatureDaName}
+              onUpdateFeatureLandCover={handleUpdateFeatureLandCover}
+              landCoverOptions={landCoverOptions}
               zoomToLayer={zoomToLayer}
               editingTarget={editingTarget}
               onSelectFeatureForEditing={handleSelectFeatureForEditing}
