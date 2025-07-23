@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import type { FeatureCollection } from 'geojson';
 import type { LayerData, LogEntry } from './types';
 import Header from './components/Header';
@@ -24,6 +24,16 @@ const App: React.FC = () => {
   const [editingBackup, setEditingBackup] = useState<{ layerId: string; geojson: FeatureCollection } | null>(null);
   const [landCoverOptions, setLandCoverOptions] = useState<string[]>([]);
   const [previewLayer, setPreviewLayer] = useState<{ data: FeatureCollection; fileName: string; detectedName: string } | null>(null);
+
+  const computeEnabled = useMemo(() => {
+    const required = [
+      'Drainage Areas',
+      'Land Cover',
+      'LOD',
+      'Soil Layer from Web Soil Survey',
+    ];
+    return required.every(name => layers.some(l => l.name === name));
+  }, [layers]);
 
   const addLog = useCallback((message: string, type: 'info' | 'error' = 'info') => {
     setLogs(prev => [...prev, { message, type, source: 'frontend' }]);
@@ -250,9 +260,13 @@ const App: React.FC = () => {
     addLog('Preview canceled');
   }, [addLog]);
 
+  const handleCompute = useCallback(() => {
+    addLog('Compute triggered');
+  }, [addLog]);
+
   return (
     <div className="flex flex-col h-screen bg-gray-900 text-gray-100 font-sans">
-      <Header />
+      <Header computeEnabled={computeEnabled} onCompute={handleCompute} />
       <div className="flex flex-1 overflow-hidden">
         <aside className="w-72 md:w-96 2xl:w-[32rem] bg-gray-800 p-4 md:p-6 flex flex-col space-y-6 overflow-y-auto shadow-lg border-r border-gray-700">
           <FileUpload
