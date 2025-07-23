@@ -4,6 +4,7 @@ import JSZip from 'jszip';
 import type { FeatureCollection } from 'geojson';
 import { UploadIcon } from './Icons';
 import { loadHsgMap } from '../utils/soil';
+import { loadLandCoverDescriptions } from '../utils/landCover';
 import { ARCHIVE_NAME_MAP, KNOWN_LAYER_NAMES } from '../utils/constants';
 
 interface FileUploadProps {
@@ -74,6 +75,37 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
       }
 
       let geojson = await shp.parseZip(buffer) as FeatureCollection;
+
+      if (displayName === 'Land Cover') {
+        try {
+          const options = await loadLandCoverDescriptions();
+          const firstProps = geojson.features[0]?.properties || {};
+          const fields = Object.keys(firstProps);
+          const fieldName = window.prompt(`Field with land cover? Available: ${fields.join(', ')}`) || '';
+          geojson = {
+            ...geojson,
+            features: geojson.features.map(f => {
+              const props = { ...(f.properties || {}) } as any;
+              if (fieldName && options && fieldName in props) {
+                const val = String(props[fieldName]);
+                if (options.includes(val)) {
+                  props.LAND_COVER = val;
+                } else {
+                  props.LAND_COVER = '';
+                }
+              } else {
+                props.LAND_COVER = '';
+              }
+              return { ...f, properties: props };
+            })
+          } as FeatureCollection;
+        } catch {
+          geojson.features = geojson.features.map(f => ({
+            ...f,
+            properties: { ...(f.properties || {}), LAND_COVER: '' }
+          }));
+        }
+      }
 
       // --- DATA ENRICHMENT FOR WSS FILES ---
       if (isWssFile && geojson.features.length > 0) {
