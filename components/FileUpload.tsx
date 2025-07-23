@@ -4,6 +4,7 @@ import JSZip from 'jszip';
 import type { FeatureCollection } from 'geojson';
 import { UploadIcon } from './Icons';
 import { loadHsgMap } from '../utils/soil';
+import { loadLandCoverDescriptions } from '../utils/landcover';
 import { ARCHIVE_NAME_MAP, KNOWN_LAYER_NAMES } from '../utils/constants';
 
 interface FileUploadProps {
@@ -100,6 +101,28 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
         }
       }
       // --- END OF ENRICHMENT LOGIC ---
+
+      if (displayName === 'Land Cover') {
+        const options = await loadLandCoverDescriptions();
+        const lower = options.map(o => o.toLowerCase());
+        geojson.features.forEach(f => {
+          f.properties = { ...(f.properties || {}), LAND_COVER: '' };
+        });
+        if (options.length > 0 && geojson.features.length > 0) {
+          const props = Object.keys(geojson.features[0].properties || {});
+          const candidate = props.filter(p => geojson.features.some(feat => lower.includes(String(feat.properties?.[p] ?? '').toLowerCase())));
+          if (candidate.length > 0) {
+            const field = window.prompt(`Possible land cover fields: ${candidate.join(', ')}. Enter one to map automatically or leave blank:`) || '';
+            if (field && candidate.includes(field)) {
+              geojson.features.forEach(feat => {
+                const val = String(feat.properties?.[field] ?? '').toLowerCase();
+                const idx = lower.indexOf(val);
+                feat.properties!.LAND_COVER = idx >= 0 ? options[idx] : '';
+              });
+            }
+          }
+        }
+      }
 
       onLayerAdded(geojson, displayName);
       onLog(`Loaded ${displayName}`);
