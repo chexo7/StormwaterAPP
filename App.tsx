@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import type { FeatureCollection } from 'geojson';
+import type { FeatureCollection, Feature } from 'geojson';
+import { intersect as turfIntersect } from '@turf/turf';
 import type { LayerData, LogEntry } from './types';
 import Header from './components/Header';
 import FileUpload from './components/FileUpload';
@@ -9,6 +10,7 @@ import InstructionsPage from './components/InstructionsPage';
 import { KNOWN_LAYER_NAMES } from './utils/constants';
 import LayerPreview from './components/LayerPreview';
 import { loadLandCoverList } from './utils/landcover';
+import TaskModal, { TaskItem } from './components/TaskModal';
 
 type UpdateHsgFn = (layerId: string, featureIndex: number, hsg: string) => void;
 type UpdateDaNameFn = (layerId: string, featureIndex: number, name: string) => void;
@@ -24,6 +26,11 @@ const App: React.FC = () => {
   const [editingBackup, setEditingBackup] = useState<{ layerId: string; geojson: FeatureCollection } | null>(null);
   const [landCoverOptions, setLandCoverOptions] = useState<string[]>([]);
   const [previewLayer, setPreviewLayer] = useState<{ data: FeatureCollection; fileName: string; detectedName: string } | null>(null);
+  const [tasks, setTasks] = useState<TaskItem[]>([]);
+  const [showTasks, setShowTasks] = useState(false);
+
+  const requiredLayers = ['Drainage Areas', 'Land Cover', 'LOD', 'Soil Layer from Web Soil Survey'];
+  const computeEnabled = requiredLayers.every(name => layers.some(l => l.name === name));
 
   const addLog = useCallback((message: string, type: 'info' | 'error' = 'info') => {
     setLogs(prev => [...prev, { message, type, source: 'frontend' }]);
@@ -250,9 +257,61 @@ const App: React.FC = () => {
     addLog('Preview canceled');
   }, [addLog]);
 
+  const runIntersection = useCallback((): boolean => {
+    const lod = layers.find(l => l.name === 'LOD');
+    const drainage = layers.find(l => l.name === 'Drainage Areas');
+    const land = layers.find(l => l.name === 'Land Cover');
+    const soil = layers.find(l => l.name === 'Soil Layer from Web Soil Survey');
+    if (!lod || !drainage || !land || !soil) return false;
+
+    const cutters = lod.geojson.features as Feature[];
+    const sources = [drainage, land, soil];
+    const resultFeatures: Feature[] = [];
+
+    for (const src of sources) {
+      let any = false;
+      for (const f of src.geojson.features as Feature[]) {
+        for (const cutter of cutters) {
+          try {
+            const inter = turfIntersect(f as any, cutter as any) as Feature | null;
+            if (inter) {
+              inter.properties = { ...(f.properties || {}) };
+              resultFeatures.push(inter);
+              any = true;
+            }
+          } catch {
+            /* ignore */
+          }
+        }
+      }
+      if (!any) return false;
+    }
+
+    if (resultFeatures.length === 0) return false;
+
+    const newLayer: LayerData = {
+      id: `${Date.now()}-Intersection 1`,
+      name: 'Intersection 1',
+      geojson: { type: 'FeatureCollection', features: resultFeatures },
+      editable: true,
+    };
+    setLayers(prev => [...prev, newLayer]);
+    addLog('Created layer Intersection 1');
+    return true;
+  }, [layers, addLog]);
+
+  const handleCompute = useCallback(() => {
+    setShowTasks(true);
+    setTasks([{ id: 'intersect1', description: 'Intersect LOD with other polygons', status: 'pending' }]);
+    setTimeout(() => {
+      const ok = runIntersection();
+      setTasks([{ id: 'intersect1', description: 'Intersect LOD with other polygons', status: ok ? 'success' : 'error' }]);
+    }, 100);
+  }, [runIntersection]);
+
   return (
     <div className="flex flex-col h-screen bg-gray-900 text-gray-100 font-sans">
-      <Header />
+      <Header computeEnabled={computeEnabled} onCompute={handleCompute} />
       <div className="flex flex-1 overflow-hidden">
         <aside className="w-72 md:w-96 2xl:w-[32rem] bg-gray-800 p-4 md:p-6 flex flex-col space-y-6 overflow-y-auto shadow-lg border-r border-gray-700">
           <FileUpload
@@ -304,6 +363,7 @@ const App: React.FC = () => {
           )}
         </main>
       </div>
+      {showTasks && <TaskModal tasks={tasks} onClose={() => setShowTasks(false)} />}
     </div>
   );
 };
