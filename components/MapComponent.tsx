@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { MapContainer, TileLayer, GeoJSON, useMap, LayersControl, LayerGroup } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet-draw';
@@ -8,6 +8,7 @@ import AddressSearch from './AddressSearch';
 import ReactLeafletGoogleLayer from 'react-leaflet-google-layer';
 import type { LayerData } from '../types';
 import type { GeoJSON as LeafletGeoJSON, Layer } from 'leaflet';
+import { loadLandCoverDescriptions } from '../utils/landcover';
 
 const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY as string | undefined;
 
@@ -15,6 +16,7 @@ interface MapComponentProps {
   layers: LayerData[];
   onUpdateFeatureHsg: (layerId: string, featureIndex: number, hsg: string) => void;
   onUpdateFeatureDaName: (layerId: string, featureIndex: number, name: string) => void;
+  onUpdateFeatureLandCover: (layerId: string, featureIndex: number, value: string) => void;
   zoomToLayer?: { id: string; ts: number } | null;
   editingTarget?: { layerId: string | null; featureIndex: number | null };
   onSelectFeatureForEditing?: (layerId: string, index: number) => void;
@@ -31,6 +33,8 @@ const ManagedGeoJsonLayer = ({
   isLastAdded,
   onUpdateFeatureHsg,
   onUpdateFeatureDaName,
+  onUpdateFeatureLandCover,
+  landCoverOptions,
   layerName,
   isEditingLayer,
   editingFeatureIndex,
@@ -43,6 +47,8 @@ const ManagedGeoJsonLayer = ({
   isLastAdded: boolean;
   onUpdateFeatureHsg: (layerId: string, featureIndex: number, hsg: string) => void;
   onUpdateFeatureDaName: (layerId: string, featureIndex: number, name: string) => void;
+  onUpdateFeatureLandCover: (layerId: string, featureIndex: number, value: string) => void;
+  landCoverOptions: string[];
   layerName: string;
   isEditingLayer: boolean;
   editingFeatureIndex: number | null;
@@ -124,9 +130,9 @@ const ManagedGeoJsonLayer = ({
 
       const propsDiv = L.DomUtil.create('div', '', container);
 
-      // Render all properties except HSG
+      // Render all properties except special editable ones
       Object.entries(feature.properties).forEach(([k, v]) => {
-        if (k === 'HSG') return;
+        if (k === 'HSG' || k === 'LAND_COVER') return;
         const row = L.DomUtil.create('div', '', propsDiv);
         row.innerHTML = `<b>${k}:</b> ${v}`;
       });
@@ -170,6 +176,34 @@ const ManagedGeoJsonLayer = ({
           const idx = data.features.indexOf(feature);
           onUpdateFeatureHsg(id, idx, newVal);
           feature.properties!.HSG = newVal;
+        });
+      }
+
+      if (layerName === 'Land Cover') {
+        const lcRow = L.DomUtil.create('div', '', propsDiv);
+        const lcLabel = L.DomUtil.create('b', '', lcRow);
+        lcLabel.textContent = 'Land Cover: ';
+        const select = L.DomUtil.create('select', '', lcRow) as HTMLSelectElement;
+        select.title = 'Seleccionar Land Cover';
+        select.style.marginLeft = '4px';
+        select.style.border = '2px solid #10b981';
+        select.style.backgroundColor = '#d1fae5';
+        select.style.fontWeight = 'bold';
+        const blank = L.DomUtil.create('option', '', select) as HTMLOptionElement;
+        blank.value = '';
+        blank.textContent = '--';
+        landCoverOptions.forEach(val => {
+          const opt = L.DomUtil.create('option', '', select) as HTMLOptionElement;
+          opt.value = val;
+          opt.textContent = val;
+          if (feature.properties!.LAND_COVER === val) opt.selected = true;
+        });
+        if (!feature.properties!.LAND_COVER) blank.selected = true;
+        select.addEventListener('change', (e) => {
+          const newVal = (e.target as HTMLSelectElement).value;
+          const idx = data.features.indexOf(feature);
+          onUpdateFeatureLandCover(id, idx, newVal);
+          feature.properties!.LAND_COVER = newVal;
         });
       }
 
@@ -412,6 +446,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
   layers,
   onUpdateFeatureHsg,
   onUpdateFeatureDaName,
+  onUpdateFeatureLandCover,
   zoomToLayer,
   editingTarget,
   onSelectFeatureForEditing,
@@ -420,6 +455,11 @@ const MapComponent: React.FC<MapComponentProps> = ({
   onDiscardEdits,
 }) => {
   const layerRefs = useRef<Record<string, L.GeoJSON | null>>({});
+  const [landCoverDescriptions, setLandCoverDescriptions] = useState<string[]>([]);
+
+  useEffect(() => {
+    loadLandCoverDescriptions().then(setLandCoverDescriptions);
+  }, []);
 
   const handleSaveClick = () => {
     if (editingTarget?.layerId) {
@@ -522,6 +562,8 @@ const MapComponent: React.FC<MapComponentProps> = ({
                 isLastAdded={index === layers.length - 1}
                 onUpdateFeatureHsg={onUpdateFeatureHsg}
                 onUpdateFeatureDaName={onUpdateFeatureDaName}
+                onUpdateFeatureLandCover={onUpdateFeatureLandCover}
+                landCoverOptions={landCoverDescriptions}
                 layerName={layer.name}
                 isEditingLayer={editingTarget?.layerId === layer.id}
                 editingFeatureIndex={editingTarget?.layerId === layer.id ? editingTarget.featureIndex : null}
