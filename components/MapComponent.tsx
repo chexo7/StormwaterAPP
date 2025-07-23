@@ -15,6 +15,8 @@ interface MapComponentProps {
   layers: LayerData[];
   onUpdateFeatureHsg: (layerId: string, featureIndex: number, hsg: string) => void;
   onUpdateFeatureDaName: (layerId: string, featureIndex: number, name: string) => void;
+  onUpdateFeatureLandCover: (layerId: string, featureIndex: number, value: string) => void;
+  landCoverOptions: string[];
   zoomToLayer?: { id: string; ts: number } | null;
   editingTarget?: { layerId: string | null; featureIndex: number | null };
   onSelectFeatureForEditing?: (layerId: string, index: number) => void;
@@ -31,6 +33,8 @@ const ManagedGeoJsonLayer = ({
   isLastAdded,
   onUpdateFeatureHsg,
   onUpdateFeatureDaName,
+  onUpdateFeatureLandCover,
+  landCoverOptions,
   layerName,
   isEditingLayer,
   editingFeatureIndex,
@@ -43,6 +47,8 @@ const ManagedGeoJsonLayer = ({
   isLastAdded: boolean;
   onUpdateFeatureHsg: (layerId: string, featureIndex: number, hsg: string) => void;
   onUpdateFeatureDaName: (layerId: string, featureIndex: number, name: string) => void;
+  onUpdateFeatureLandCover: (layerId: string, featureIndex: number, value: string) => void;
+  landCoverOptions: string[];
   layerName: string;
   isEditingLayer: boolean;
   editingFeatureIndex: number | null;
@@ -121,6 +127,9 @@ const ManagedGeoJsonLayer = ({
       container.style.maxHeight = '150px';
       container.style.overflowY = 'auto';
       container.style.fontFamily = 'sans-serif';
+      if (layerName === 'Land Cover') {
+        container.style.minWidth = '320px';
+      }
 
       const propsDiv = L.DomUtil.create('div', '', container);
 
@@ -205,6 +214,36 @@ const ManagedGeoJsonLayer = ({
           const idx = data.features.indexOf(feature);
           onUpdateFeatureDaName(id, idx, newVal);
           feature.properties!.DA_NAME = newVal;
+        });
+      }
+
+      // Editable land cover for Land Cover layers
+      if (layerName === 'Land Cover') {
+        const lcRow = L.DomUtil.create('div', '', propsDiv);
+        const lcLabel = L.DomUtil.create('b', '', lcRow);
+        lcLabel.textContent = 'Land Cover: ';
+        const select = L.DomUtil.create('select', '', lcRow) as HTMLSelectElement;
+        select.title = 'Seleccionar Land Cover';
+        select.style.marginLeft = '4px';
+        select.style.border = '2px solid #f97316';
+        select.style.backgroundColor = '#ffedd5';
+        select.style.fontWeight = 'bold';
+        select.style.width = '280px';
+        const blank = L.DomUtil.create('option', '', select) as HTMLOptionElement;
+        blank.value = '';
+        blank.textContent = '--';
+        landCoverOptions.forEach(val => {
+          const opt = L.DomUtil.create('option', '', select) as HTMLOptionElement;
+          opt.value = val;
+          opt.textContent = val;
+          if (feature.properties!.LAND_COVER === val) opt.selected = true;
+        });
+        if (!feature.properties!.LAND_COVER) blank.selected = true;
+        select.addEventListener('change', (e) => {
+          const newVal = (e.target as HTMLSelectElement).value;
+          const idx = data.features.indexOf(feature);
+          onUpdateFeatureLandCover(id, idx, newVal);
+          feature.properties!.LAND_COVER = newVal;
         });
       }
 
@@ -412,6 +451,8 @@ const MapComponent: React.FC<MapComponentProps> = ({
   layers,
   onUpdateFeatureHsg,
   onUpdateFeatureDaName,
+  onUpdateFeatureLandCover,
+  landCoverOptions,
   zoomToLayer,
   editingTarget,
   onSelectFeatureForEditing,
@@ -522,6 +563,8 @@ const MapComponent: React.FC<MapComponentProps> = ({
                 isLastAdded={index === layers.length - 1}
                 onUpdateFeatureHsg={onUpdateFeatureHsg}
                 onUpdateFeatureDaName={onUpdateFeatureDaName}
+                onUpdateFeatureLandCover={onUpdateFeatureLandCover}
+                landCoverOptions={landCoverOptions}
                 layerName={layer.name}
                 isEditingLayer={editingTarget?.layerId === layer.id}
                 editingFeatureIndex={editingTarget?.layerId === layer.id ? editingTarget.featureIndex : null}
