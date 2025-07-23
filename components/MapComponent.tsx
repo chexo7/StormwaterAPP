@@ -7,7 +7,7 @@ import { area as turfArea, intersect as turfIntersect } from '@turf/turf';
 import AddressSearch from './AddressSearch';
 import ReactLeafletGoogleLayer from 'react-leaflet-google-layer';
 import type { LayerData } from '../types';
-import { loadCnValues } from '../utils/cn';
+import { loadCnValues, DEFAULT_LAND_COVER_OPTIONS } from '../utils/cn';
 import type { GeoJSON as LeafletGeoJSON, Layer } from 'leaflet';
 
 const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY as string | undefined;
@@ -84,12 +84,12 @@ const ManagedGeoJsonLayer = ({
     });
   }, [isEditingLayer, editingFeatureIndex, data]);
 
-  // Refresh geometry when `data` changes so edits or discards show immediately
+  // Refresh geometry when `data` or options change so popups use latest info
   useEffect(() => {
     if (!geoJsonRef.current) return;
     geoJsonRef.current.clearLayers();
     geoJsonRef.current.addData(data as any);
-  }, [data]);
+  }, [data, cnOptions]);
 
   // Allow switching the polygon being edited by clicking any feature
   useEffect(() => {
@@ -465,9 +465,15 @@ const MapComponent: React.FC<MapComponentProps> = ({
   const [cnOptions, setCnOptions] = useState<string[]>([]);
 
   useEffect(() => {
-    loadCnValues().then((vals) => {
-      if (vals) setCnOptions(Object.keys(vals));
-    }).catch(err => console.warn('Failed to load CN values', err));
+    loadCnValues()
+      .then((vals) => {
+        if (vals) setCnOptions(Object.keys(vals));
+        else setCnOptions(DEFAULT_LAND_COVER_OPTIONS);
+      })
+      .catch((err) => {
+        console.warn('Failed to load CN values', err);
+        setCnOptions(DEFAULT_LAND_COVER_OPTIONS);
+      });
   }, []);
 
   const editingLayer = layers.find(l => l.id === editingTarget?.layerId);
