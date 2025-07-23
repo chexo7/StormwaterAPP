@@ -255,6 +255,29 @@ const App: React.FC = () => {
     addLog('Preview canceled');
   }, [addLog]);
 
+
+  const runCompute = useCallback(() => {
+    const lod = layers.find(l => l.name === 'LOD');
+    if (!lod) return;
+
+    const taskId = 'lod-single';
+    setComputeTasks([{ id: taskId, name: 'Verify LOD has one polygon', status: 'pending' }]);
+
+    const features = lod.geojson.features;
+    const valid =
+      features.length === 1 &&
+      features[0].geometry &&
+      (features[0].geometry.type === 'Polygon' || features[0].geometry.type === 'MultiPolygon');
+
+    if (valid) {
+      setComputeTasks([{ id: taskId, name: 'Verify LOD has one polygon', status: 'success' }]);
+      addLog('LOD layer contains a single polygon');
+    } else {
+      setComputeTasks([{ id: taskId, name: 'Verify LOD has one polygon', status: 'error' }]);
+      addLog('LOD layer must contain exactly one polygon', 'error');
+    }
+  }, [layers, addLog]);
+
   const runCompute = useCallback(async () => {
     const lod = layers.find(l => l.name === 'LOD');
     const da = layers.find(l => l.name === 'Drainage Areas');
@@ -307,6 +330,7 @@ const App: React.FC = () => {
       addLog('Intersection failed', 'error');
     }
   }, [layers, setLayers, addLog]);
+
 
   const handleCompute = useCallback(() => {
     runCompute();
