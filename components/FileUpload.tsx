@@ -4,11 +4,12 @@ import JSZip from 'jszip';
 import type { FeatureCollection } from 'geojson';
 import { UploadIcon } from './Icons';
 import { loadHsgMap } from '../utils/soil';
-import { ARCHIVE_NAME_MAP, KNOWN_LAYER_NAMES } from '../utils/constants';
+import { ARCHIVE_NAME_MAP, KNOWN_LAYER_NAMES, LAYER_CATEGORIES } from '../utils/constants';
 
 interface FileUploadProps {
   onLayerAdded: (data: FeatureCollection, fileName: string) => void;
   onLoading: () => void;
+  onPreviewReady?: () => void;
   onError: (message: string) => void;
   onLog: (message: string, type?: 'info' | 'error') => void;
   isLoading: boolean;
@@ -16,10 +17,12 @@ interface FileUploadProps {
   existingLayerNames?: string[];
 }
 
-const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onError, onLog, isLoading, onCreateLayer, existingLayerNames = [] }) => {
+const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onPreviewReady, onError, onLog, isLoading, onCreateLayer, existingLayerNames = [] }) => {
   const [isDragging, setIsDragging] = useState(false);
   const availableNames = KNOWN_LAYER_NAMES.filter(n => !existingLayerNames.includes(n));
   const [newLayerName, setNewLayerName] = useState(availableNames[0] || '');
+  const [pendingLayer, setPendingLayer] = useState<{ geojson: FeatureCollection; suggested: string; file: string } | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string>('');
 
   useEffect(() => {
     if (!availableNames.includes(newLayerName)) {
@@ -101,15 +104,17 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
       }
       // --- END OF ENRICHMENT LOGIC ---
 
-      onLayerAdded(geojson, displayName);
-      onLog(`Loaded ${displayName}`);
+      setPendingLayer({ geojson, suggested: displayName, file: file.name });
+      setSelectedCategory(KNOWN_LAYER_NAMES.includes(displayName) ? displayName : 'Other');
+      onLog(`Ready to add ${displayName}`);
+      onPreviewReady && onPreviewReady();
     } catch (e) {
       console.error("File parsing error:", e);
       const errMsg = "Failed to parse shapefile. Ensure the .zip contains valid .shp and .dbf files, and for WSS zips, that 'soilmu_a_aoi.shp' is present.";
       onError(errMsg);
       onLog(errMsg, 'error');
     }
-  }, [onLayerAdded, onLoading, onError, onLog]);
+  }, [onLayerAdded, onLoading, onPreviewReady, onError, onLog]);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -181,6 +186,44 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
       <p className="mt-4 text-xs text-gray-500">
         Upload one or more shapefiles. WSS Soil Survey zips are handled automatically.
       </p>
+      {pendingLayer && (
+        <div className="mt-4 bg-gray-800 p-4 rounded border border-gray-600 space-y-2">
+          <p className="text-sm text-gray-300">Detected category: <span className="font-semibold text-cyan-400">{pendingLayer.suggested}</span></p>
+          <div className="flex space-x-2 items-center">
+            <select
+              value={selectedCategory}
+              onChange={e => setSelectedCategory(e.target.value)}
+              className="flex-grow bg-gray-700 border border-gray-600 text-gray-200 rounded px-2 py-1"
+            >
+              {LAYER_CATEGORIES.map(cat => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => {
+                if (pendingLayer) {
+                  const finalName = selectedCategory === 'Other'
+                    ? `Other: ${pendingLayer.file.replace(/\.zip$/i, '')}`
+                    : selectedCategory;
+                  onLayerAdded(pendingLayer.geojson, finalName);
+                  setPendingLayer(null);
+                }
+              }}
+              className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded"
+            >
+              Add
+            </button>
+            <button
+              type="button"
+              onClick={() => setPendingLayer(null)}
+              className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
       {onCreateLayer && availableNames.length > 0 && (
         <div className="mt-4 flex space-x-2 items-center">
           <select
