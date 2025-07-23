@@ -4,6 +4,7 @@ import JSZip from 'jszip';
 import type { FeatureCollection } from 'geojson';
 import { UploadIcon } from './Icons';
 import { loadHsgMap } from '../utils/soil';
+import { loadCnValues } from '../utils/cn';
 import { ARCHIVE_NAME_MAP, KNOWN_LAYER_NAMES } from '../utils/constants';
 
 interface FileUploadProps {
@@ -100,6 +101,25 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
         }
       }
       // --- END OF ENRICHMENT LOGIC ---
+
+      if (displayName === 'Land Cover') {
+        const cnValues = await loadCnValues();
+        const descSet = new Set((cnValues ?? []).map(v => v.Description.toLowerCase()));
+        let fieldName = window.prompt('Field name with land cover description (optional):')?.trim();
+        if (fieldName === '') fieldName = undefined;
+        geojson = {
+          ...geojson,
+          features: geojson.features.map(f => {
+            const props = { ...(f.properties || {}) };
+            let val = props.LAND_COVER ?? '';
+            if (fieldName && props[fieldName] && typeof props[fieldName] !== 'object') {
+              const txt = String(props[fieldName]).toLowerCase();
+              if (descSet.has(txt)) val = (cnValues ?? []).find(v => v.Description.toLowerCase() === txt)!.Description;
+            }
+            return { ...f, properties: { ...props, LAND_COVER: val } };
+          })
+        } as FeatureCollection;
+      }
 
       onLayerAdded(geojson, displayName);
       onLog(`Loaded ${displayName}`);
