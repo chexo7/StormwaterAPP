@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { MapContainer, TileLayer, GeoJSON, useMap, LayersControl, LayerGroup } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet-draw';
@@ -7,6 +7,7 @@ import { area as turfArea, intersect as turfIntersect } from '@turf/turf';
 import AddressSearch from './AddressSearch';
 import ReactLeafletGoogleLayer from 'react-leaflet-google-layer';
 import type { LayerData } from '../types';
+import { loadCnValues, DEFAULT_LAND_COVER_OPTIONS } from '../utils/cn';
 import type { GeoJSON as LeafletGeoJSON, Layer } from 'leaflet';
 
 const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY as string | undefined;
@@ -15,6 +16,7 @@ interface MapComponentProps {
   layers: LayerData[];
   onUpdateFeatureHsg: (layerId: string, featureIndex: number, hsg: string) => void;
   onUpdateFeatureDaName: (layerId: string, featureIndex: number, name: string) => void;
+  onUpdateFeatureLandCover: (layerId: string, featureIndex: number, cover: string) => void;
   zoomToLayer?: { id: string; ts: number } | null;
   editingTarget?: { layerId: string | null; featureIndex: number | null };
   onSelectFeatureForEditing?: (layerId: string, index: number) => void;
@@ -31,24 +33,28 @@ const ManagedGeoJsonLayer = ({
   isLastAdded,
   onUpdateFeatureHsg,
   onUpdateFeatureDaName,
+  onUpdateFeatureLandCover,
   layerName,
   isEditingLayer,
   editingFeatureIndex,
   onSelectFeature,
   onUpdateLayerGeojson,
   layerRef,
+  cnOptions,
 }: {
   id: string;
   data: LayerData['geojson'];
   isLastAdded: boolean;
   onUpdateFeatureHsg: (layerId: string, featureIndex: number, hsg: string) => void;
   onUpdateFeatureDaName: (layerId: string, featureIndex: number, name: string) => void;
+  onUpdateFeatureLandCover: (layerId: string, featureIndex: number, cover: string) => void;
   layerName: string;
   isEditingLayer: boolean;
   editingFeatureIndex: number | null;
   onSelectFeature?: (index: number) => void;
   onUpdateLayerGeojson?: (id: string, geojson: LayerData['geojson']) => void;
   layerRef?: (ref: LeafletGeoJSON | null) => void;
+  cnOptions: string[];
 }) => {
   const geoJsonRef = useRef<LeafletGeoJSON | null>(null);
   const map = useMap();
@@ -78,12 +84,12 @@ const ManagedGeoJsonLayer = ({
     });
   }, [isEditingLayer, editingFeatureIndex, data]);
 
-  // Refresh geometry when `data` changes so edits or discards show immediately
+  // Refresh geometry when `data` or options change so popups use latest info
   useEffect(() => {
     if (!geoJsonRef.current) return;
     geoJsonRef.current.clearLayers();
     geoJsonRef.current.addData(data as any);
-  }, [data]);
+  }, [data, cnOptions]);
 
   // Allow switching the polygon being edited by clicking any feature
   useEffect(() => {
@@ -124,9 +130,9 @@ const ManagedGeoJsonLayer = ({
 
       const propsDiv = L.DomUtil.create('div', '', container);
 
-      // Render all properties except HSG
+      // Render all properties except editable ones
       Object.entries(feature.properties).forEach(([k, v]) => {
-        if (k === 'HSG') return;
+        if (k === 'HSG' || k === 'LAND_COVER') return;
         const row = L.DomUtil.create('div', '', propsDiv);
         row.innerHTML = `<b>${k}:</b> ${v}`;
       });
@@ -170,6 +176,35 @@ const ManagedGeoJsonLayer = ({
           const idx = data.features.indexOf(feature);
           onUpdateFeatureHsg(id, idx, newVal);
           feature.properties!.HSG = newVal;
+        });
+      }
+
+      // Editable field for Land Cover
+      if (layerName === 'Land Cover') {
+        const lcRow = L.DomUtil.create('div', '', propsDiv);
+        const lcLabel = L.DomUtil.create('b', '', lcRow);
+        lcLabel.textContent = 'Land Cover: ';
+        const select = L.DomUtil.create('select', '', lcRow) as HTMLSelectElement;
+        select.title = 'Seleccionar land cover';
+        select.style.marginLeft = '4px';
+        select.style.border = '2px solid #16a34a';
+        select.style.backgroundColor = '#dcfce7';
+        select.style.fontWeight = 'bold';
+        const blank = L.DomUtil.create('option', '', select) as HTMLOptionElement;
+        blank.value = '';
+        blank.textContent = '--';
+        cnOptions.forEach(val => {
+          const opt = L.DomUtil.create('option', '', select) as HTMLOptionElement;
+          opt.value = val;
+          opt.textContent = val;
+          if (feature.properties!.LAND_COVER === val) opt.selected = true;
+        });
+        if (!feature.properties!.LAND_COVER) blank.selected = true;
+        select.addEventListener('change', (e) => {
+          const newVal = (e.target as HTMLSelectElement).value;
+          const idx = data.features.indexOf(feature);
+          onUpdateFeatureLandCover(id, idx, newVal);
+          feature.properties!.LAND_COVER = newVal;
         });
       }
 
@@ -270,10 +305,12 @@ const GeomanControls = ({
   active,
   layer,
   onChange,
+  defaultFeatureProps,
 }: {
   active: boolean;
   layer: L.GeoJSON | null;
   onChange?: (geojson: LayerData['geojson']) => void;
+  defaultFeatureProps?: Record<string, any>;
 }) => {
   const map = useMap();
   const editBackup = useRef<LayerData['geojson'] | null>(null);
@@ -379,6 +416,10 @@ const GeomanControls = ({
     };
 
     const handleCreate = (e: any) => {
+      if (defaultFeatureProps) {
+        e.layer.feature = e.layer.feature || { type: 'Feature', properties: {}, geometry: e.layer.toGeoJSON().geometry };
+        e.layer.feature.properties = { ...(e.layer.feature.properties || {}), ...defaultFeatureProps };
+      }
       checkOverlap(e.layer);
       onChange && onChange(layer.toGeoJSON() as LayerData['geojson']);
     };
@@ -404,7 +445,7 @@ const GeomanControls = ({
       map.pm.disableGlobalDragMode();
       map.pm.removeControls();
     };
-  }, [active, layer, map, onChange]);
+  }, [active, layer, map, onChange, defaultFeatureProps]);
   return null;
 };
 
@@ -412,6 +453,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
   layers,
   onUpdateFeatureHsg,
   onUpdateFeatureDaName,
+  onUpdateFeatureLandCover,
   zoomToLayer,
   editingTarget,
   onSelectFeatureForEditing,
@@ -420,6 +462,27 @@ const MapComponent: React.FC<MapComponentProps> = ({
   onDiscardEdits,
 }) => {
   const layerRefs = useRef<Record<string, L.GeoJSON | null>>({});
+  const [cnOptions, setCnOptions] = useState<string[]>([]);
+
+  useEffect(() => {
+    loadCnValues()
+      .then((vals) => {
+        if (vals) setCnOptions(Object.keys(vals));
+        else setCnOptions(DEFAULT_LAND_COVER_OPTIONS);
+      })
+      .catch((err) => {
+        console.warn('Failed to load CN values', err);
+        setCnOptions(DEFAULT_LAND_COVER_OPTIONS);
+      });
+  }, []);
+
+  const editingLayer = layers.find(l => l.id === editingTarget?.layerId);
+  const defaultProps = useMemo(() => {
+    if (!editingLayer) return undefined;
+    if (editingLayer.name === 'Land Cover') return { LAND_COVER: '' };
+    if (editingLayer.name === 'Soil Layer from Web Soil Survey') return { HSG: '' };
+    return undefined;
+  }, [editingLayer]);
 
   const handleSaveClick = () => {
     if (editingTarget?.layerId) {
@@ -442,6 +505,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
             onUpdateLayerGeojson(editingTarget.layerId, geo);
           }
         }}
+        defaultFeatureProps={defaultProps}
       />
       <div className="absolute top-2 left-2 z-[1000] w-64">
         <AddressSearch />
@@ -522,12 +586,14 @@ const MapComponent: React.FC<MapComponentProps> = ({
                 isLastAdded={index === layers.length - 1}
                 onUpdateFeatureHsg={onUpdateFeatureHsg}
                 onUpdateFeatureDaName={onUpdateFeatureDaName}
+                onUpdateFeatureLandCover={onUpdateFeatureLandCover}
                 layerName={layer.name}
                 isEditingLayer={editingTarget?.layerId === layer.id}
                 editingFeatureIndex={editingTarget?.layerId === layer.id ? editingTarget.featureIndex : null}
                 onSelectFeature={idx => onSelectFeatureForEditing && onSelectFeatureForEditing(layer.id, idx)}
                 onUpdateLayerGeojson={onUpdateLayerGeojson}
                 layerRef={ref => { layerRefs.current[layer.id] = ref; }}
+                cnOptions={cnOptions}
              />
           </LayersControl.Overlay>
         ))}
