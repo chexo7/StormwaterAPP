@@ -10,6 +10,7 @@ import { KNOWN_LAYER_NAMES } from './utils/constants';
 
 type UpdateHsgFn = (layerId: string, featureIndex: number, hsg: string) => void;
 type UpdateDaNameFn = (layerId: string, featureIndex: number, name: string) => void;
+type UpdateLandCoverFn = (layerId: string, featureIndex: number, lc: string) => void;
 
 const App: React.FC = () => {
   const [layers, setLayers] = useState<LayerData[]>([]);
@@ -61,6 +62,24 @@ const App: React.FC = () => {
         features: geojson.features.map(f => ({
           ...f,
           properties: { ...(f.properties || {}), DA_NAME: f.properties?.DA_NAME ?? '' }
+        }))
+      } as FeatureCollection;
+    }
+    if (name === 'Land Cover') {
+      geojson = {
+        ...geojson,
+        features: geojson.features.map(f => ({
+          ...f,
+          properties: { ...(f.properties || {}), LAND_COVER: f.properties?.LAND_COVER ?? '' }
+        }))
+      } as FeatureCollection;
+    }
+    if (name === 'Soil Layer from Web Soil Survey') {
+      geojson = {
+        ...geojson,
+        features: geojson.features.map(f => ({
+          ...f,
+          properties: { ...(f.properties || {}), HSG: f.properties?.HSG ?? '' }
         }))
       } as FeatureCollection;
     }
@@ -133,6 +152,18 @@ const App: React.FC = () => {
     addLog(`Set HSG for feature ${featureIndex} in ${layerId} to ${hsg}`);
   }, [addLog]);
 
+  const handleUpdateFeatureLandCover = useCallback<UpdateLandCoverFn>((layerId, featureIndex, lc) => {
+    setLayers(prev => prev.map(layer => {
+      if (layer.id !== layerId) return layer;
+      const features = [...layer.geojson.features];
+      const feature = { ...features[featureIndex] };
+      feature.properties = { ...(feature.properties || {}), LAND_COVER: lc };
+      features[featureIndex] = feature;
+      return { ...layer, geojson: { ...layer.geojson, features } };
+    }));
+    addLog(`Set Land Cover for feature ${featureIndex} in ${layerId} to ${lc}`);
+  }, [addLog]);
+
   const handleUpdateFeatureDaName = useCallback<UpdateDaNameFn>((layerId, featureIndex, nameVal) => {
     setLayers(prev => prev.map(layer => {
       if (layer.id !== layerId) return layer;
@@ -188,7 +219,28 @@ const App: React.FC = () => {
   }, [addLog]);
 
   const handleUpdateLayerGeojson = useCallback((id: string, geojson: FeatureCollection) => {
-    setLayers(prev => prev.map(layer => layer.id === id ? { ...layer, geojson } : layer));
+    setLayers(prev => prev.map(layer => {
+      if (layer.id !== id) return layer;
+      let updated = geojson;
+      if (layer.name === 'Land Cover') {
+        updated = {
+          ...geojson,
+          features: geojson.features.map(f => ({
+            ...f,
+            properties: { ...(f.properties || {}), LAND_COVER: f.properties?.LAND_COVER ?? '' }
+          }))
+        } as FeatureCollection;
+      } else if (layer.name === 'Soil Layer from Web Soil Survey') {
+        updated = {
+          ...geojson,
+          features: geojson.features.map(f => ({
+            ...f,
+            properties: { ...(f.properties || {}), HSG: f.properties?.HSG ?? '' }
+          }))
+        } as FeatureCollection;
+      }
+      return { ...layer, geojson: updated };
+    }));
     addLog(`Updated geometry for layer ${id}`);
   }, [addLog]);
 
@@ -222,6 +274,7 @@ const App: React.FC = () => {
               layers={layers}
               onUpdateFeatureHsg={handleUpdateFeatureHsg}
               onUpdateFeatureDaName={handleUpdateFeatureDaName}
+              onUpdateFeatureLandCover={handleUpdateFeatureLandCover}
               zoomToLayer={zoomToLayer}
               editingTarget={editingTarget}
               onSelectFeatureForEditing={handleSelectFeatureForEditing}
