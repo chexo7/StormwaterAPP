@@ -14,9 +14,10 @@ interface FileUploadProps {
   isLoading: boolean;
   onCreateLayer?: (name: string) => void;
   existingLayerNames?: string[];
+  onPreviewReady?: (data: FeatureCollection, fileName: string, detectedName: string) => void;
 }
 
-const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onError, onLog, isLoading, onCreateLayer, existingLayerNames = [] }) => {
+const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onError, onLog, isLoading, onCreateLayer, existingLayerNames = [], onPreviewReady }) => {
   const [isDragging, setIsDragging] = useState(false);
   const availableNames = KNOWN_LAYER_NAMES.filter(n => !existingLayerNames.includes(n));
   const [newLayerName, setNewLayerName] = useState(availableNames[0] || '');
@@ -101,15 +102,20 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
       }
       // --- END OF ENRICHMENT LOGIC ---
 
-      onLayerAdded(geojson, displayName);
-      onLog(`Loaded ${displayName}`);
+      if (onPreviewReady) {
+        onPreviewReady(geojson, file.name, displayName);
+        onLog(`Preview ready for ${file.name}`);
+      } else {
+        onLayerAdded(geojson, displayName);
+        onLog(`Loaded ${displayName}`);
+      }
     } catch (e) {
       console.error("File parsing error:", e);
       const errMsg = "Failed to parse shapefile. Ensure the .zip contains valid .shp and .dbf files, and for WSS zips, that 'soilmu_a_aoi.shp' is present.";
       onError(errMsg);
       onLog(errMsg, 'error');
     }
-  }, [onLayerAdded, onLoading, onError, onLog]);
+  }, [onLayerAdded, onLoading, onError, onLog, onPreviewReady]);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
