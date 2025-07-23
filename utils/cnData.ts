@@ -1,0 +1,28 @@
+export const CN_VALUES = [
+  { "Description": "Open space (lawns, parks, golf courses) - good condition (>75% grass cover)", "A": 39, "B": 61, "C": 74, "D": 80 },
+  { "Description": "Open space (lawns, parks, golf courses) - fair condition (50-75% grass cover)", "A": 49, "B": 69, "C": 79, "D": 84 },
+  { "Description": "Open space (lawns, parks, golf courses) - poor condition (<50% grass cover)", "A": 68, "B": 79, "C": 86, "D": 89 },
+  { "Description": "Impervious surface", "A": 98, "B": 98, "C": 98, "D": 98 },
+  { "Description": "Streets and roads - paved with curb and storm sewer", "A": 98, "B": 98, "C": 98, "D": 98 },
+  { "Description": "Streets and roads - paved with open ditch", "A": 83, "B": 89, "C": 92, "D": 93 },
+  { "Description": "Streets and roads - gravel", "A": 76, "B": 85, "C": 89, "D": 91 },
+  { "Description": "Streets and roads - dirt", "A": 72, "B": 82, "C": 87, "D": 89 },
+  { "Description": "Commercial", "A": 89, "B": 92, "C": 94, "D": 95 },
+  { "Description": "Industrial", "A": 81, "B": 88, "C": 91, "D": 93 },
+  { "Description": "Residential - 1/8 acre (town houses)", "A": 77, "B": 85, "C": 90, "D": 92 },
+  { "Description": "Residential - 1/4 acre", "A": 61, "B": 75, "C": 83, "D": 87 },
+  { "Description": "Residential - 1/3 acre", "A": 57, "B": 72, "C": 81, "D": 86 },
+  { "Description": "Residential - 1/2 acre", "A": 54, "B": 70, "C": 80, "D": 85 },
+  { "Description": "Residential - 1 acre", "A": 51, "B": 68, "C": 79, "D": 84 },
+  { "Description": "Residential - 2 acre", "A": 46, "B": 65, "C": 77, "D": 82 },
+  { "Description": "Pasture - poor condition", "A": 68, "B": 79, "C": 86, "D": 89 },
+  { "Description": "Pasture - fair condition", "A": 49, "B": 69, "C": 79, "D": 84 },
+  { "Description": "Pasture - good condition", "A": 39, "B": 61, "C": 74, "D": 80 },
+  { "Description": "Meadow", "A": 30, "B": 58, "C": 71, "D": 78 },
+  { "Description": "Brush", "A": 48, "B": 67, "C": 77, "D": 83 },
+  { "Description": "Woods - good condition", "A": 45, "B": 66, "C": 77, "D": 83 },
+  { "Description": "Woods - fair condition", "A": 36, "B": 60, "C": 73, "D": 79 },
+  { "Description": "Farmstead", "A": 59, "B": 74, "C": 82, "D": 86 },
+  { "Description": "Water", "A": 100, "B": 100, "C": 100, "D": 100 }
+];
+export type CnValue = typeof CN_VALUES[number];
