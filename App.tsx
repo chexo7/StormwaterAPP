@@ -27,7 +27,7 @@ const App: React.FC = () => {
   const [previewLayer, setPreviewLayer] = useState<{ data: FeatureCollection; fileName: string; detectedName: string } | null>(null);
   const [computeTasks, setComputeTasks] = useState<ComputeTask[] | null>(null);
 
-  const requiredLayers = ['Drainage Areas', 'Land Cover', 'LOD', 'Soil Layer from Web Soil Survey'];
+  const requiredLayers = ['Drainage Areas', 'LOD'];
   const computeEnabled = requiredLayers.every(name => layers.some(l => l.name === name));
 
   const addLog = useCallback((message: string, type: 'info' | 'error' = 'info') => {
@@ -258,53 +258,55 @@ const App: React.FC = () => {
   const runCompute = useCallback(async () => {
     const lod = layers.find(l => l.name === 'LOD');
     const da = layers.find(l => l.name === 'Drainage Areas');
-    const lc = layers.find(l => l.name === 'Land Cover');
-    const wss = layers.find(l => l.name === 'Soil Layer from Web Soil Survey');
-    if (!lod || !da || !lc || !wss) return;
+    if (!lod || !da) return;
 
-    const taskId = 'intersect1';
-    setComputeTasks([{ id: taskId, name: 'Intersect LOD with other polygons', status: 'pending' }]);
+    const tasks: ComputeTask[] = [
+      { id: 'check-lod', name: 'Verify LOD has a single polygon', status: 'pending' },
+      { id: 'clip-da', name: 'Create "Drainage Area in LOD"', status: 'pending' },
+    ];
+    setComputeTasks(tasks);
+
+    if (lod.geojson.features.length === 1) {
+      tasks[0].status = 'success';
+      setComputeTasks([...tasks]);
+    } else {
+      tasks[0].status = 'error';
+      setComputeTasks([...tasks]);
+      addLog('LOD contains multiple polygons', 'error');
+      return;
+    }
 
     try {
       const { intersect } = await import('@turf/turf');
-      const resultFeatures: any[] = [];
-      let contributed = 0;
-      const lodFeatures = lod.geojson.features;
-      const processLayer = (layer: LayerData) => {
-        let added = 0;
-        layer.geojson.features.forEach(f => {
-          lodFeatures.forEach(lf => {
-            const inter = intersect(f as any, lf as any);
-            if (inter) {
-              added++;
-              resultFeatures.push({ ...inter, properties: { ...(f.properties || {}), source: layer.name } });
-            }
-          });
-        });
-        if (added > 0) contributed++;
-      };
+      const lodFeature = lod.geojson.features[0];
+      const clipped: any[] = [];
+      da.geojson.features.forEach(f => {
+        const res = intersect(f as any, lodFeature as any);
+        if (res) {
+          clipped.push({ ...res, properties: { ...(f.properties || {}) } });
+        }
+      });
 
-      processLayer(da);
-      processLayer(lc);
-      processLayer(wss);
-
-      if (contributed === 3 && resultFeatures.length > 0) {
+      if (clipped.length > 0) {
         const newLayer: LayerData = {
-          id: `${Date.now()}-Intersection 1`,
-          name: 'Intersection 1',
-          geojson: { type: 'FeatureCollection', features: resultFeatures } as FeatureCollection,
+          id: `${Date.now()}-DA-in-LOD`,
+          name: 'Drainage Area in LOD',
+          geojson: { type: 'FeatureCollection', features: clipped } as FeatureCollection,
           editable: false,
         };
         setLayers(prev => [...prev, newLayer]);
-        setComputeTasks([{ id: taskId, name: 'Intersect LOD with other polygons', status: 'success' }]);
-        addLog('Intersection 1 created');
+        tasks[1].status = 'success';
+        setComputeTasks([...tasks]);
+        addLog('Drainage Area in LOD created');
       } else {
-        setComputeTasks([{ id: taskId, name: 'Intersect LOD with other polygons', status: 'error' }]);
-        addLog('Intersection 1 could not be created', 'error');
+        tasks[1].status = 'error';
+        setComputeTasks([...tasks]);
+        addLog('No intersection found between DA and LOD', 'error');
       }
     } catch (err) {
-      setComputeTasks([{ id: taskId, name: 'Intersect LOD with other polygons', status: 'error' }]);
-      addLog('Intersection failed', 'error');
+      tasks[1].status = 'error';
+      setComputeTasks([...tasks]);
+      addLog('Failed to clip Drainage Area', 'error');
     }
   }, [layers, setLayers, addLog]);
 
