@@ -81,6 +81,16 @@ const App: React.FC = () => {
         }))
       } as FeatureCollection;
     }
+
+    if (name === 'Soil Layer from Web Soil Survey') {
+      geojson = {
+        ...geojson,
+        features: geojson.features.map(f => ({
+          ...f,
+          properties: { ...(f.properties || {}), HSG: f.properties?.HSG ?? '-' }
+        }))
+      } as FeatureCollection;
+    }
     setLayers(prevLayers => {
       const existing = prevLayers.find(l => l.name === name);
       if (existing) {
