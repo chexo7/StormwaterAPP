@@ -115,6 +115,10 @@ const App: React.FC = () => {
     addLog('Loading file...');
   }, [addLog]);
 
+  const handlePreviewReady = useCallback(() => {
+    setIsLoading(false);
+  }, []);
+
   const handleError = useCallback((message: string) => {
     setIsLoading(false);
     setError(message);
@@ -239,6 +243,7 @@ const App: React.FC = () => {
           <FileUpload
             onLayerAdded={handleLayerAdded}
             onLoading={handleLoading}
+            onPreviewReady={handlePreviewReady}
             onError={handleError}
             onLog={addLog}
             isLoading={isLoading}
