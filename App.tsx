@@ -10,6 +10,7 @@ import { KNOWN_LAYER_NAMES } from './utils/constants';
 
 type UpdateHsgFn = (layerId: string, featureIndex: number, hsg: string) => void;
 type UpdateDaNameFn = (layerId: string, featureIndex: number, name: string) => void;
+type UpdateLandCoverFn = (layerId: string, featureIndex: number, cover: string) => void;
 
 const App: React.FC = () => {
   const [layers, setLayers] = useState<LayerData[]>([]);
@@ -61,6 +62,24 @@ const App: React.FC = () => {
         features: geojson.features.map(f => ({
           ...f,
           properties: { ...(f.properties || {}), DA_NAME: f.properties?.DA_NAME ?? '' }
+        }))
+      } as FeatureCollection;
+    }
+    if (name === 'Land Cover') {
+      geojson = {
+        ...geojson,
+        features: geojson.features.map(f => ({
+          ...f,
+          properties: { ...(f.properties || {}), LAND_COVER: f.properties?.LAND_COVER ?? '' }
+        }))
+      } as FeatureCollection;
+    }
+    if (name === 'Soil Layer from Web Soil Survey') {
+      geojson = {
+        ...geojson,
+        features: geojson.features.map(f => ({
+          ...f,
+          properties: { ...(f.properties || {}), HSG: f.properties?.HSG ?? '' }
         }))
       } as FeatureCollection;
     }
@@ -131,6 +150,18 @@ const App: React.FC = () => {
       return { ...layer, geojson: { ...layer.geojson, features } };
     }));
     addLog(`Set HSG for feature ${featureIndex} in ${layerId} to ${hsg}`);
+  }, [addLog]);
+
+  const handleUpdateFeatureLandCover = useCallback<UpdateLandCoverFn>((layerId, featureIndex, cover) => {
+    setLayers(prev => prev.map(layer => {
+      if (layer.id !== layerId) return layer;
+      const features = [...layer.geojson.features];
+      const feature = { ...features[featureIndex] };
+      feature.properties = { ...(feature.properties || {}), LAND_COVER: cover };
+      features[featureIndex] = feature;
+      return { ...layer, geojson: { ...layer.geojson, features } };
+    }));
+    addLog(`Set Land Cover for feature ${featureIndex} in ${layerId} to ${cover}`);
   }, [addLog]);
 
   const handleUpdateFeatureDaName = useCallback<UpdateDaNameFn>((layerId, featureIndex, nameVal) => {
@@ -222,6 +253,7 @@ const App: React.FC = () => {
               layers={layers}
               onUpdateFeatureHsg={handleUpdateFeatureHsg}
               onUpdateFeatureDaName={handleUpdateFeatureDaName}
+              onUpdateFeatureLandCover={handleUpdateFeatureLandCover}
               zoomToLayer={zoomToLayer}
               editingTarget={editingTarget}
               onSelectFeatureForEditing={handleSelectFeatureForEditing}
