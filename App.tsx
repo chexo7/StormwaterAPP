@@ -9,6 +9,8 @@ import InstructionsPage from './components/InstructionsPage';
 import { KNOWN_LAYER_NAMES } from './utils/constants';
 import LayerPreview from './components/LayerPreview';
 import { loadLandCoverList } from './utils/landcover';
+import ComputeModal, { ComputeTask } from './components/ComputeModal';
+import { intersectLodWithLayers } from './utils/intersection';
 
 type UpdateHsgFn = (layerId: string, featureIndex: number, hsg: string) => void;
 type UpdateDaNameFn = (layerId: string, featureIndex: number, name: string) => void;
@@ -24,6 +26,8 @@ const App: React.FC = () => {
   const [editingBackup, setEditingBackup] = useState<{ layerId: string; geojson: FeatureCollection } | null>(null);
   const [landCoverOptions, setLandCoverOptions] = useState<string[]>([]);
   const [previewLayer, setPreviewLayer] = useState<{ data: FeatureCollection; fileName: string; detectedName: string } | null>(null);
+  const [computeTasks, setComputeTasks] = useState<ComputeTask[]>([]);
+  const [showComputeModal, setShowComputeModal] = useState(false);
 
   const requiredLayers = ['Drainage Areas', 'Land Cover', 'LOD', 'Soil Layer from Web Soil Survey'];
   const computeEnabled = requiredLayers.every(name => layers.some(l => l.name === name));
@@ -253,9 +257,35 @@ const App: React.FC = () => {
     addLog('Preview canceled');
   }, [addLog]);
 
+  const handleCloseCompute = useCallback(() => {
+    setShowComputeModal(false);
+  }, []);
+
   const handleCompute = useCallback(() => {
-    addLog('Compute clicked');
-  }, [addLog]);
+    setShowComputeModal(true);
+    setComputeTasks([{ id: 't1', name: 'Intersect LOD with other polygons', status: 'running' }]);
+    try {
+      const result = intersectLodWithLayers(layers);
+      if (result && result.features.length > 0) {
+        const newLayer: LayerData = {
+          id: `${Date.now()}-Intersection 1`,
+          name: 'Intersection 1',
+          geojson: result,
+          editable: true,
+        };
+        setLayers(prev => [...prev, newLayer]);
+        setComputeTasks([{ id: 't1', name: 'Intersect LOD with other polygons', status: 'success' }]);
+        addLog('Intersection 1 layer created');
+      } else {
+        setComputeTasks([{ id: 't1', name: 'Intersect LOD with other polygons', status: 'error' }]);
+        addLog('Intersection produced no features', 'error');
+      }
+    } catch (err) {
+      console.error(err);
+      setComputeTasks([{ id: 't1', name: 'Intersect LOD with other polygons', status: 'error' }]);
+      addLog('Failed to create intersection', 'error');
+    }
+  }, [layers, addLog]);
 
   return (
     <div className="flex flex-col h-screen bg-gray-900 text-gray-100 font-sans">
@@ -311,6 +341,9 @@ const App: React.FC = () => {
           )}
         </main>
       </div>
+      {showComputeModal && (
+        <ComputeModal tasks={computeTasks} onClose={handleCloseCompute} />
+      )}
     </div>
   );
 };
