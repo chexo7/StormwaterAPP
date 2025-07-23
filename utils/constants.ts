@@ -10,3 +10,7 @@ export const KNOWN_LAYER_NAMES = [
   'LOD',
   'Soil Layer from Web Soil Survey',
 ];
+
+export const DRAINAGE_AREA_NAME_OPTIONS = Array.from({ length: 26 }, (_, i) =>
+  `DA-${String.fromCharCode(65 + i)}`
+);

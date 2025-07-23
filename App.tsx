@@ -9,6 +9,11 @@ import InstructionsPage from './components/InstructionsPage';
 import { KNOWN_LAYER_NAMES } from './utils/constants';
 
 type UpdateHsgFn = (layerId: string, featureIndex: number, hsg: string) => void;
+type UpdateDaNameFn = (
+  layerId: string,
+  featureIndex: number,
+  name: string
+) => void;
 
 const App: React.FC = () => {
   const [layers, setLayers] = useState<LayerData[]>([]);
@@ -122,6 +127,18 @@ const App: React.FC = () => {
     addLog(`Set HSG for feature ${featureIndex} in ${layerId} to ${hsg}`);
   }, [addLog]);
 
+  const handleUpdateFeatureDaName = useCallback<UpdateDaNameFn>((layerId, featureIndex, name) => {
+    setLayers(prev => prev.map(layer => {
+      if (layer.id !== layerId) return layer;
+      const features = [...layer.geojson.features];
+      const feature = { ...features[featureIndex] };
+      feature.properties = { ...(feature.properties || {}), DA_NAME: name };
+      features[featureIndex] = feature;
+      return { ...layer, geojson: { ...layer.geojson, features } };
+    }));
+    addLog(`Set DA_NAME for feature ${featureIndex} in ${layerId} to ${name}`);
+  }, [addLog]);
+
   const handleDiscardEditing = useCallback(() => {
     if (!editingTarget.layerId) return;
     const id = editingTarget.layerId;
@@ -198,6 +215,7 @@ const App: React.FC = () => {
             <MapComponent
               layers={layers}
               onUpdateFeatureHsg={handleUpdateFeatureHsg}
+              onUpdateFeatureDaName={handleUpdateFeatureDaName}
               zoomToLayer={zoomToLayer}
               editingTarget={editingTarget}
               onSelectFeatureForEditing={handleSelectFeatureForEditing}
