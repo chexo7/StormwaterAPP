@@ -36,10 +36,9 @@ analysis:
 
 * `GET /api/cn-values` returns the contents of `public/data/SCS_CN_VALUES.json`.
 
-  The JSON maps land cover descriptions to arrays of Curve Number records, each
-  providing values for hydrologic soil groups A–D as listed in the TR‐55 tables.
-  Duplicated descriptions therefore hold multiple CN sets to cover different
-  conditions.
+  The JSON maps each land cover description to the corresponding Curve Number
+  values for hydrologic soil groups A–D from the TR‑55 tables. It includes the
+  22 standard land cover categories used in the application.
 
 This allows the frontend to fetch the table of CN values based on soil group.
 
