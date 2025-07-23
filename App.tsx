@@ -8,6 +8,7 @@ import MapComponent from './components/MapComponent';
 import InstructionsPage from './components/InstructionsPage';
 import { KNOWN_LAYER_NAMES } from './utils/constants';
 import LayerPreview from './components/LayerPreview';
+import ComputeModal, { ComputeTask } from './components/ComputeModal';
 import { loadLandCoverList } from './utils/landcover';
 
 type UpdateHsgFn = (layerId: string, featureIndex: number, hsg: string) => void;
@@ -24,6 +25,10 @@ const App: React.FC = () => {
   const [editingBackup, setEditingBackup] = useState<{ layerId: string; geojson: FeatureCollection } | null>(null);
   const [landCoverOptions, setLandCoverOptions] = useState<string[]>([]);
   const [previewLayer, setPreviewLayer] = useState<{ data: FeatureCollection; fileName: string; detectedName: string } | null>(null);
+  const [computeTasks, setComputeTasks] = useState<ComputeTask[] | null>(null);
+
+  const requiredLayers = ['Drainage Areas', 'Land Cover', 'LOD', 'Soil Layer from Web Soil Survey'];
+  const computeEnabled = requiredLayers.every(name => layers.some(l => l.name === name));
 
   const addLog = useCallback((message: string, type: 'info' | 'error' = 'info') => {
     setLogs(prev => [...prev, { message, type, source: 'frontend' }]);
@@ -250,9 +255,66 @@ const App: React.FC = () => {
     addLog('Preview canceled');
   }, [addLog]);
 
+  const runCompute = useCallback(async () => {
+    const lod = layers.find(l => l.name === 'LOD');
+    const da = layers.find(l => l.name === 'Drainage Areas');
+    const lc = layers.find(l => l.name === 'Land Cover');
+    const wss = layers.find(l => l.name === 'Soil Layer from Web Soil Survey');
+    if (!lod || !da || !lc || !wss) return;
+
+    const taskId = 'intersect1';
+    setComputeTasks([{ id: taskId, name: 'Intersect LOD with other polygons', status: 'pending' }]);
+
+    try {
+      const { intersect } = await import('@turf/turf');
+      const resultFeatures: any[] = [];
+      let contributed = 0;
+      const lodFeatures = lod.geojson.features;
+      const processLayer = (layer: LayerData) => {
+        let added = 0;
+        layer.geojson.features.forEach(f => {
+          lodFeatures.forEach(lf => {
+            const inter = intersect(f as any, lf as any);
+            if (inter) {
+              added++;
+              resultFeatures.push({ ...inter, properties: { ...(f.properties || {}), source: layer.name } });
+            }
+          });
+        });
+        if (added > 0) contributed++;
+      };
+
+      processLayer(da);
+      processLayer(lc);
+      processLayer(wss);
+
+      if (contributed === 3 && resultFeatures.length > 0) {
+        const newLayer: LayerData = {
+          id: `${Date.now()}-Intersection 1`,
+          name: 'Intersection 1',
+          geojson: { type: 'FeatureCollection', features: resultFeatures } as FeatureCollection,
+          editable: false,
+        };
+        setLayers(prev => [...prev, newLayer]);
+        setComputeTasks([{ id: taskId, name: 'Intersect LOD with other polygons', status: 'success' }]);
+        addLog('Intersection 1 created');
+      } else {
+        setComputeTasks([{ id: taskId, name: 'Intersect LOD with other polygons', status: 'error' }]);
+        addLog('Intersection 1 could not be created', 'error');
+      }
+    } catch (err) {
+      setComputeTasks([{ id: taskId, name: 'Intersect LOD with other polygons', status: 'error' }]);
+      addLog('Intersection failed', 'error');
+    }
+  }, [layers, setLayers, addLog]);
+
+  const handleCompute = useCallback(() => {
+    runCompute();
+  }, [runCompute]);
+
   return (
     <div className="flex flex-col h-screen bg-gray-900 text-gray-100 font-sans">
-      <Header />
+      <Header computeEnabled={computeEnabled} onCompute={handleCompute} />
       <div className="flex flex-1 overflow-hidden">
         <aside className="w-72 md:w-96 2xl:w-[32rem] bg-gray-800 p-4 md:p-6 flex flex-col space-y-6 overflow-y-auto shadow-lg border-r border-gray-700">
           <FileUpload
@@ -304,6 +366,9 @@ const App: React.FC = () => {
           )}
         </main>
       </div>
+      {computeTasks && (
+        <ComputeModal tasks={computeTasks} onClose={() => setComputeTasks(null)} />
+      )}
     </div>
   );
 };
