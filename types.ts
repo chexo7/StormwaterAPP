@@ -8,6 +8,9 @@ export interface LayerData {
   name: string;
   geojson: FeatureCollection;
   editable: boolean;
+  visible: boolean;
+  fillColor: string;
+  fillOpacity: number;
   category?: string;
 }
 

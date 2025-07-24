@@ -11,6 +11,20 @@ import LayerPreview from './components/LayerPreview';
 import ComputeModal, { ComputeTask } from './components/ComputeModal';
 import { loadLandCoverList, loadCnValues, CnRecord } from './utils/landcover';
 
+const DEFAULT_COLORS: Record<string, string> = {
+  'Drainage Areas': '#67e8f9',
+  'Land Cover': '#22c55e',
+  'LOD': '#ef4444',
+  'Soil Layer from Web Soil Survey': '#8b4513',
+  'Drainage Area in LOD': '#67e8f9',
+  'Land Cover in LOD': '#22c55e',
+  'WSS in LOD': '#8b4513',
+  Overlay: '#f97316',
+};
+const DEFAULT_OPACITY = 0.5;
+
+const getDefaultColor = (name: string) => DEFAULT_COLORS[name] || '#67e8f9';
+
 type UpdateHsgFn = (layerId: string, featureIndex: number, hsg: string) => void;
 type UpdateDaNameFn = (layerId: string, featureIndex: number, name: string) => void;
 type UpdateLandCoverFn = (layerId: string, featureIndex: number, value: string) => void;
@@ -125,6 +139,9 @@ const App: React.FC = () => {
         name,
         geojson,
         editable,
+        visible: true,
+        fillColor: getDefaultColor(name),
+        fillOpacity: DEFAULT_OPACITY,
         category: 'Original',
       };
       addLog(`Loaded layer ${name}${editable ? '' : ' (view only)'}`);
@@ -162,6 +179,9 @@ const App: React.FC = () => {
         name,
         geojson: { type: 'FeatureCollection', features: [] },
         editable: true,
+        visible: true,
+        fillColor: getDefaultColor(name),
+        fillOpacity: DEFAULT_OPACITY,
         category: 'Original',
       };
       addLog(`Created new layer ${name}`);
@@ -257,6 +277,14 @@ const App: React.FC = () => {
     addLog(`Editando pol\u00edgono ${index} en ${layerId}`);
   }, [addLog]);
 
+  const handleToggleLayerVisibility = useCallback((id: string) => {
+    setLayers(prev => prev.map(l => l.id === id ? { ...l, visible: !l.visible } : l));
+  }, []);
+
+  const handleChangeLayerStyle = useCallback((id: string, style: Partial<Pick<LayerData, 'fillColor' | 'fillOpacity'>>) => {
+    setLayers(prev => prev.map(l => l.id === id ? { ...l, ...style } : l));
+  }, []);
+
   const handleUpdateLayerGeojson = useCallback((id: string, geojson: FeatureCollection) => {
     setLayers(prev => prev.map(layer => layer.id === id ? { ...layer, geojson } : layer));
     addLog(`Updated geometry for layer ${id}`);
@@ -348,6 +376,9 @@ const App: React.FC = () => {
             name,
             geojson: { type: 'FeatureCollection', features: clipped } as FeatureCollection,
             editable: true,
+            visible: true,
+            fillColor: getDefaultColor(name),
+            fillOpacity: DEFAULT_OPACITY,
             category: 'Process',
           });
           setComputeTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: 'success' } : t));
@@ -408,6 +439,9 @@ const App: React.FC = () => {
             name: 'Overlay',
             geojson: { type: 'FeatureCollection', features: overlay } as FeatureCollection,
             editable: true,
+            visible: true,
+            fillColor: getDefaultColor('Overlay'),
+            fillOpacity: DEFAULT_OPACITY,
             category: 'Process',
           });
           setComputeTasks(prev => prev.map(t => t.id === 'overlay' ? { ...t, status: 'success' } : t));
@@ -466,6 +500,8 @@ const App: React.FC = () => {
             onRemoveLayer={handleRemoveLayer}
             onZoomToLayer={handleZoomToLayer}
             onToggleEditLayer={handleToggleEditLayer}
+            onToggleVisibility={handleToggleLayerVisibility}
+            onChangeStyle={handleChangeLayerStyle}
             editingLayerId={editingTarget.layerId}
           />
         </aside>
@@ -483,6 +519,7 @@ const App: React.FC = () => {
               onUpdateLayerGeojson={handleUpdateLayerGeojson}
               onSaveEdits={handleSaveEditing}
               onDiscardEdits={handleDiscardEditing}
+              onLayerVisibilityChange={handleToggleLayerVisibility}
             />
           ) : (
             <InstructionsPage />
