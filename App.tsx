@@ -6,7 +6,7 @@ import FileUpload from './components/FileUpload';
 import InfoPanel from './components/InfoPanel';
 import MapComponent from './components/MapComponent';
 import InstructionsPage from './components/InstructionsPage';
-import { KNOWN_LAYER_NAMES } from './utils/constants';
+import { KNOWN_LAYER_NAMES, DEFAULT_LAYER_STYLES } from './utils/constants';
 import LayerPreview from './components/LayerPreview';
 import ComputeModal, { ComputeTask } from './components/ComputeModal';
 import { loadLandCoverList, loadCnValues, CnRecord } from './utils/landcover';
@@ -126,6 +126,7 @@ const App: React.FC = () => {
         geojson,
         editable,
         visible: true,
+        style: DEFAULT_LAYER_STYLES[name] || { fillColor: '#67e8f9', fillOpacity: 0.5 },
         category: 'Original',
       };
       addLog(`Loaded layer ${name}${editable ? '' : ' (view only)'}`);
@@ -164,6 +165,7 @@ const App: React.FC = () => {
         geojson: { type: 'FeatureCollection', features: [] },
         editable: true,
         visible: true,
+        style: DEFAULT_LAYER_STYLES[name] || { fillColor: '#67e8f9', fillOpacity: 0.5 },
         category: 'Original',
       };
       addLog(`Created new layer ${name}`);
@@ -263,6 +265,10 @@ const App: React.FC = () => {
     setLayers(prev => prev.map(l => l.id === id ? { ...l, visible: !l.visible } : l));
   }, []);
 
+  const handleUpdateLayerStyle = useCallback((id: string, style: Partial<LayerData['style']>) => {
+    setLayers(prev => prev.map(l => l.id === id ? { ...l, style: { ...l.style, ...style } } : l));
+  }, []);
+
   const handleUpdateLayerGeojson = useCallback((id: string, geojson: FeatureCollection) => {
     setLayers(prev => prev.map(layer => layer.id === id ? { ...layer, geojson } : layer));
     addLog(`Updated geometry for layer ${id}`);
@@ -355,6 +361,7 @@ const App: React.FC = () => {
             geojson: { type: 'FeatureCollection', features: clipped } as FeatureCollection,
             editable: true,
             visible: true,
+            style: DEFAULT_LAYER_STYLES[name] || { fillColor: '#67e8f9', fillOpacity: 0.5 },
             category: 'Process',
           });
           setComputeTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: 'success' } : t));
@@ -416,6 +423,7 @@ const App: React.FC = () => {
             geojson: { type: 'FeatureCollection', features: overlay } as FeatureCollection,
             editable: true,
             visible: true,
+            style: { fillColor: '#fbbf24', fillOpacity: 0.5 },
             category: 'Process',
           });
           setComputeTasks(prev => prev.map(t => t.id === 'overlay' ? { ...t, status: 'success' } : t));
@@ -475,6 +483,7 @@ const App: React.FC = () => {
             onZoomToLayer={handleZoomToLayer}
             onToggleEditLayer={handleToggleEditLayer}
             onToggleVisibility={handleToggleLayerVisibility}
+            onStyleChange={handleUpdateLayerStyle}
             editingLayerId={editingTarget.layerId}
           />
         </aside>

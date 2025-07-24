@@ -11,10 +11,11 @@ interface InfoPanelProps {
   onZoomToLayer?: (id: string) => void;
   onToggleEditLayer?: (id: string) => void;
   onToggleVisibility?: (id: string) => void;
+  onStyleChange?: (id: string, style: Partial<LayerData['style']>) => void;
   editingLayerId?: string | null;
 }
 
-const InfoPanel: React.FC<InfoPanelProps> = ({ layers, error, logs, onRemoveLayer, onZoomToLayer, onToggleEditLayer, onToggleVisibility, editingLayerId }) => {
+const InfoPanel: React.FC<InfoPanelProps> = ({ layers, error, logs, onRemoveLayer, onZoomToLayer, onToggleEditLayer, onToggleVisibility, onStyleChange, editingLayerId }) => {
 
   const getFeatureTypeSummary = (geojson: LayerData['geojson']) => {
     if (!geojson) return {};
@@ -105,6 +106,27 @@ const InfoPanel: React.FC<InfoPanelProps> = ({ layers, error, logs, onRemoveLaye
                                     ))}
                                   </ul>
                               )}
+                              {onStyleChange && (
+                                <div className="flex items-center space-x-2 pt-1">
+                                  <input
+                                    type="color"
+                                    value={layer.style.fillColor}
+                                    onChange={e => onStyleChange(layer.id, { fillColor: e.target.value })}
+                                    title="Fill color"
+                                  />
+                                  <input
+                                    type="range"
+                                    min="0"
+                                    max="1"
+                                    step="0.05"
+                                    value={layer.style.fillOpacity}
+                                    onChange={e => onStyleChange(layer.id, { fillOpacity: parseFloat(e.target.value) })}
+                                    className="w-24"
+                                    title="Opacity"
+                                  />
+                                  <span className="font-mono text-xs">{Math.round(layer.style.fillOpacity * 100)}%</span>
+                                </div>
+                              )}
                           </div>
                         </div>
                       );
@@ -156,6 +178,27 @@ const InfoPanel: React.FC<InfoPanelProps> = ({ layers, error, logs, onRemoveLaye
                                     <li key={type}>{type}: <span className="font-mono text-cyan-400">{count}</span></li>
                                   ))}
                                 </ul>
+                            )}
+                            {onStyleChange && (
+                              <div className="flex items-center space-x-2 pt-1">
+                                <input
+                                  type="color"
+                                  value={layer.style.fillColor}
+                                  onChange={e => onStyleChange(layer.id, { fillColor: e.target.value })}
+                                  title="Fill color"
+                                />
+                                <input
+                                  type="range"
+                                  min="0"
+                                  max="1"
+                                  step="0.05"
+                                  value={layer.style.fillOpacity}
+                                  onChange={e => onStyleChange(layer.id, { fillOpacity: parseFloat(e.target.value) })}
+                                  className="w-24"
+                                  title="Opacity"
+                                />
+                                <span className="font-mono text-xs">{Math.round(layer.style.fillOpacity * 100)}%</span>
+                              </div>
                             )}
                         </div>
                       </div>

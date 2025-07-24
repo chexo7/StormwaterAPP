@@ -56,6 +56,8 @@ const ManagedGeoJsonLayer = ({
   onSelectFeature?: (index: number) => void;
   onUpdateLayerGeojson?: (id: string, geojson: LayerData['geojson']) => void;
   layerRef?: (ref: LeafletGeoJSON | null) => void;
+  fillColor: string;
+  fillOpacity: number;
 }) => {
   const geoJsonRef = useRef<LeafletGeoJSON | null>(null);
   const map = useMap();
@@ -269,11 +271,11 @@ const ManagedGeoJsonLayer = ({
   };
 
   const geoJsonStyle = {
-    color: '#06b6d4',      // cyan-500
+    color: '#000000',
     weight: 2,
     opacity: 1,
-    fillColor: '#67e8f9',  // cyan-300
-    fillOpacity: 0.5,
+    fillColor,
+    fillOpacity,
   };
 
   // This effect runs only for the last added layer to zoom to its bounds.
@@ -587,21 +589,23 @@ const MapComponent: React.FC<MapComponentProps> = ({
         {/* Overlay Layers */}
         {layers.map((layer, index) => (
           <LayersControl.Overlay checked={layer.visible} name={layer.name} key={layer.id}>
-             <ManagedGeoJsonLayer
-                id={layer.id}
-                data={layer.geojson}
-                isLastAdded={index === layers.length - 1}
-                onUpdateFeatureHsg={onUpdateFeatureHsg}
-                onUpdateFeatureDaName={onUpdateFeatureDaName}
-                onUpdateFeatureLandCover={onUpdateFeatureLandCover}
-                landCoverOptions={landCoverOptions}
-                layerName={layer.name}
-                isEditingLayer={editingTarget?.layerId === layer.id}
-                editingFeatureIndex={editingTarget?.layerId === layer.id ? editingTarget.featureIndex : null}
-                onSelectFeature={idx => onSelectFeatureForEditing && onSelectFeatureForEditing(layer.id, idx)}
-                onUpdateLayerGeojson={onUpdateLayerGeojson}
-                layerRef={ref => { layerRefs.current[layer.id] = ref; }}
-             />
+            <ManagedGeoJsonLayer
+               id={layer.id}
+               data={layer.geojson}
+               isLastAdded={index === layers.length - 1}
+               onUpdateFeatureHsg={onUpdateFeatureHsg}
+               onUpdateFeatureDaName={onUpdateFeatureDaName}
+               onUpdateFeatureLandCover={onUpdateFeatureLandCover}
+               landCoverOptions={landCoverOptions}
+               layerName={layer.name}
+               isEditingLayer={editingTarget?.layerId === layer.id}
+               editingFeatureIndex={editingTarget?.layerId === layer.id ? editingTarget.featureIndex : null}
+               onSelectFeature={idx => onSelectFeatureForEditing && onSelectFeatureForEditing(layer.id, idx)}
+               onUpdateLayerGeojson={onUpdateLayerGeojson}
+               layerRef={ref => { layerRefs.current[layer.id] = ref; }}
+               fillColor={layer.style?.fillColor ?? '#67e8f9'}
+               fillOpacity={layer.style?.fillOpacity ?? 0.5}
+            />
           </LayersControl.Overlay>
         ))}
       </LayersControl>
