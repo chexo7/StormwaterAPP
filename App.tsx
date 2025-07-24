@@ -266,6 +266,7 @@ const App: React.FC = () => {
 
     const tasks: ComputeTask[] = [
       { id: 'check_lod', name: 'Check LOD has one polygon', status: 'pending' },
+      { id: 'check_attrs', name: 'Validate required attributes', status: 'pending' },
       { id: 'clip_da', name: 'Create Drainage Area in LOD', status: 'pending' },
       { id: 'clip_wss', name: 'Create WSS in LOD', status: 'pending' },
       { id: 'clip_lc', name: 'Create Land Cover in LOD', status: 'pending' },
@@ -282,6 +283,31 @@ const App: React.FC = () => {
     }
 
     setComputeTasks(prev => prev.map(t => t.id === 'check_lod' ? { ...t, status: 'success' } : t));
+
+    const missingAttrs: Record<string, string[]> = {};
+    const checkAttr = (layer: typeof da | typeof wss | typeof lc | undefined, layerName: string, attr: string) => {
+      if (!layer) return;
+      const hasMissing = layer.geojson.features.some(f => !f.properties || !f.properties[attr]);
+      if (hasMissing) {
+        if (!missingAttrs[layerName]) missingAttrs[layerName] = [];
+        missingAttrs[layerName].push(attr);
+      }
+    };
+
+    checkAttr(da, 'Drainage Areas', 'DA_NAME');
+    checkAttr(wss, 'Soil Layer from Web Soil Survey', 'HSG');
+    checkAttr(lc, 'Land Cover', 'LAND_COVER');
+
+    if (Object.keys(missingAttrs).length > 0) {
+      const msg = Object.entries(missingAttrs)
+        .map(([layer, attrs]) => `${layer}: ${attrs.join(', ')}`)
+        .join('; ');
+      setComputeTasks(prev => prev.map(t => t.id === 'check_attrs' ? { ...t, status: 'error' } : t));
+      addLog(`Missing required attributes -> ${msg}`, 'error');
+      return;
+    }
+
+    setComputeTasks(prev => prev.map(t => t.id === 'check_attrs' ? { ...t, status: 'success' } : t));
 
     try {
       const { intersect, featureCollection } = await import('@turf/turf');
