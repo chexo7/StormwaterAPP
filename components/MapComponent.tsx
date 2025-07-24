@@ -133,9 +133,9 @@ const ManagedGeoJsonLayer = ({
 
       const propsDiv = L.DomUtil.create('div', '', container);
 
-      // Render all properties except HSG
+      // Render all properties except HSG when editable
       Object.entries(feature.properties).forEach(([k, v]) => {
-        if (k === 'HSG') return;
+        if (k === 'HSG' && layerName === 'Soil Layer from Web Soil Survey') return;
         const row = L.DomUtil.create('div', '', propsDiv);
         row.innerHTML = `<b>${k}:</b> ${v}`;
       });
@@ -158,7 +158,7 @@ const ManagedGeoJsonLayer = ({
       layer.on('pm:update', updateArea);
 
       // Special editable field for HSG
-      if (layerName === 'Soil Layer from Web Soil Survey' || 'HSG' in feature.properties) {
+      if (layerName === 'Soil Layer from Web Soil Survey') {
         feature.properties = { ...(feature.properties || {}), HSG: feature.properties?.HSG ?? '' };
         const hsgRow = L.DomUtil.create('div', '', propsDiv);
         const label = L.DomUtil.create('b', '', hsgRow);
@@ -185,6 +185,9 @@ const ManagedGeoJsonLayer = ({
           onUpdateFeatureHsg(id, idx, newVal);
           feature.properties!.HSG = newVal;
         });
+      } else if ('HSG' in feature.properties) {
+        const hsgRow = L.DomUtil.create('div', '', propsDiv);
+        hsgRow.innerHTML = `<b>HSG:</b> ${feature.properties!.HSG}`;
       }
 
       // Editable name for Drainage Areas
