@@ -27,8 +27,23 @@ const App: React.FC = () => {
   const [previewLayer, setPreviewLayer] = useState<{ data: FeatureCollection; fileName: string; detectedName: string } | null>(null);
   const [computeTasks, setComputeTasks] = useState<ComputeTask[] | null>(null);
 
-  const requiredLayers = ['Drainage Areas', 'LOD'];
-  const computeEnabled = requiredLayers.every(name => layers.some(l => l.name === name));
+  const requiredLayers = [
+    'Drainage Areas',
+    'LOD',
+    'Land Cover',
+    'Soil Layer from Web Soil Survey',
+  ];
+
+  const lodLayer = layers.find(l => l.name === 'LOD');
+  const lodValid = !!(
+    lodLayer &&
+    lodLayer.geojson.features.length === 1 &&
+    lodLayer.geojson.features[0].geometry &&
+    Array.isArray((lodLayer.geojson.features[0].geometry as any).coordinates)
+  );
+
+  const computeEnabled =
+    requiredLayers.every(name => layers.some(l => l.name === name)) && lodValid;
 
   const addLog = useCallback((message: string, type: 'info' | 'error' = 'info') => {
     setLogs(prev => [...prev, { message, type, source: 'frontend' as const }]);
