@@ -110,6 +110,7 @@ const App: React.FC = () => {
         name,
         geojson,
         editable,
+        category: 'Original',
       };
       addLog(`Loaded layer ${name}${editable ? '' : ' (view only)'}`);
       return [...prevLayers, newLayer];
@@ -146,6 +147,7 @@ const App: React.FC = () => {
         name,
         geojson: { type: 'FeatureCollection', features: [] },
         editable: true,
+        category: 'Original',
       };
       addLog(`Created new layer ${name}`);
       return [...prev, newLayer];
@@ -258,65 +260,117 @@ const App: React.FC = () => {
   const runCompute = useCallback(async () => {
     const lod = layers.find(l => l.name === 'LOD');
     const da = layers.find(l => l.name === 'Drainage Areas');
-    if (!lod || !da) return;
+    const wss = layers.find(l => l.name === 'Soil Layer from Web Soil Survey');
+    const lc = layers.find(l => l.name === 'Land Cover');
+    if (!lod) return;
 
     const tasks: ComputeTask[] = [
       { id: 'check_lod', name: 'Check LOD has one polygon', status: 'pending' },
-      { id: 'clip_da', name: 'Create Drainage Area in LOD', status: 'pending' }
+      { id: 'clip_da', name: 'Create Drainage Area in LOD', status: 'pending' },
+      { id: 'clip_wss', name: 'Create WSS in LOD', status: 'pending' },
+      { id: 'clip_lc', name: 'Create Land Cover in LOD', status: 'pending' },
+      { id: 'overlay', name: 'Overlay processed layers', status: 'pending' }
     ];
     setComputeTasks(tasks);
 
+    setLayers(prev => prev.filter(l => l.category !== 'Process'));
+
     if (lod.geojson.features.length !== 1) {
-      setComputeTasks([
-        { id: 'check_lod', name: 'Check LOD has one polygon', status: 'error' },
-        { id: 'clip_da', name: 'Create Drainage Area in LOD', status: 'error' }
-      ]);
+      setComputeTasks(prev => prev.map(t => ({ ...t, status: 'error' })));
       addLog('LOD layer must contain exactly one polygon', 'error');
       return;
     }
 
-    setComputeTasks([
-      { id: 'check_lod', name: 'Check LOD has one polygon', status: 'success' },
-      { id: 'clip_da', name: 'Create Drainage Area in LOD', status: 'pending' }
-    ]);
+    setComputeTasks(prev => prev.map(t => t.id === 'check_lod' ? { ...t, status: 'success' } : t));
 
     try {
-      const { intersect } = await import('@turf/turf');
+      const { intersect, featureCollection } = await import('@turf/turf');
       const lodGeom = lod.geojson.features[0];
-      const clipped: any[] = [];
-      da.geojson.features.forEach(f => {
-        const inter = intersect(f as any, lodGeom as any);
-        if (inter) {
-          inter.properties = { ...(f.properties || {}) };
-          clipped.push(inter);
-        }
-      });
 
-      if (clipped.length > 0) {
-        const newLayer: LayerData = {
-          id: `${Date.now()}-Drainage Area in LOD`,
-          name: 'Drainage Area in LOD',
-          geojson: { type: 'FeatureCollection', features: clipped } as FeatureCollection,
-          editable: true,
-        };
-        setLayers(prev => [...prev, newLayer]);
-        setComputeTasks([
-          { id: 'check_lod', name: 'Check LOD has one polygon', status: 'success' },
-          { id: 'clip_da', name: 'Create Drainage Area in LOD', status: 'success' }
-        ]);
-        addLog('Drainage Area in LOD created');
+      const resultLayers: LayerData[] = [];
+
+      const processLayer = (source: typeof da | typeof wss | typeof lc | undefined, taskId: string, name: string) => {
+        if (!source) return;
+        const clipped: any[] = [];
+        source.geojson.features.forEach(f => {
+          const fc = featureCollection([f as any, lodGeom as any]);
+          const inter = intersect(fc as any);
+          if (inter) {
+            inter.properties = { ...(f.properties || {}) };
+            clipped.push(inter);
+          }
+        });
+        if (clipped.length > 0) {
+          resultLayers.push({
+            id: `${Date.now()}-${name}`,
+            name,
+            geojson: { type: 'FeatureCollection', features: clipped } as FeatureCollection,
+            editable: true,
+            category: 'Process',
+          });
+          setComputeTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: 'success' } : t));
+          addLog(`${name} created`);
+        } else {
+          setComputeTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: 'error' } : t));
+          addLog(`No features for ${name}`, 'error');
+        }
+      };
+
+      processLayer(da, 'clip_da', 'Drainage Area in LOD');
+      processLayer(wss, 'clip_wss', 'WSS in LOD');
+      processLayer(lc, 'clip_lc', 'Land Cover in LOD');
+
+      const daLayer = resultLayers.find(l => l.name === 'Drainage Area in LOD');
+      const wssLayer = resultLayers.find(l => l.name === 'WSS in LOD');
+      const lcLayer = resultLayers.find(l => l.name === 'Land Cover in LOD');
+
+      if (daLayer && wssLayer && lcLayer) {
+        const overlay: any[] = [];
+        daLayer.geojson.features.forEach(daF => {
+          wssLayer.geojson.features.forEach(wssF => {
+            const fc1 = featureCollection([daF as any, wssF as any]);
+            const inter1 = intersect(fc1 as any);
+            if (!inter1) return;
+            lcLayer.geojson.features.forEach(lcF => {
+              const fc2 = featureCollection([inter1 as any, lcF as any]);
+              const inter2 = intersect(fc2 as any);
+              if (inter2) {
+                inter2.properties = {
+                  ...(daF.properties || {}),
+                  ...(wssF.properties || {}),
+                  ...(lcF.properties || {})
+                };
+                overlay.push(inter2);
+              }
+            });
+          });
+        });
+
+        if (overlay.length > 0) {
+          resultLayers.push({
+            id: `${Date.now()}-Overlay`,
+            name: 'Overlay',
+            geojson: { type: 'FeatureCollection', features: overlay } as FeatureCollection,
+            editable: true,
+            category: 'Process',
+          });
+          setComputeTasks(prev => prev.map(t => t.id === 'overlay' ? { ...t, status: 'success' } : t));
+          addLog('Overlay created');
+        } else {
+          setComputeTasks(prev => prev.map(t => t.id === 'overlay' ? { ...t, status: 'error' } : t));
+          addLog('No overlay generated', 'error');
+        }
       } else {
-        setComputeTasks([
-          { id: 'check_lod', name: 'Check LOD has one polygon', status: 'success' },
-          { id: 'clip_da', name: 'Create Drainage Area in LOD', status: 'error' }
-        ]);
-        addLog('No drainage areas intersect the LOD', 'error');
+        setComputeTasks(prev => prev.map(t => t.id === 'overlay' ? { ...t, status: 'error' } : t));
+        addLog('Required processed layers missing for overlay', 'error');
       }
+
+      setLayers(prev => {
+        const withoutProcess = prev.filter(l => l.category !== 'Process');
+        return [...withoutProcess, ...resultLayers];
+      });
     } catch (err) {
-      setComputeTasks([
-        { id: 'check_lod', name: 'Check LOD has one polygon', status: 'success' },
-        { id: 'clip_da', name: 'Create Drainage Area in LOD', status: 'error' }
-      ]);
+      setComputeTasks(prev => prev.map(t => t.status === 'pending' ? { ...t, status: 'error' } : t));
       addLog('Processing failed', 'error');
     }
   }, [layers, setLayers, addLog]);
