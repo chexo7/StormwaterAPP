@@ -281,16 +281,22 @@ const App: React.FC = () => {
     ]);
 
     try {
-      const { intersect } = await import('@turf/turf');
       const lodGeom = lod.geojson.features[0];
       const clipped: any[] = [];
-      da.geojson.features.forEach(f => {
-        const inter = intersect(f as any, lodGeom as any);
-        if (inter) {
-          inter.properties = { ...(f.properties || {}) };
-          clipped.push(inter);
+      for (const f of da.geojson.features) {
+        const res = await fetch('/api/intersect', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ poly1: f, poly2: lodGeom })
+        });
+        if (res.ok) {
+          const inter = await res.json();
+          if (inter) {
+            inter.properties = { ...(f.properties || {}) };
+            clipped.push(inter);
+          }
         }
-      });
+      }
 
       if (clipped.length > 0) {
         const newLayer: LayerData = {
