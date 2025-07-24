@@ -110,6 +110,7 @@ const App: React.FC = () => {
         name,
         geojson,
         editable,
+        group: undefined,
       };
       addLog(`Loaded layer ${name}${editable ? '' : ' (view only)'}`);
       return [...prevLayers, newLayer];
@@ -146,6 +147,7 @@ const App: React.FC = () => {
         name,
         geojson: { type: 'FeatureCollection', features: [] },
         editable: true,
+        group: undefined,
       };
       addLog(`Created new layer ${name}`);
       return [...prev, newLayer];
@@ -256,67 +258,73 @@ const App: React.FC = () => {
   }, [addLog]);
 
   const runCompute = useCallback(async () => {
-    const lod = layers.find(l => l.name === 'LOD');
-    const da = layers.find(l => l.name === 'Drainage Areas');
+    const baseLayers = layers.filter(l => l.group !== 'Process');
+    const lod = baseLayers.find(l => l.name === 'LOD');
+    const da = baseLayers.find(l => l.name === 'Drainage Areas');
+    const wss = baseLayers.find(l => l.name === 'Soil Layer from Web Soil Survey');
+    const lc = baseLayers.find(l => l.name === 'Land Cover');
     if (!lod || !da) return;
 
     const tasks: ComputeTask[] = [
       { id: 'check_lod', name: 'Check LOD has one polygon', status: 'pending' },
-      { id: 'clip_da', name: 'Create Drainage Area in LOD', status: 'pending' }
+      { id: 'clip_da', name: 'Create Drainage Area in LOD', status: 'pending' },
+      { id: 'clip_wss', name: 'Create WSS in LOD', status: 'pending' },
+      { id: 'clip_lc', name: 'Create Land Cover in LOD', status: 'pending' }
     ];
     setComputeTasks(tasks);
 
     if (lod.geojson.features.length !== 1) {
-      setComputeTasks([
-        { id: 'check_lod', name: 'Check LOD has one polygon', status: 'error' },
-        { id: 'clip_da', name: 'Create Drainage Area in LOD', status: 'error' }
-      ]);
+      setComputeTasks(tasks.map(t => ({ ...t, status: 'error' })));
       addLog('LOD layer must contain exactly one polygon', 'error');
       return;
     }
 
-    setComputeTasks([
-      { id: 'check_lod', name: 'Check LOD has one polygon', status: 'success' },
-      { id: 'clip_da', name: 'Create Drainage Area in LOD', status: 'pending' }
-    ]);
+    const tasksMap: Record<string, ComputeTask> = Object.fromEntries(tasks.map(t => [t.id, { ...t, status: t.status }]));
 
     try {
-      const { intersect } = await import('@turf/turf');
+      const { intersect, featureCollection } = await import('@turf/turf');
       const lodGeom = lod.geojson.features[0];
-      const clipped: any[] = [];
-      da.geojson.features.forEach(f => {
-        const inter = intersect(f as any, lodGeom as any);
-        if (inter) {
-          inter.properties = { ...(f.properties || {}) };
-          clipped.push(inter);
-        }
-      });
+      const resultLayers: LayerData[] = [];
 
-      if (clipped.length > 0) {
-        const newLayer: LayerData = {
-          id: `${Date.now()}-Drainage Area in LOD`,
-          name: 'Drainage Area in LOD',
-          geojson: { type: 'FeatureCollection', features: clipped } as FeatureCollection,
-          editable: true,
-        };
-        setLayers(prev => [...prev, newLayer]);
-        setComputeTasks([
-          { id: 'check_lod', name: 'Check LOD has one polygon', status: 'success' },
-          { id: 'clip_da', name: 'Create Drainage Area in LOD', status: 'success' }
-        ]);
-        addLog('Drainage Area in LOD created');
-      } else {
-        setComputeTasks([
-          { id: 'check_lod', name: 'Check LOD has one polygon', status: 'success' },
-          { id: 'clip_da', name: 'Create Drainage Area in LOD', status: 'error' }
-        ]);
-        addLog('No drainage areas intersect the LOD', 'error');
-      }
+      const clip = (src: LayerData | undefined, outName: string, taskId: string) => {
+        const task = tasksMap[taskId];
+        if (!src) {
+          task.status = 'error';
+          return;
+        }
+        const clipped: any[] = [];
+        src.geojson.features.forEach(f => {
+          const fc = featureCollection([f as any, lodGeom as any]);
+          const inter = intersect(fc as any);
+          if (inter) {
+            inter.properties = { ...(f.properties || {}) };
+            clipped.push(inter);
+          }
+        });
+        if (clipped.length > 0) {
+          resultLayers.push({
+            id: `${Date.now()}-${outName}`,
+            name: outName,
+            geojson: { type: 'FeatureCollection', features: clipped } as FeatureCollection,
+            editable: true,
+            group: 'Process',
+          });
+          task.status = 'success';
+          addLog(`${outName} created`);
+        } else {
+          task.status = 'error';
+          addLog(`No features from ${src.name} intersect the LOD`, 'error');
+        }
+      };
+
+      clip(da, 'Drainage Area in LOD', 'clip_da');
+      clip(wss, 'WSS in LOD', 'clip_wss');
+      clip(lc, 'Land Cover in LOD', 'clip_lc');
+
+      setLayers([...baseLayers, ...resultLayers]);
+      setComputeTasks(Object.values(tasksMap));
     } catch (err) {
-      setComputeTasks([
-        { id: 'check_lod', name: 'Check LOD has one polygon', status: 'success' },
-        { id: 'clip_da', name: 'Create Drainage Area in LOD', status: 'error' }
-      ]);
+      setComputeTasks(Object.values(tasksMap).map(t => ({ ...t, status: 'error' })));
       addLog('Processing failed', 'error');
     }
   }, [layers, setLayers, addLog]);
