@@ -8,6 +8,7 @@ export interface LayerData {
   name: string;
   geojson: FeatureCollection;
   editable: boolean;
+  visible: boolean;
   category?: string;
 }
 

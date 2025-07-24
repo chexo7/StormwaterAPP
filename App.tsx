@@ -125,6 +125,7 @@ const App: React.FC = () => {
         name,
         geojson,
         editable,
+        visible: true,
         category: 'Original',
       };
       addLog(`Loaded layer ${name}${editable ? '' : ' (view only)'}`);
@@ -162,6 +163,7 @@ const App: React.FC = () => {
         name,
         geojson: { type: 'FeatureCollection', features: [] },
         editable: true,
+        visible: true,
         category: 'Original',
       };
       addLog(`Created new layer ${name}`);
@@ -257,6 +259,10 @@ const App: React.FC = () => {
     addLog(`Editando pol\u00edgono ${index} en ${layerId}`);
   }, [addLog]);
 
+  const handleToggleLayerVisibility = useCallback((id: string) => {
+    setLayers(prev => prev.map(l => l.id === id ? { ...l, visible: !l.visible } : l));
+  }, []);
+
   const handleUpdateLayerGeojson = useCallback((id: string, geojson: FeatureCollection) => {
     setLayers(prev => prev.map(layer => layer.id === id ? { ...layer, geojson } : layer));
     addLog(`Updated geometry for layer ${id}`);
@@ -348,6 +354,7 @@ const App: React.FC = () => {
             name,
             geojson: { type: 'FeatureCollection', features: clipped } as FeatureCollection,
             editable: true,
+            visible: true,
             category: 'Process',
           });
           setComputeTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: 'success' } : t));
@@ -408,6 +415,7 @@ const App: React.FC = () => {
             name: 'Overlay',
             geojson: { type: 'FeatureCollection', features: overlay } as FeatureCollection,
             editable: true,
+            visible: true,
             category: 'Process',
           });
           setComputeTasks(prev => prev.map(t => t.id === 'overlay' ? { ...t, status: 'success' } : t));
@@ -466,6 +474,7 @@ const App: React.FC = () => {
             onRemoveLayer={handleRemoveLayer}
             onZoomToLayer={handleZoomToLayer}
             onToggleEditLayer={handleToggleEditLayer}
+            onToggleVisibility={handleToggleLayerVisibility}
             editingLayerId={editingTarget.layerId}
           />
         </aside>
@@ -483,6 +492,7 @@ const App: React.FC = () => {
               onUpdateLayerGeojson={handleUpdateLayerGeojson}
               onSaveEdits={handleSaveEditing}
               onDiscardEdits={handleDiscardEditing}
+              onLayerVisibilityChange={handleToggleLayerVisibility}
             />
           ) : (
             <InstructionsPage />
