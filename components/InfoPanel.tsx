@@ -1,6 +1,6 @@
 import React from 'react';
 import type { LayerData, LogEntry } from '../types';
-import { XCircleIcon, InfoIcon, TrashIcon, EditIcon, LockClosedIcon } from './Icons';
+import { XCircleIcon, InfoIcon, TrashIcon, EditIcon, LockClosedIcon, EyeIcon, EyeOffIcon } from './Icons';
 import LogPanel from './LogPanel';
 
 interface InfoPanelProps {
@@ -10,10 +10,11 @@ interface InfoPanelProps {
   onRemoveLayer: (id: string) => void;
   onZoomToLayer?: (id: string) => void;
   onToggleEditLayer?: (id: string) => void;
+  onToggleVisibility?: (id: string) => void;
   editingLayerId?: string | null;
 }
 
-const InfoPanel: React.FC<InfoPanelProps> = ({ layers, error, logs, onRemoveLayer, onZoomToLayer, onToggleEditLayer, editingLayerId }) => {
+const InfoPanel: React.FC<InfoPanelProps> = ({ layers, error, logs, onRemoveLayer, onZoomToLayer, onToggleEditLayer, onToggleVisibility, editingLayerId }) => {
 
   const getFeatureTypeSummary = (geojson: LayerData['geojson']) => {
     if (!geojson) return {};
@@ -81,6 +82,15 @@ const InfoPanel: React.FC<InfoPanelProps> = ({ layers, error, logs, onRemoveLaye
                               ) : (
                                 <LockClosedIcon className="w-5 h-5 text-gray-600" />
                               ))}
+                              {onToggleVisibility && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); onToggleVisibility(layer.id); }}
+                                  className="text-gray-500 hover:text-cyan-400 transition-colors flex-shrink-0"
+                                  aria-label={`Toggle visibility of layer ${layer.name}`}
+                                >
+                                  {layer.visible ? <EyeIcon className="w-5 h-5" /> : <EyeOffIcon className="w-5 h-5" />}
+                                </button>
+                              )}
                               <button onClick={(e) => { e.stopPropagation(); onRemoveLayer(layer.id); }} className="text-gray-500 hover:text-red-400 transition-colors flex-shrink-0" aria-label={`Remove layer ${layer.name}`}>
                                 <TrashIcon className="w-5 h-5" />
                               </button>
@@ -124,6 +134,15 @@ const InfoPanel: React.FC<InfoPanelProps> = ({ layers, error, logs, onRemoveLaye
                             ) : (
                               <LockClosedIcon className="w-5 h-5 text-gray-600" />
                             ))}
+                            {onToggleVisibility && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); onToggleVisibility(layer.id); }}
+                                className="text-gray-500 hover:text-cyan-400 transition-colors flex-shrink-0"
+                                aria-label={`Toggle visibility of layer ${layer.name}`}
+                              >
+                                {layer.visible ? <EyeIcon className="w-5 h-5" /> : <EyeOffIcon className="w-5 h-5" />}
+                              </button>
+                            )}
                             <button onClick={(e) => { e.stopPropagation(); onRemoveLayer(layer.id); }} className="text-gray-500 hover:text-red-400 transition-colors flex-shrink-0" aria-label={`Remove layer ${layer.name}`}>
                               <TrashIcon className="w-5 h-5" />
                             </button>
