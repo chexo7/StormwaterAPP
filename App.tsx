@@ -281,11 +281,12 @@ const App: React.FC = () => {
     ]);
 
     try {
-      const { intersect } = await import('@turf/turf');
+      const { intersect, featureCollection } = await import('@turf/turf');
       const lodGeom = lod.geojson.features[0];
       const clipped: any[] = [];
       da.geojson.features.forEach(f => {
-        const inter = intersect(f as any, lodGeom as any);
+        const fc = featureCollection([f as any, lodGeom as any]);
+        const inter = intersect(fc as any);
         if (inter) {
           inter.properties = { ...(f.properties || {}) };
           clipped.push(inter);
