@@ -282,14 +282,29 @@ const App: React.FC = () => {
 
     try {
       const { intersect } = await import('@turf/turf');
-      const lodGeom = lod.geojson.features[0];
+      const { flattenEach } = await import('@turf/meta');
+
+      // Flatten potential MultiPolygon geometries to ensure pairwise clipping
+      const lodPolys: any[] = [];
+      flattenEach(lod.geojson as any, (feature: any) => {
+        lodPolys.push(feature);
+      });
+
       const clipped: any[] = [];
       da.geojson.features.forEach(f => {
-        const inter = intersect(f as any, lodGeom as any);
-        if (inter) {
-          inter.properties = { ...(f.properties || {}) };
-          clipped.push(inter);
-        }
+        const daPolys: any[] = [];
+        flattenEach(f as any, (geom: any) => {
+          daPolys.push(geom);
+        });
+        daPolys.forEach(daPoly => {
+          lodPolys.forEach(lodPoly => {
+            const inter = intersect(daPoly as any, lodPoly as any);
+            if (inter) {
+              inter.properties = { ...(f.properties || {}) };
+              clipped.push(inter);
+            }
+          });
+        });
       });
 
       if (clipped.length > 0) {
