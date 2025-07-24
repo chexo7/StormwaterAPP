@@ -287,6 +287,7 @@ const App: React.FC = () => {
       const { intersect, featureCollection } = await import('@turf/turf');
       const lodGeom = lod.geojson.features[0];
 
+
       const resultLayers: LayerData[] = [];
 
       const processLayer = (source: typeof da | typeof wss | typeof lc | undefined, taskId: string, name: string) => {
@@ -313,6 +314,7 @@ const App: React.FC = () => {
         } else {
           setComputeTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: 'error' } : t));
           addLog(`No features for ${name}`, 'error');
+
         }
       };
 
