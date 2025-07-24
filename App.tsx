@@ -10,6 +10,7 @@ import { KNOWN_LAYER_NAMES } from './utils/constants';
 import LayerPreview from './components/LayerPreview';
 import ComputeModal, { ComputeTask } from './components/ComputeModal';
 import { loadLandCoverList } from './utils/landcover';
+import { dropZ, flattenPolygons } from './utils/geometry';
 
 type UpdateHsgFn = (layerId: string, featureIndex: number, hsg: string) => void;
 type UpdateDaNameFn = (layerId: string, featureIndex: number, name: string) => void;
@@ -282,14 +283,22 @@ const App: React.FC = () => {
 
     try {
       const { intersect } = await import('@turf/turf');
-      const lodGeom = lod.geojson.features[0];
+      const lodFeature = dropZ(JSON.parse(JSON.stringify(lod.geojson.features[0])));
+      const lodParts = flattenPolygons(lodFeature);
       const clipped: any[] = [];
+
       da.geojson.features.forEach(f => {
-        const inter = intersect(f as any, lodGeom as any);
-        if (inter) {
-          inter.properties = { ...(f.properties || {}) };
-          clipped.push(inter);
-        }
+        const daFeat = dropZ(JSON.parse(JSON.stringify(f)));
+        lodParts.forEach(part => {
+          const inter = intersect(daFeat as any, part as any);
+          if (inter) {
+            const pieces = flattenPolygons(dropZ(inter));
+            pieces.forEach(p => {
+              p.properties = { ...(f.properties || {}) };
+              clipped.push(p);
+            });
+          }
+        });
       });
 
       if (clipped.length > 0) {
