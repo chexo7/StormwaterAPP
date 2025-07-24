@@ -31,7 +31,7 @@ const App: React.FC = () => {
   const computeEnabled = requiredLayers.every(name => layers.some(l => l.name === name));
 
   const addLog = useCallback((message: string, type: 'info' | 'error' = 'info') => {
-    setLogs(prev => [...prev, { message, type, source: 'frontend' }]);
+    setLogs(prev => [...prev, { message, type, source: 'frontend' as const }]);
   }, []);
 
   useEffect(() => {
@@ -45,7 +45,7 @@ const App: React.FC = () => {
         if (res.ok) {
           const data: LogEntry[] = await res.json();
           if (data.length > 0) {
-            setLogs(prev => [...prev, ...data.map(l => ({ ...l, source: 'backend' }))]);
+            setLogs(prev => [...prev, ...data.map(l => ({ ...l, source: 'backend' as const }))]);
           }
         }
       } catch (err) {
