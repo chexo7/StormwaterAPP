@@ -23,6 +23,7 @@ interface MapComponentProps {
   onUpdateLayerGeojson?: (id: string, geojson: LayerData['geojson']) => void;
   onSaveEdits?: () => void;
   onDiscardEdits?: () => void;
+  onLayerVisibilityChange?: (id: string, visible: boolean) => void;
 }
 
 // This component renders a single GeoJSON layer and handles the auto-zooming effect.
@@ -41,6 +42,8 @@ const ManagedGeoJsonLayer = ({
   onSelectFeature,
   onUpdateLayerGeojson,
   layerRef,
+  fillColor,
+  fillOpacity,
 }: {
   id: string;
   data: LayerData['geojson'];
@@ -55,6 +58,8 @@ const ManagedGeoJsonLayer = ({
   onSelectFeature?: (index: number) => void;
   onUpdateLayerGeojson?: (id: string, geojson: LayerData['geojson']) => void;
   layerRef?: (ref: LeafletGeoJSON | null) => void;
+  fillColor: string;
+  fillOpacity: number;
 }) => {
   const geoJsonRef = useRef<LeafletGeoJSON | null>(null);
   const map = useMap();
@@ -268,11 +273,11 @@ const ManagedGeoJsonLayer = ({
   };
 
   const geoJsonStyle = {
-    color: '#06b6d4',      // cyan-500
+    color: '#000000',
     weight: 2,
     opacity: 1,
-    fillColor: '#67e8f9',  // cyan-300
-    fillOpacity: 0.5,
+    fillColor,
+    fillOpacity,
   };
 
   // This effect runs only for the last added layer to zoom to its bounds.
@@ -467,8 +472,29 @@ const MapComponent: React.FC<MapComponentProps> = ({
   onUpdateLayerGeojson,
   onSaveEdits,
   onDiscardEdits,
+  onLayerVisibilityChange,
 }) => {
   const layerRefs = useRef<Record<string, L.GeoJSON | null>>({});
+  const mapRef = useRef<L.Map | null>(null);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !onLayerVisibilityChange) return;
+    const handleAdd = (e: any) => {
+      const layer = layers.find(l => l.name === e.name);
+      if (layer) onLayerVisibilityChange(layer.id, true);
+    };
+    const handleRemove = (e: any) => {
+      const layer = layers.find(l => l.name === e.name);
+      if (layer) onLayerVisibilityChange(layer.id, false);
+    };
+    map.on('overlayadd', handleAdd);
+    map.on('overlayremove', handleRemove);
+    return () => {
+      map.off('overlayadd', handleAdd);
+      map.off('overlayremove', handleRemove);
+    };
+  }, [layers, onLayerVisibilityChange]);
 
   const handleSaveClick = () => {
     if (editingTarget?.layerId) {
@@ -481,7 +507,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
     if (onSaveEdits) onSaveEdits();
   };
   return (
-    <MapContainer center={[20, 0]} zoom={2} scrollWheelZoom={true} className="h-full w-full relative">
+    <MapContainer center={[20, 0]} zoom={2} scrollWheelZoom={true} className="h-full w-full relative" whenCreated={m => { mapRef.current = m; }}>
       <ZoomToLayerHandler layers={layers} target={zoomToLayer ?? null} />
       <GeomanControls
         active={!!editingTarget?.layerId}
@@ -518,7 +544,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
       )}
       <LayersControl position="topright">
         {/* Base Layers */}
-        <LayersControl.BaseLayer checked name="Dark">
+        <LayersControl.BaseLayer name="Dark">
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
             url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
@@ -545,7 +571,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
         <LayersControl.BaseLayer name="Google Terrain">
           <ReactLeafletGoogleLayer apiKey={googleMapsApiKey} type="terrain" />
         </LayersControl.BaseLayer>
-        <LayersControl.BaseLayer name="Google Hybrid">
+        <LayersControl.BaseLayer checked name="Google Hybrid">
           <ReactLeafletGoogleLayer apiKey={googleMapsApiKey} type="hybrid" />
         </LayersControl.BaseLayer>
         <LayersControl.BaseLayer name="Hybrid">
@@ -564,10 +590,12 @@ const MapComponent: React.FC<MapComponentProps> = ({
 
         {/* Overlay Layers */}
         {layers.map((layer, index) => (
-          <LayersControl.Overlay checked name={layer.name} key={layer.id}>
+          <LayersControl.Overlay checked={layer.visible} name={layer.name} key={layer.id}>
              <ManagedGeoJsonLayer
                 id={layer.id}
                 data={layer.geojson}
+                fillColor={layer.fillColor}
+                fillOpacity={layer.fillOpacity}
                 isLastAdded={index === layers.length - 1}
                 onUpdateFeatureHsg={onUpdateFeatureHsg}
                 onUpdateFeatureDaName={onUpdateFeatureDaName}
