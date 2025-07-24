@@ -9,7 +9,7 @@ import InstructionsPage from './components/InstructionsPage';
 import { KNOWN_LAYER_NAMES } from './utils/constants';
 import LayerPreview from './components/LayerPreview';
 import ComputeModal, { ComputeTask } from './components/ComputeModal';
-import { loadLandCoverList } from './utils/landcover';
+import { loadLandCoverList, loadCnTable, lookupCurveNumber } from './utils/landcover';
 
 type UpdateHsgFn = (layerId: string, featureIndex: number, hsg: string) => void;
 type UpdateDaNameFn = (layerId: string, featureIndex: number, name: string) => void;
@@ -311,6 +311,7 @@ const App: React.FC = () => {
 
     try {
       const { intersect, featureCollection } = await import('@turf/turf');
+      const cnTable = await loadCnTable();
       const lodGeom = lod.geojson.features[0];
 
 
@@ -368,6 +369,12 @@ const App: React.FC = () => {
                   ...(wssF.properties || {}),
                   ...(lcF.properties || {})
                 };
+                const lcName = inter2.properties.LAND_COVER as string;
+                const hsgVal = inter2.properties.HSG as string;
+                const cnVal = lookupCurveNumber(cnTable, lcName, hsgVal);
+                if (cnVal !== null) {
+                  inter2.properties.CN = cnVal;
+                }
                 overlay.push(inter2);
               }
             });
