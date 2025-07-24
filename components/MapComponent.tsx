@@ -158,7 +158,7 @@ const ManagedGeoJsonLayer = ({
       layer.on('pm:update', updateArea);
 
       // Special editable field for HSG
-      if (layerName === 'Soil Layer from Web Soil Survey' || 'HSG' in feature.properties) {
+      if (layerName === 'Soil Layer from Web Soil Survey') {
         feature.properties = { ...(feature.properties || {}), HSG: feature.properties?.HSG ?? '' };
         const hsgRow = L.DomUtil.create('div', '', propsDiv);
         const label = L.DomUtil.create('b', '', hsgRow);
