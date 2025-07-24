@@ -9,7 +9,7 @@ import InstructionsPage from './components/InstructionsPage';
 import { KNOWN_LAYER_NAMES } from './utils/constants';
 import LayerPreview from './components/LayerPreview';
 import ComputeModal, { ComputeTask } from './components/ComputeModal';
-import { loadLandCoverList } from './utils/landcover';
+import { loadLandCoverList, loadCnValues, CnRecord } from './utils/landcover';
 
 type UpdateHsgFn = (layerId: string, featureIndex: number, hsg: string) => void;
 type UpdateDaNameFn = (layerId: string, featureIndex: number, name: string) => void;
@@ -372,6 +372,19 @@ const App: React.FC = () => {
               }
             });
           });
+        });
+
+        // Load CN values and assign CN attribute
+        const cnRecords = await loadCnValues();
+        const cnMap = new Map(cnRecords.map(r => [r.LandCover, r]));
+        overlay.forEach(f => {
+          const lcName = (f.properties as any)?.LAND_COVER;
+          const hsg = (f.properties as any)?.HSG;
+          const rec = lcName ? cnMap.get(lcName) : undefined;
+          const cnValue = rec ? (rec as any)[hsg as keyof CnRecord] : undefined;
+          if (cnValue !== undefined) {
+            f.properties = { ...(f.properties || {}), CN: cnValue };
+          }
         });
 
         if (overlay.length > 0) {
