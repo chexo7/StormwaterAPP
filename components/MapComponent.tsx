@@ -1,10 +1,13 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { MapContainer, TileLayer, GeoJSON, useMap, LayersControl, LayerGroup } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet-draw';
 import '@geoman-io/leaflet-geoman-free';
 import { area as turfArea, intersect as turfIntersect } from '@turf/turf';
 import AddressSearch from './AddressSearch';
+import PdfOverlay from './PdfOverlay';
+import * as pdfjsLib from 'pdfjs-dist';
+import workerSrc from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import ReactLeafletGoogleLayer from 'react-leaflet-google-layer';
 import type { LayerData } from '../types';
 import type { GeoJSON as LeafletGeoJSON, Layer } from 'leaflet';
@@ -476,6 +479,12 @@ const MapComponent: React.FC<MapComponentProps> = ({
 }) => {
   const layerRefs = useRef<Record<string, L.GeoJSON | null>>({});
   const mapRef = useRef<L.Map | null>(null);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [pdfPoints, setPdfPoints] = useState<{ img: { x: number; y: number }; latlng: L.LatLng }[]>([]);
+
+  useEffect(() => {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
+  }, []);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -506,6 +515,29 @@ const MapComponent: React.FC<MapComponentProps> = ({
     }
     if (onSaveEdits) onSaveEdits();
   };
+
+  const handlePdfUpload = async (file: File) => {
+    const buffer = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+    const page = await pdf.getPage(1);
+    const viewport = page.getViewport({ scale: 2 });
+    const canvas = document.createElement('canvas');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      await page.render({ canvasContext: ctx, viewport }).promise;
+      setPdfUrl(canvas.toDataURL());
+      setPdfPoints([]);
+    }
+  };
+
+  const handleOverlayClick = (x: number, y: number, latlng: L.LatLng) => {
+    if (pdfPoints.length >= 2) return;
+    const lat = parseFloat(prompt('Latitud:', String(latlng.lat)) || '0');
+    const lng = parseFloat(prompt('Longitud:', String(latlng.lng)) || '0');
+    setPdfPoints(prev => [...prev, { img: { x, y }, latlng: L.latLng(lat, lng) }]);
+  };
   return (
     <MapContainer center={[20, 0]} zoom={2} scrollWheelZoom={true} className="h-full w-full relative" whenCreated={m => { mapRef.current = m; }}>
       <ZoomToLayerHandler layers={layers} target={zoomToLayer ?? null} />
@@ -518,8 +550,22 @@ const MapComponent: React.FC<MapComponentProps> = ({
           }
         }}
       />
+      {pdfUrl && (
+        <PdfOverlay
+          url={pdfUrl}
+          points={pdfPoints.length === 2 ? [pdfPoints[0], pdfPoints[1]] : null}
+          onClick={pdfPoints.length < 2 ? handleOverlayClick : undefined}
+        />
+      )}
       <div className="absolute top-2 left-2 z-[1000] w-64">
         <AddressSearch />
+      </div>
+      <div className="absolute top-20 left-2 z-[1000] bg-gray-800/80 p-1 rounded">
+        <input type="file" accept=".pdf" onChange={e => {
+          const f = e.target.files?.[0];
+          if (f) handlePdfUpload(f);
+          e.target.value = '';
+        }} />
       </div>
       {editingTarget?.layerId && editingTarget.featureIndex === null && (
         <div className="absolute top-2 left-1/2 -translate-x-1/2 z-[1000] bg-gray-800/90 text-white px-3 py-1 rounded shadow">
