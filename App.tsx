@@ -457,7 +457,13 @@ const App: React.FC = () => {
 
       setLayers(prev => {
         const withoutProcess = prev.filter(l => l.category !== 'Process');
-        return [...withoutProcess, ...resultLayers];
+        let finalLayers = [...withoutProcess, ...resultLayers];
+        if (finalLayers.some(l => l.name === 'Overlay')) {
+          finalLayers = finalLayers.map(l =>
+            l.name === 'Overlay' ? { ...l, visible: true } : { ...l, visible: false }
+          );
+        }
+        return finalLayers;
       });
     } catch (err) {
       setComputeTasks(prev => prev.map(t => t.status === 'pending' ? { ...t, status: 'error' } : t));
