@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import type { FeatureCollection } from 'geojson';
-import type { LayerData, LogEntry } from './types';
+import type { LayerData, LogEntry, PdfOverlayConfig } from './types';
 import Header from './components/Header';
 import FileUpload from './components/FileUpload';
 import InfoPanel from './components/InfoPanel';
@@ -10,6 +10,7 @@ import { KNOWN_LAYER_NAMES } from './utils/constants';
 import LayerPreview from './components/LayerPreview';
 import ComputeModal, { ComputeTask } from './components/ComputeModal';
 import ExportModal from './components/ExportModal';
+import PdfUploader from './components/PdfUploader';
 import { loadLandCoverList, loadCnValues, CnRecord } from './utils/landcover';
 
 const DEFAULT_COLORS: Record<string, string> = {
@@ -45,6 +46,7 @@ const App: React.FC = () => {
   const [projectName, setProjectName] = useState<string>('');
   const [projectVersion, setProjectVersion] = useState<string>('V1');
   const [exportModalOpen, setExportModalOpen] = useState<boolean>(false);
+  const [pdfOverlay, setPdfOverlay] = useState<PdfOverlayConfig | null>(null);
 
   const requiredLayers = [
     'Drainage Areas',
@@ -561,6 +563,7 @@ const App: React.FC = () => {
             existingLayerNames={layers.map(l => l.name)}
             onPreviewReady={handlePreviewReady}
           />
+          <PdfUploader onAdd={setPdfOverlay} />
           {previewLayer && (
             <LayerPreview
               data={previewLayer.data}
@@ -597,6 +600,7 @@ const App: React.FC = () => {
               onSaveEdits={handleSaveEditing}
               onDiscardEdits={handleDiscardEditing}
               onLayerVisibilityChange={handleToggleLayerVisibility}
+              pdfOverlay={pdfOverlay}
             />
           ) : (
             <InstructionsPage />
