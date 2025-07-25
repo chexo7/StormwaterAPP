@@ -3,6 +3,8 @@ import { MapContainer, TileLayer, GeoJSON, useMap, LayersControl, LayerGroup } f
 import L from 'leaflet';
 import 'leaflet-draw';
 import '@geoman-io/leaflet-geoman-free';
+import RotatedImageOverlay from './RotatedImageOverlay';
+import '../utils/leaflet.imageoverlay.rotated';
 import { area as turfArea, intersect as turfIntersect } from '@turf/turf';
 import AddressSearch from './AddressSearch';
 import ReactLeafletGoogleLayer from 'react-leaflet-google-layer';
@@ -16,6 +18,7 @@ interface MapComponentProps {
   onUpdateFeatureHsg: (layerId: string, featureIndex: number, hsg: string) => void;
   onUpdateFeatureDaName: (layerId: string, featureIndex: number, name: string) => void;
   onUpdateFeatureLandCover: (layerId: string, featureIndex: number, value: string) => void;
+  pdfOverlay?: { src: string; topLeft: [number, number]; topRight: [number, number]; bottomLeft: [number, number] } | null;
   landCoverOptions: string[];
   zoomToLayer?: { id: string; ts: number } | null;
   editingTarget?: { layerId: string | null; featureIndex: number | null };
@@ -463,6 +466,7 @@ const GeomanControls = ({
 const MapComponent: React.FC<MapComponentProps> = ({
   layers,
   onUpdateFeatureHsg,
+  pdfOverlay,
   onUpdateFeatureDaName,
   onUpdateFeatureLandCover,
   landCoverOptions,
@@ -507,7 +511,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
     if (onSaveEdits) onSaveEdits();
   };
   return (
-    <MapContainer center={[20, 0]} zoom={2} scrollWheelZoom={true} className="h-full w-full relative" whenCreated={m => { mapRef.current = m; }}>
+    <MapContainer center={[20, 0]} zoom={2} scrollWheelZoom={true} className="h-full w-full relative" ref={mapRef} whenReady={() => { const m = mapRef.current; if (m && !m.getPane("pdfPane")) { const p = m.createPane("pdfPane"); p.style.zIndex="350"; } }}>
       <ZoomToLayerHandler layers={layers} target={zoomToLayer ?? null} />
       <GeomanControls
         active={!!editingTarget?.layerId}
@@ -588,6 +592,17 @@ const MapComponent: React.FC<MapComponentProps> = ({
             </LayerGroup>
         </LayersControl.BaseLayer>
 
+        {pdfOverlay && (
+          <LayersControl.Overlay checked name="PDF Background">
+            <RotatedImageOverlay
+              url={pdfOverlay.src}
+              topleft={pdfOverlay.topLeft}
+              topright={pdfOverlay.topRight}
+              bottomleft={pdfOverlay.bottomLeft}
+              pane="pdfPane"
+            />
+          </LayersControl.Overlay>
+        )}
         {/* Overlay Layers */}
         {layers.map((layer, index) => (
           <LayersControl.Overlay checked={layer.visible} name={layer.name} key={layer.id}>

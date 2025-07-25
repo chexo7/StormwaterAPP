@@ -10,6 +10,7 @@ import { KNOWN_LAYER_NAMES } from './utils/constants';
 import LayerPreview from './components/LayerPreview';
 import ComputeModal, { ComputeTask } from './components/ComputeModal';
 import ExportModal from './components/ExportModal';
+import PdfOverlayUpload, { PdfOverlayData } from "./components/PdfOverlayUpload";
 import { loadLandCoverList, loadCnValues, CnRecord } from './utils/landcover';
 
 const DEFAULT_COLORS: Record<string, string> = {
@@ -45,6 +46,7 @@ const App: React.FC = () => {
   const [projectName, setProjectName] = useState<string>('');
   const [projectVersion, setProjectVersion] = useState<string>('V1');
   const [exportModalOpen, setExportModalOpen] = useState<boolean>(false);
+  const [pdfOverlay, setPdfOverlay] = useState<PdfOverlayData | null>(null);
 
   const requiredLayers = [
     'Drainage Areas',
@@ -314,6 +316,11 @@ const App: React.FC = () => {
     setPreviewLayer(null);
     addLog('Preview canceled');
   }, [addLog]);
+  const handlePdfOverlayReady = useCallback((data: PdfOverlayData) => {
+    setPdfOverlay(data);
+    addLog("PDF overlay added");
+  }, [addLog]);
+
 
   const runCompute = useCallback(async () => {
     setComputeSucceeded(false);
@@ -561,6 +568,7 @@ const App: React.FC = () => {
             existingLayerNames={layers.map(l => l.name)}
             onPreviewReady={handlePreviewReady}
           />
+          <PdfOverlayUpload onOverlayReady={handlePdfOverlayReady} />
           {previewLayer && (
             <LayerPreview
               data={previewLayer.data}
@@ -597,6 +605,7 @@ const App: React.FC = () => {
               onSaveEdits={handleSaveEditing}
               onDiscardEdits={handleDiscardEditing}
               onLayerVisibilityChange={handleToggleLayerVisibility}
+              pdfOverlay={pdfOverlay}
             />
           ) : (
             <InstructionsPage />
