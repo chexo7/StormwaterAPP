@@ -52,7 +52,7 @@ const Header: React.FC<HeaderProps> = ({
               : 'bg-gray-600 text-gray-300 cursor-not-allowed')
           }
         >
-          Export Results to HydroCAD
+          Export
         </button>
       </div>
       <div className="absolute right-4 flex items-center space-x-2">
@@ -68,9 +68,9 @@ const Header: React.FC<HeaderProps> = ({
           onChange={e => onProjectVersionChange(e.target.value)}
           className="px-2 py-1 rounded text-black"
         >
-          <option value="V1">V1</option>
-          <option value="V2">V2</option>
-          <option value="V3">V3</option>
+          {Array.from({ length: 10 }, (_, i) => (
+            <option key={i + 1} value={`V${i + 1}`}>{`V${i + 1}`}</option>
+          ))}
         </select>
       </div>
     </header>

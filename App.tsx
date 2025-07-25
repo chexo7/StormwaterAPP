@@ -9,6 +9,7 @@ import InstructionsPage from './components/InstructionsPage';
 import { KNOWN_LAYER_NAMES } from './utils/constants';
 import LayerPreview from './components/LayerPreview';
 import ComputeModal, { ComputeTask } from './components/ComputeModal';
+import ExportModal from './components/ExportModal';
 import { loadLandCoverList, loadCnValues, CnRecord } from './utils/landcover';
 
 const DEFAULT_COLORS: Record<string, string> = {
@@ -43,6 +44,7 @@ const App: React.FC = () => {
   const [computeSucceeded, setComputeSucceeded] = useState<boolean>(false);
   const [projectName, setProjectName] = useState<string>('');
   const [projectVersion, setProjectVersion] = useState<string>('V1');
+  const [exportModalOpen, setExportModalOpen] = useState<boolean>(false);
 
   const requiredLayers = [
     'Drainage Areas',
@@ -496,14 +498,17 @@ const App: React.FC = () => {
       return;
     }
     import('@turf/turf').then(({ area }) => {
-      const nodes: Record<string, { area: number; cn: number }[]> = {};
+      const nodes: Record<string, { area: number; cn: number; desc?: string }[]> = {};
       overlayLayer.geojson.features.forEach(f => {
         const da = (f.properties as any)?.DA_NAME || 'DA';
         const cn = (f.properties as any)?.CN;
+        const lc = (f.properties as any)?.LAND_COVER;
+        const hsg = (f.properties as any)?.HSG;
         if (cn === undefined) return;
         const a = area(f as any) * 10.7639; // square feet
         if (!nodes[da]) nodes[da] = [];
-        nodes[da].push({ area: a, cn });
+        const desc = lc ? `${lc}${hsg ? ", HSG " + hsg : ''}` : undefined;
+        nodes[da].push({ area: a, cn, desc });
       });
 
       let content = `[HydroCAD]\nFileUnits=English\nCalcUnits=English\nInputUnits=English-LowFlow\nReportUnits=English-LowFlow\nLargeAreas=False\nSource=HydroCAD\u00ae 10.20-6a  s/n 07447  \u00a9 2024 HydroCAD Software Solutions LLC\nName=${projectName || 'Project'}\nPath=\nView=-5.46349942062574 0 15.4634994206257 10\nGridShow=True\nGridSnap=True\nTimeSpan=0 86400\nTimeInc=36\nMaxGraph=0\nRunoffMethod=SCS TR-20\nReachMethod=Stor-Ind+Trans\nPondMethod=Stor-Ind\nUH=SCS\nMinTc=300\nRainEvent=test\n\n[EVENT]\nRainEvent=test\nStormType=Type II 24-hr\nStormDepth=0.0833333333333333\n`;
@@ -513,6 +518,7 @@ const App: React.FC = () => {
         content += `\n[NODE]\nNumber=${da}\nType=Subcat\nName=${da}\nXYPos=0 ${y}\n`;
         areas.forEach(ar => {
           content += `[AREA]\nArea=${ar.area}\nCN=${ar.cn}\n`;
+          if (ar.desc) content += `Desc=${ar.desc}\n`;
         });
         content += `[TC]\nMethod=Direct\nTc=300\n`;
         y += 5;
@@ -527,6 +533,7 @@ const App: React.FC = () => {
       a.click();
       URL.revokeObjectURL(url);
       addLog('HydroCAD file exported');
+      setExportModalOpen(false);
     });
   }, [addLog, layers, projectName, projectVersion]);
 
@@ -536,7 +543,7 @@ const App: React.FC = () => {
         computeEnabled={computeEnabled}
         onCompute={handleCompute}
         exportEnabled={computeSucceeded}
-        onExport={handleExportHydroCAD}
+        onExport={() => setExportModalOpen(true)}
         projectName={projectName}
         onProjectNameChange={setProjectName}
         projectVersion={projectVersion}
@@ -598,6 +605,13 @@ const App: React.FC = () => {
       </div>
       {computeTasks && (
         <ComputeModal tasks={computeTasks} onClose={() => setComputeTasks(null)} />
+      )}
+      {exportModalOpen && (
+        <ExportModal
+          onExportHydroCAD={handleExportHydroCAD}
+          onClose={() => setExportModalOpen(false)}
+          exportEnabled={computeSucceeded}
+        />
       )}
     </div>
   );
