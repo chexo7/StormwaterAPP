@@ -76,3 +76,7 @@ python scripts/update_soil_hsg_map.py --areas CA630 CA649
 The default styles target 1080p displays but scale gracefully up to 4K
 monitors. Base font sizes and sidebar widths increase on very large
 screens to keep the interface readable while remaining fully responsive.
+
+## Exporting results
+
+After computing results, click **Export** in the header to open the export modal. Provide a project name and select a version (V1–V10) to determine the filename. The modal currently supports exporting to HydroCAD using templates from `export_templates/hydrocad/`.
