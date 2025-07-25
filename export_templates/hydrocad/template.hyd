@@ -1,0 +1,38 @@
+[HydroCAD]
+FileUnits=English
+CalcUnits=English
+InputUnits=English-LowFlow
+ReportUnits=English-LowFlow
+LargeAreas=False
+Source=HydroCAD® 10.20-6a  s/n 07447  © 2024 HydroCAD Software Solutions LLC
+Name=test2
+Path=C:\Users\sacevedo2\OneDrive - GHD\Desktop\STORMWATER APP\Export\HydroCAD\
+View=-5.46349942062574 0 15.4634994206257 10
+GridShow=True
+GridSnap=True
+TimeSpan=0 86400
+TimeInc=36
+MaxGraph=0
+RunoffMethod=SCS TR-20
+ReachMethod=Stor-Ind+Trans
+PondMethod=Stor-Ind
+UH=SCS
+MinTc=300
+RainEvent=test
+
+[EVENT]
+RainEvent=test
+StormType=Type II 24-hr
+StormDepth=0.0833333333333333
+
+[NODE]
+Number=1S
+Type=Subcat
+Name=(new Subcat)
+XYPos=2 7
+[AREA]
+Area=1
+CN=99
+[TC]
+Method=Direct
+Tc=300
