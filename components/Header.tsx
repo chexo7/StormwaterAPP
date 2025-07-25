@@ -7,8 +7,21 @@ interface HeaderProps {
   computeEnabled?: boolean;
   onExport?: () => void;
   exportEnabled?: boolean;
+  projectName: string;
+  onProjectNameChange: (name: string) => void;
+  projectVersion: string;
+  onProjectVersionChange: (version: string) => void;
 }
-const Header: React.FC<HeaderProps> = ({ onCompute, computeEnabled, onExport, exportEnabled }) => {
+const Header: React.FC<HeaderProps> = ({
+  onCompute,
+  computeEnabled,
+  onExport,
+  exportEnabled,
+  projectName,
+  onProjectNameChange,
+  projectVersion,
+  onProjectVersionChange,
+}) => {
   return (
     <header className="relative bg-gray-800/50 backdrop-blur-sm border-b border-gray-700 shadow-md p-4 flex items-center space-x-4 z-10">
       <MapIcon className="w-8 h-8 text-cyan-400" />
@@ -39,8 +52,26 @@ const Header: React.FC<HeaderProps> = ({ onCompute, computeEnabled, onExport, ex
               : 'bg-gray-600 text-gray-300 cursor-not-allowed')
           }
         >
-          Export Results to HydroCAD
+          Export
         </button>
+      </div>
+      <div className="absolute right-4 flex items-center space-x-2">
+        <input
+          type="text"
+          value={projectName}
+          onChange={e => onProjectNameChange(e.target.value)}
+          placeholder="Project Name"
+          className="px-2 py-1 rounded text-black"
+        />
+        <select
+          value={projectVersion}
+          onChange={e => onProjectVersionChange(e.target.value)}
+          className="px-2 py-1 rounded text-black"
+        >
+          {Array.from({ length: 10 }, (_, i) => (
+            <option key={i + 1} value={`V${i + 1}`}>{`V${i + 1}`}</option>
+          ))}
+        </select>
       </div>
     </header>
   );
