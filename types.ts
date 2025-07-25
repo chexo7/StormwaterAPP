@@ -20,3 +20,11 @@ export interface LogEntry {
   source?: 'frontend' | 'backend';
   timestamp?: number;
 }
+
+export interface PdfOverlayData {
+  url: string;
+  width: number;
+  height: number;
+  imagePoints: [{ x: number; y: number }, { x: number; y: number }];
+  geoPoints: [[number, number], [number, number]];
+}

@@ -3,10 +3,11 @@ import { MapContainer, TileLayer, GeoJSON, useMap, LayersControl, LayerGroup } f
 import L from 'leaflet';
 import 'leaflet-draw';
 import '@geoman-io/leaflet-geoman-free';
+import 'leaflet-imageoverlay-rotated';
 import { area as turfArea, intersect as turfIntersect } from '@turf/turf';
 import AddressSearch from './AddressSearch';
 import ReactLeafletGoogleLayer from 'react-leaflet-google-layer';
-import type { LayerData } from '../types';
+import type { LayerData, PdfOverlayData } from '../types';
 import type { GeoJSON as LeafletGeoJSON, Layer } from 'leaflet';
 
 const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY as string | undefined;
@@ -24,6 +25,7 @@ interface MapComponentProps {
   onSaveEdits?: () => void;
   onDiscardEdits?: () => void;
   onLayerVisibilityChange?: (id: string, visible: boolean) => void;
+  pdfOverlay?: PdfOverlayData | null;
 }
 
 // This component renders a single GeoJSON layer and handles the auto-zooming effect.
@@ -473,9 +475,20 @@ const MapComponent: React.FC<MapComponentProps> = ({
   onSaveEdits,
   onDiscardEdits,
   onLayerVisibilityChange,
+  pdfOverlay,
 }) => {
   const layerRefs = useRef<Record<string, L.GeoJSON | null>>({});
   const mapRef = useRef<L.Map | null>(null);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (!map.getPane('pdfPane')) {
+      map.createPane('pdfPane');
+      const pane = map.getPane('pdfPane');
+      if (pane) pane.style.zIndex = '350';
+    }
+  }, []);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -495,6 +508,47 @@ const MapComponent: React.FC<MapComponentProps> = ({
       map.off('overlayremove', handleRemove);
     };
   }, [layers, onLayerVisibilityChange]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !pdfOverlay) return;
+    const crs = map.options.crs;
+    const [p1, p2] = pdfOverlay.imagePoints;
+    const [g1, g2] = pdfOverlay.geoPoints.map(g => L.latLng(g[0], g[1]));
+    const proj1 = crs.project(g1);
+    const proj2 = crs.project(g2);
+    const dPx = p2.x - p1.x;
+    const dPy = p2.y - p1.y;
+    const dQx = proj2.x - proj1.x;
+    const dQy = proj2.y - proj1.y;
+    const lenP = Math.sqrt(dPx * dPx + dPy * dPy);
+    const lenQ = Math.sqrt(dQx * dQx + dQy * dQy);
+    if (lenP === 0) return;
+    const scale = lenQ / lenP;
+    const angle = Math.atan2(dQy, dQx) - Math.atan2(dPy, dPx);
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const transform = (x: number, y: number) => {
+      const dx = (x - p1.x) * scale;
+      const dy = (y - p1.y) * scale;
+      const qx = proj1.x + dx * cos - dy * sin;
+      const qy = proj1.y + dx * sin + dy * cos;
+      return crs.unproject(L.point(qx, qy));
+    };
+    const topLeft = transform(0, 0);
+    const topRight = transform(pdfOverlay.width, 0);
+    const bottomLeft = transform(0, pdfOverlay.height);
+    const overlay = (L as any).imageOverlay.rotated(
+      pdfOverlay.url,
+      topLeft,
+      topRight,
+      bottomLeft,
+      { pane: 'pdfPane' }
+    ).addTo(map);
+    return () => {
+      map.removeLayer(overlay);
+    };
+  }, [pdfOverlay]);
 
   const handleSaveClick = () => {
     if (editingTarget?.layerId) {
