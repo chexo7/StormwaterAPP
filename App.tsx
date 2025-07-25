@@ -40,6 +40,9 @@ const App: React.FC = () => {
   const [landCoverOptions, setLandCoverOptions] = useState<string[]>([]);
   const [previewLayer, setPreviewLayer] = useState<{ data: FeatureCollection; fileName: string; detectedName: string } | null>(null);
   const [computeTasks, setComputeTasks] = useState<ComputeTask[] | null>(null);
+  const [computeSucceeded, setComputeSucceeded] = useState<boolean>(false);
+  const [projectName, setProjectName] = useState<string>('');
+  const [version, setVersion] = useState<string>('V1');
 
   const requiredLayers = [
     'Drainage Areas',
@@ -85,6 +88,16 @@ const App: React.FC = () => {
     const interval = setInterval(fetchBackendLogs, 3000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (!computeTasks) return;
+    if (computeTasks.every(t => t.status === 'success')) {
+      setComputeSucceeded(true);
+    }
+    if (computeTasks.some(t => t.status === 'error')) {
+      setComputeSucceeded(false);
+    }
+  }, [computeTasks]);
 
   const handleLayerAdded = useCallback((geojson: FeatureCollection, name: string) => {
     setIsLoading(false);
@@ -301,6 +314,7 @@ const App: React.FC = () => {
   }, [addLog]);
 
   const runCompute = useCallback(async () => {
+    setComputeSucceeded(false);
     const lod = layers.find(l => l.name === 'LOD');
     const da = layers.find(l => l.name === 'Drainage Areas');
     const wss = layers.find(l => l.name === 'Soil Layer from Web Soil Survey');
@@ -475,9 +489,96 @@ const App: React.FC = () => {
     runCompute();
   }, [runCompute]);
 
+  const handleExportHydroCAD = useCallback(async () => {
+    const overlay = layers.find(l => l.name === 'Overlay');
+    if (!overlay) {
+      addLog('Overlay layer not found for export', 'error');
+      return;
+    }
+    try {
+      const { area: turfArea } = await import('@turf/turf');
+      const groups: Record<string, { area: number; cn: number }[]> = {};
+      overlay.geojson.features.forEach(f => {
+        const da = (f.properties as any)?.DA_NAME || 'DA-?';
+        const cn = (f.properties as any)?.CN ?? 0;
+        const a = turfArea(f as any) * 10.7639; // square feet
+        if (!groups[da]) groups[da] = [];
+        groups[da].push({ area: a, cn });
+      });
+
+      const lines: string[] = [];
+      lines.push('[HydroCAD]');
+      lines.push('FileUnits=English');
+      lines.push('CalcUnits=English');
+      lines.push('InputUnits=English-LowFlow');
+      lines.push('ReportUnits=English-LowFlow');
+      lines.push('LargeAreas=False');
+      lines.push('Source=StormwaterAPP');
+      lines.push(`Name=${projectName || 'Export'}`);
+      lines.push('Path=');
+      lines.push('View=-5.46349942062574 0 15.4634994206257 10');
+      lines.push('GridShow=True');
+      lines.push('GridSnap=True');
+      lines.push('TimeSpan=0 86400');
+      lines.push('TimeInc=36');
+      lines.push('MaxGraph=0');
+      lines.push('RunoffMethod=SCS TR-20');
+      lines.push('ReachMethod=Stor-Ind+Trans');
+      lines.push('PondMethod=Stor-Ind');
+      lines.push('UH=SCS');
+      lines.push('MinTc=300');
+      lines.push('RainEvent=test');
+      lines.push('');
+      lines.push('[EVENT]');
+      lines.push('RainEvent=test');
+      lines.push('StormType=Type II 24-hr');
+      lines.push('StormDepth=0.0833333333333333');
+
+      let yPos = 0;
+      Object.entries(groups).forEach(([daName, polys]) => {
+        lines.push('');
+        lines.push('[NODE]');
+        lines.push(`Number=${daName}`);
+        lines.push('Type=Subcat');
+        lines.push(`Name=${daName}`);
+        lines.push(`XYPos=0 ${yPos}`);
+        yPos += 5;
+        polys.forEach(p => {
+          lines.push('[AREA]');
+          lines.push(`Area=${p.area}`);
+          lines.push(`CN=${p.cn}`);
+        });
+        lines.push('[TC]');
+        lines.push('Method=Direct');
+        lines.push('Tc=300');
+      });
+
+      const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const fname = `${projectName || 'export'}_${version}.hcp`;
+      a.download = fname;
+      a.click();
+      URL.revokeObjectURL(url);
+      addLog('HydroCAD export generated');
+    } catch (err) {
+      addLog('Failed to export HydroCAD', 'error');
+    }
+  }, [layers, addLog, projectName, version]);
+
   return (
     <div className="flex flex-col h-screen bg-gray-900 text-gray-100 font-sans">
-      <Header computeEnabled={computeEnabled} onCompute={handleCompute} />
+      <Header
+        computeEnabled={computeEnabled}
+        onCompute={handleCompute}
+        exportEnabled={computeSucceeded}
+        onExport={handleExportHydroCAD}
+        projectName={projectName}
+        onProjectNameChange={setProjectName}
+        version={version}
+        onVersionChange={setVersion}
+      />
       <div className="flex flex-1 overflow-hidden">
         <aside className="w-72 md:w-96 2xl:w-[32rem] bg-gray-800 p-4 md:p-6 flex flex-col space-y-6 overflow-y-auto shadow-lg border-r border-gray-700">
           <FileUpload
