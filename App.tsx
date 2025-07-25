@@ -1,8 +1,9 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import type { FeatureCollection } from 'geojson';
-import type { LayerData, LogEntry } from './types';
+import type { LayerData, LogEntry, PdfOverlayData } from './types';
 import Header from './components/Header';
 import FileUpload from './components/FileUpload';
+import PdfUpload from './components/PdfUpload';
 import InfoPanel from './components/InfoPanel';
 import MapComponent from './components/MapComponent';
 import InstructionsPage from './components/InstructionsPage';
@@ -45,6 +46,7 @@ const App: React.FC = () => {
   const [projectName, setProjectName] = useState<string>('');
   const [projectVersion, setProjectVersion] = useState<string>('V1');
   const [exportModalOpen, setExportModalOpen] = useState<boolean>(false);
+  const [pdfOverlay, setPdfOverlay] = useState<PdfOverlayData | null>(null);
 
   const requiredLayers = [
     'Drainage Areas',
@@ -556,16 +558,17 @@ const App: React.FC = () => {
             onLoading={handleLoading}
             onError={handleError}
             onLog={addLog}
-            isLoading={isLoading}
-            onCreateLayer={handleCreateLayer}
-            existingLayerNames={layers.map(l => l.name)}
-            onPreviewReady={handlePreviewReady}
-          />
-          {previewLayer && (
-            <LayerPreview
-              data={previewLayer.data}
-              fileName={previewLayer.fileName}
-              detectedName={previewLayer.detectedName}
+          isLoading={isLoading}
+          onCreateLayer={handleCreateLayer}
+          existingLayerNames={layers.map(l => l.name)}
+          onPreviewReady={handlePreviewReady}
+        />
+        <PdfUpload onOverlayReady={setPdfOverlay} />
+        {previewLayer && (
+          <LayerPreview
+            data={previewLayer.data}
+            fileName={previewLayer.fileName}
+            detectedName={previewLayer.detectedName}
               onConfirm={handleConfirmPreview}
               onCancel={handleCancelPreview}
             />
@@ -583,7 +586,7 @@ const App: React.FC = () => {
           />
         </aside>
         <main className="flex-1 bg-gray-900 h-full">
-          {layers.length > 0 ? (
+          {layers.length > 0 || pdfOverlay ? (
             <MapComponent
               layers={layers}
               onUpdateFeatureHsg={handleUpdateFeatureHsg}
@@ -597,6 +600,7 @@ const App: React.FC = () => {
               onSaveEdits={handleSaveEditing}
               onDiscardEdits={handleDiscardEditing}
               onLayerVisibilityChange={handleToggleLayerVisibility}
+              pdfOverlay={pdfOverlay}
             />
           ) : (
             <InstructionsPage />
