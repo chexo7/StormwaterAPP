@@ -6,7 +6,9 @@ import '@geoman-io/leaflet-geoman-free';
 import { area as turfArea, intersect as turfIntersect } from '@turf/turf';
 import AddressSearch from './AddressSearch';
 import ReactLeafletGoogleLayer from 'react-leaflet-google-layer';
-import type { LayerData } from '../types';
+import type { LayerData, PdfOverlayConfig } from '../types';
+import { rotatedImageOverlay } from '../utils/rotatedOverlay';
+import { computeCorners } from '../utils/georef';
 import type { GeoJSON as LeafletGeoJSON, Layer } from 'leaflet';
 
 const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY as string | undefined;
@@ -24,6 +26,7 @@ interface MapComponentProps {
   onSaveEdits?: () => void;
   onDiscardEdits?: () => void;
   onLayerVisibilityChange?: (id: string, visible: boolean) => void;
+  pdfOverlay?: PdfOverlayConfig | null;
 }
 
 // This component renders a single GeoJSON layer and handles the auto-zooming effect.
@@ -473,9 +476,33 @@ const MapComponent: React.FC<MapComponentProps> = ({
   onSaveEdits,
   onDiscardEdits,
   onLayerVisibilityChange,
+  pdfOverlay,
 }) => {
   const layerRefs = useRef<Record<string, L.GeoJSON | null>>({});
   const mapRef = useRef<L.Map | null>(null);
+  const pdfLayerRef = useRef<L.ImageOverlay | null>(null);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (pdfLayerRef.current) {
+      map.removeLayer(pdfLayerRef.current);
+      pdfLayerRef.current = null;
+    }
+    if (pdfOverlay) {
+      const [p1, p2] = pdfOverlay.refPoints;
+      const corners = computeCorners(map, pdfOverlay.width, pdfOverlay.height, p1, p2);
+      const layer = rotatedImageOverlay(pdfOverlay.imageUrl, corners.tl, corners.tr, corners.bl, { pane: 'pdfPane' });
+      layer.addTo(map);
+      pdfLayerRef.current = layer;
+    }
+    return () => {
+      if (map && pdfLayerRef.current) {
+        map.removeLayer(pdfLayerRef.current);
+        pdfLayerRef.current = null;
+      }
+    };
+  }, [pdfOverlay]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -507,7 +534,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
     if (onSaveEdits) onSaveEdits();
   };
   return (
-    <MapContainer center={[20, 0]} zoom={2} scrollWheelZoom={true} className="h-full w-full relative" whenCreated={m => { mapRef.current = m; }}>
+    <MapContainer center={[20, 0]} zoom={2} scrollWheelZoom={true} className="h-full w-full relative" whenCreated={m => { mapRef.current = m; m.createPane('pdfPane'); const p=m.getPane('pdfPane'); if(p) p.style.zIndex='350'; }}>
       <ZoomToLayerHandler layers={layers} target={zoomToLayer ?? null} />
       <GeomanControls
         active={!!editingTarget?.layerId}
