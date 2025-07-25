@@ -59,6 +59,9 @@ const App: React.FC = () => {
   const computeEnabled =
     requiredLayers.every(name => layers.some(l => l.name === name)) && lodValid;
 
+  const exportEnabled =
+    computeTasks !== null && computeTasks.every(t => t.status === 'success');
+
   const addLog = useCallback((message: string, type: 'info' | 'error' = 'info') => {
     setLogs(prev => [...prev, { message, type, source: 'frontend' as const }]);
   }, []);
@@ -475,9 +478,18 @@ const App: React.FC = () => {
     runCompute();
   }, [runCompute]);
 
+  const handleExportHydroCAD = useCallback(() => {
+    // Export functionality will be implemented in the future
+  }, []);
+
   return (
     <div className="flex flex-col h-screen bg-gray-900 text-gray-100 font-sans">
-      <Header computeEnabled={computeEnabled} onCompute={handleCompute} />
+      <Header
+        computeEnabled={computeEnabled}
+        onCompute={handleCompute}
+        onExportHydroCAD={handleExportHydroCAD}
+        exportEnabled={exportEnabled}
+      />
       <div className="flex flex-1 overflow-hidden">
         <aside className="w-72 md:w-96 2xl:w-[32rem] bg-gray-800 p-4 md:p-6 flex flex-col space-y-6 overflow-y-auto shadow-lg border-r border-gray-700">
           <FileUpload
