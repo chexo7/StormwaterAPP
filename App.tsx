@@ -41,6 +41,8 @@ const App: React.FC = () => {
   const [previewLayer, setPreviewLayer] = useState<{ data: FeatureCollection; fileName: string; detectedName: string } | null>(null);
   const [computeTasks, setComputeTasks] = useState<ComputeTask[] | null>(null);
   const [computeSucceeded, setComputeSucceeded] = useState<boolean>(false);
+  const [projectName, setProjectName] = useState<string>('');
+  const [projectVersion, setProjectVersion] = useState<string>('V1');
 
   const requiredLayers = [
     'Drainage Areas',
@@ -488,8 +490,45 @@ const App: React.FC = () => {
   }, [runCompute]);
 
   const handleExportHydroCAD = useCallback(() => {
-    addLog('HydroCAD export not implemented yet');
-  }, [addLog]);
+    const overlayLayer = layers.find(l => l.name === 'Overlay');
+    if (!overlayLayer) {
+      addLog('Overlay layer not found', 'error');
+      return;
+    }
+    import('@turf/turf').then(({ area }) => {
+      const nodes: Record<string, { area: number; cn: number }[]> = {};
+      overlayLayer.geojson.features.forEach(f => {
+        const da = (f.properties as any)?.DA_NAME || 'DA';
+        const cn = (f.properties as any)?.CN;
+        if (cn === undefined) return;
+        const a = area(f as any) * 10.7639; // square feet
+        if (!nodes[da]) nodes[da] = [];
+        nodes[da].push({ area: a, cn });
+      });
+
+      let content = `[HydroCAD]\nFileUnits=English\nCalcUnits=English\nInputUnits=English-LowFlow\nReportUnits=English-LowFlow\nLargeAreas=False\nSource=HydroCAD\u00ae 10.20-6a  s/n 07447  \u00a9 2024 HydroCAD Software Solutions LLC\nName=${projectName || 'Project'}\nPath=\nView=-5.46349942062574 0 15.4634994206257 10\nGridShow=True\nGridSnap=True\nTimeSpan=0 86400\nTimeInc=36\nMaxGraph=0\nRunoffMethod=SCS TR-20\nReachMethod=Stor-Ind+Trans\nPondMethod=Stor-Ind\nUH=SCS\nMinTc=300\nRainEvent=test\n\n[EVENT]\nRainEvent=test\nStormType=Type II 24-hr\nStormDepth=0.0833333333333333\n`;
+
+      let y = 0;
+      Object.entries(nodes).forEach(([da, areas]) => {
+        content += `\n[NODE]\nNumber=${da}\nType=Subcat\nName=${da}\nXYPos=0 ${y}\n`;
+        areas.forEach(ar => {
+          content += `[AREA]\nArea=${ar.area}\nCN=${ar.cn}\n`;
+        });
+        content += `[TC]\nMethod=Direct\nTc=300\n`;
+        y += 5;
+      });
+
+      const blob = new Blob([content], { type: 'text/plain' });
+      const filename = `${(projectName || 'project')}_${projectVersion}.hcp`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+      addLog('HydroCAD file exported');
+    });
+  }, [addLog, layers, projectName, projectVersion]);
 
   return (
     <div className="flex flex-col h-screen bg-gray-900 text-gray-100 font-sans">
@@ -498,6 +537,10 @@ const App: React.FC = () => {
         onCompute={handleCompute}
         exportEnabled={computeSucceeded}
         onExport={handleExportHydroCAD}
+        projectName={projectName}
+        onProjectNameChange={setProjectName}
+        projectVersion={projectVersion}
+        onProjectVersionChange={setProjectVersion}
       />
       <div className="flex flex-1 overflow-hidden">
         <aside className="w-72 md:w-96 2xl:w-[32rem] bg-gray-800 p-4 md:p-6 flex flex-col space-y-6 overflow-y-auto shadow-lg border-r border-gray-700">
