@@ -537,6 +537,32 @@ const App: React.FC = () => {
     });
   }, [addLog, layers, projectName, projectVersion]);
 
+  const handleExportShapefiles = useCallback(async () => {
+    const processedLayers = layers.filter(l => l.category === 'Process');
+    if (processedLayers.length === 0) {
+      addLog('No processed layers to export', 'error');
+      return;
+    }
+    const shpwrite = (await import('shp-write')).default;
+    const JSZip = (await import('jszip')).default;
+    const outer = new JSZip();
+    processedLayers.forEach(l => {
+      const zipData = shpwrite.zip(l.geojson as any);
+      const safe = l.name.replace(/\s+/g, '_');
+      outer.file(`${safe}.zip`, zipData);
+    });
+    const blob = await outer.generateAsync({ type: 'blob' });
+    const filename = `${(projectName || 'project')}_${projectVersion}_shapefiles.zip`;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+    addLog('Processed shapefiles exported');
+    setExportModalOpen(false);
+  }, [addLog, layers, projectName, projectVersion]);
+
   return (
     <div className="flex flex-col h-screen bg-gray-900 text-gray-100 font-sans">
       <Header
@@ -609,6 +635,7 @@ const App: React.FC = () => {
       {exportModalOpen && (
         <ExportModal
           onExportHydroCAD={handleExportHydroCAD}
+          onExportShapefiles={handleExportShapefiles}
           onClose={() => setExportModalOpen(false)}
           exportEnabled={computeSucceeded}
         />
