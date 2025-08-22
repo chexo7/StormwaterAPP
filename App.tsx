@@ -11,6 +11,7 @@ import LayerPreview from './components/LayerPreview';
 import ComputeModal, { ComputeTask } from './components/ComputeModal';
 import ExportModal from './components/ExportModal';
 import { loadLandCoverList, loadCnValues, CnRecord } from './utils/landcover';
+import JSZip from 'jszip';
 
 const DEFAULT_COLORS: Record<string, string> = {
   'Drainage Areas': '#67e8f9',
@@ -491,6 +492,31 @@ const App: React.FC = () => {
     runCompute();
   }, [runCompute]);
 
+  const handleExportShapefiles = useCallback(async () => {
+    const processLayers = layers.filter(l => l.category === 'Process');
+    if (processLayers.length === 0) {
+      addLog('No processed layers to export', 'error');
+      return;
+    }
+    const { default: shpwrite } = await import('shp-write');
+    const outerZip = new JSZip();
+    processLayers.forEach(layer => {
+      const zipData = (shpwrite as any).zip(layer.geojson);
+      const safeName = layer.name.replace(/\s+/g, '_');
+      outerZip.file(`${safeName}.zip`, zipData);
+    });
+    const blob = await outerZip.generateAsync({ type: 'blob' });
+    const filename = `${(projectName || 'project')}_${projectVersion}_processed_shapefiles.zip`;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+    addLog('Processed shapefiles exported');
+    setExportModalOpen(false);
+  }, [layers, projectName, projectVersion, addLog]);
+
   const handleExportHydroCAD = useCallback(() => {
     const overlayLayer = layers.find(l => l.name === 'Overlay');
     if (!overlayLayer) {
@@ -609,6 +635,7 @@ const App: React.FC = () => {
       {exportModalOpen && (
         <ExportModal
           onExportHydroCAD={handleExportHydroCAD}
+          onExportShapefiles={handleExportShapefiles}
           onClose={() => setExportModalOpen(false)}
           exportEnabled={computeSucceeded}
         />
