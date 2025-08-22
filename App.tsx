@@ -11,6 +11,7 @@ import LayerPreview from './components/LayerPreview';
 import ComputeModal, { ComputeTask } from './components/ComputeModal';
 import ExportModal from './components/ExportModal';
 import { loadLandCoverList, loadCnValues, CnRecord } from './utils/landcover';
+import JSZip from 'jszip';
 
 const DEFAULT_COLORS: Record<string, string> = {
   'Drainage Areas': '#67e8f9',
@@ -537,6 +538,34 @@ const App: React.FC = () => {
     });
   }, [addLog, layers, projectName, projectVersion]);
 
+  const handleExportShapefiles = useCallback(() => {
+    (async () => {
+      const processedLayers = layers.filter(l => l.category === 'Process');
+      if (processedLayers.length === 0) {
+        addLog('No processed layers to export', 'error');
+        return;
+      }
+      const shpModule = await import('shp-write');
+      const shpwrite: any = (shpModule as any).default || shpModule;
+      const outerZip = new JSZip();
+      processedLayers.forEach(layer => {
+        const safeName = layer.name.replace(/[^A-Za-z0-9]/g, '_');
+        const zipped = shpwrite.zip(layer.geojson, { types: { polygon: safeName } });
+        outerZip.file(`${safeName}.zip`, zipped);
+      });
+      const blob = await outerZip.generateAsync({ type: 'blob' });
+      const filename = `${(projectName || 'project')}_${projectVersion}_processed_shapefiles.zip`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+      addLog('Processed shapefiles exported');
+      setExportModalOpen(false);
+    })();
+  }, [layers, projectName, projectVersion, addLog]);
+
   return (
     <div className="flex flex-col h-screen bg-gray-900 text-gray-100 font-sans">
       <Header
@@ -609,6 +638,7 @@ const App: React.FC = () => {
       {exportModalOpen && (
         <ExportModal
           onExportHydroCAD={handleExportHydroCAD}
+          onExportShapefiles={handleExportShapefiles}
           onClose={() => setExportModalOpen(false)}
           exportEnabled={computeSucceeded}
         />
