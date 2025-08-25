@@ -16,8 +16,6 @@ const logs = [];
 const featureCollectionLocal = (features) => ({ type: 'FeatureCollection', features });
 const toFeature = (poly) =>
   poly.type === 'Feature' ? poly : { type: 'Feature', properties: {}, geometry: poly };
-const intersect = (poly1, poly2) =>
-  turfIntersect(featureCollectionLocal([toFeature(poly1), toFeature(poly2)]));
 function addLog(message, type = 'info') {
   const entry = { message, type, source: 'backend', timestamp: Date.now() };
   logs.push(entry);
@@ -80,7 +78,9 @@ app.post('/api/intersect', (req, res) => {
   }
 
   try {
-    const result = intersect(poly1, poly2);
+    const result = turfIntersect(
+      featureCollectionLocal([toFeature(poly1), toFeature(poly2)])
+    );
     addLog('Intersection calculated');
     res.json(result || null);
   } catch (err) {
