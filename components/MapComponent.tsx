@@ -285,7 +285,7 @@ const ManagedGeoJsonLayer = ({
     if (isLastAdded && geoJsonRef.current) {
       const bounds = geoJsonRef.current.getBounds();
       if (bounds.isValid()) {
-        map.flyToBounds(bounds, { padding: [50, 50], maxZoom: 16 });
+        map.fitBounds(bounds);
       }
     }
   }, [data, isLastAdded, map]);
@@ -310,7 +310,7 @@ const ZoomToLayerHandler = ({ layers, target }: { layers: LayerData[]; target: {
     if (layer) {
       const bounds = L.geoJSON(layer.geojson).getBounds();
       if (bounds.isValid()) {
-        map.flyToBounds(bounds, { padding: [50, 50], maxZoom: 16 });
+        map.fitBounds(bounds);
       }
     }
   }, [target, layers, map]);
