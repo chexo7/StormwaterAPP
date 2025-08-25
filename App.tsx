@@ -11,6 +11,7 @@ import LayerPreview from './components/LayerPreview';
 import ComputeModal, { ComputeTask } from './components/ComputeModal';
 import ExportModal from './components/ExportModal';
 import { loadLandCoverList, loadCnValues, CnRecord } from './utils/landcover';
+import { prepareForShapefile } from './utils/shp';
 
 const DEFAULT_COLORS: Record<string, string> = {
   'Drainage Areas': '#67e8f9',
@@ -562,7 +563,9 @@ const App: React.FC = () => {
     const zip = new JSZip();
 
     for (const layer of processedLayers) {
-      const layerZipBuffer = await shpwrite.zip(layer.geojson, { outputType: 'arraybuffer' });
+      const prepared = prepareForShapefile(layer.geojson, layer.name);
+      addLog(`Exporting "${layer.name}": ${prepared.features.length} features`);
+      const layerZipBuffer = await shpwrite.zip(prepared, { outputType: 'arraybuffer' });
       const layerZip = await JSZip.loadAsync(layerZipBuffer);
       const folderName = layer.name.replace(/[^a-z0-9_\-]/gi, '_');
       const folder = zip.folder(folderName);
