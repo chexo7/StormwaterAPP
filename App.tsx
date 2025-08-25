@@ -135,10 +135,15 @@ const App: React.FC = () => {
     if (name === 'Land Cover') {
       geojson = {
         ...geojson,
-        features: geojson.features.map(f => ({
-          ...f,
-          properties: { ...(f.properties || {}), LAND_COVER: f.properties?.LAND_COVER ?? '' }
-        }))
+        features: geojson.features.map(f => {
+          const raw = (f.properties as any)?.LandCover ?? (f.properties as any)?.LAND_COVER ?? '';
+          const match =
+            landCoverOptions.find(opt => opt.toLowerCase() === String(raw).toLowerCase()) ?? '';
+          return {
+            ...f,
+            properties: { ...(f.properties || {}), LAND_COVER: match },
+          };
+        }),
       } as FeatureCollection;
     }
 
@@ -171,7 +176,7 @@ const App: React.FC = () => {
       addLog(`Loaded layer ${name}${editable ? '' : ' (view only)'}`);
       return [...prevLayers, newLayer];
     });
-  }, [addLog]);
+  }, [addLog, landCoverOptions]);
 
   const handlePreviewReady = useCallback((geojson: FeatureCollection, fileName: string, detectedName: string) => {
     setIsLoading(false);
