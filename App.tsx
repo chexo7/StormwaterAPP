@@ -73,6 +73,8 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    if (typeof window === 'undefined' || window.location.hostname !== 'localhost') return;
+
     const fetchBackendLogs = async () => {
       try {
         const res = await fetch('/api/logs');
@@ -537,6 +539,42 @@ const App: React.FC = () => {
     });
   }, [addLog, layers, projectName, projectVersion]);
 
+  const handleExportShapefiles = useCallback(async () => {
+    const processedLayers = layers.filter(l => l.category === 'Process');
+    if (processedLayers.length === 0) {
+      addLog('No processed layers to export', 'error');
+      return;
+    }
+    const JSZip = (await import('jszip')).default;
+    const { zip: zipShapefile } = await import('@mapbox/shp-write');
+    const zip = new JSZip();
+
+    for (const layer of processedLayers) {
+      const layerZipBuffer = await zipShapefile(layer.geojson, { outputType: 'arraybuffer' });
+      const layerZip = await JSZip.loadAsync(layerZipBuffer);
+      const folderName = layer.name.replace(/[^a-z0-9_\-]/gi, '_');
+      const folder = zip.folder(folderName);
+      if (!folder) continue;
+      await Promise.all(
+        Object.keys(layerZip.files).map(async filename => {
+          const content = await layerZip.files[filename].async('arraybuffer');
+          folder.file(filename, content);
+        })
+      );
+    }
+
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const filename = `${(projectName || 'project')}_${projectVersion}_shapefiles.zip`;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+    addLog('Processed shapefiles exported');
+    setExportModalOpen(false);
+  }, [addLog, layers, projectName, projectVersion]);
+
   return (
     <div className="flex flex-col h-screen bg-gray-900 text-gray-100 font-sans">
       <Header
@@ -609,6 +647,7 @@ const App: React.FC = () => {
       {exportModalOpen && (
         <ExportModal
           onExportHydroCAD={handleExportHydroCAD}
+          onExportShapefiles={handleExportShapefiles}
           onClose={() => setExportModalOpen(false)}
           exportEnabled={computeSucceeded}
         />
