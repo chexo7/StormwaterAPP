@@ -553,11 +553,11 @@ const App: React.FC = () => {
       return;
     }
     const JSZip = (await import('jszip')).default;
-    const { zip: zipShapefile } = await import('@mapbox/shp-write');
+    const shpwrite = (await import('@mapbox/shp-write')).default as any;
     const zip = new JSZip();
 
     for (const layer of processedLayers) {
-      const layerZipBuffer = await zipShapefile(layer.geojson, { outputType: 'arraybuffer' });
+      const layerZipBuffer = await shpwrite.zip(layer.geojson, { outputType: 'arraybuffer' });
       const layerZip = await JSZip.loadAsync(layerZipBuffer);
       const folderName = layer.name.replace(/[^a-z0-9_\-]/gi, '_');
       const folder = zip.folder(folderName);
@@ -568,6 +568,11 @@ const App: React.FC = () => {
           folder.file(filename, content);
         })
       );
+      const dbf = Object.keys(layerZip.files).find(f => f.toLowerCase().endsWith('.dbf'));
+      if (dbf) {
+        const base = dbf.replace(/\.dbf$/i, '');
+        folder.file(`${base}.cpg`, 'UTF-8');
+      }
     }
 
     const blob = await zip.generateAsync({ type: 'blob' });
