@@ -36,10 +36,17 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [zoomToLayer, setZoomToLayer] = useState<{ id: string; ts: number } | null>(null);
-  const [editingTarget, setEditingTarget] = useState<{ layerId: string | null; featureIndex: number | null }>({ layerId: null, featureIndex: null });
+  const [editingTarget, setEditingTarget] = useState<{
+    layerId: string | null;
+    featureIndex: number | null;
+  }>({ layerId: null, featureIndex: null });
   const [editingBackup, setEditingBackup] = useState<{ layerId: string; geojson: FeatureCollection } | null>(null);
   const [landCoverOptions, setLandCoverOptions] = useState<string[]>([]);
-  const [previewLayer, setPreviewLayer] = useState<{ data: FeatureCollection; fileName: string; detectedName: string } | null>(null);
+  const [previewLayer, setPreviewLayer] = useState<{
+    data: FeatureCollection;
+    fileName: string;
+    detectedName: string;
+  } | null>(null);
   const [computeTasks, setComputeTasks] = useState<ComputeTask[] | null>(null);
   const [computeSucceeded, setComputeSucceeded] = useState<boolean>(false);
   const [projectName, setProjectName] = useState<string>('');
