@@ -553,31 +553,109 @@ const App: React.FC = () => {
   }, [addLog, layers, projectName, projectVersion]);
 
   const handleExportSWMM = useCallback(async () => {
-    const files = import.meta.glob('./export_templates/swmm/**', { as: 'raw' });
-    const working: Record<string, string> = {};
-    await Promise.all(
-      Object.entries(files).map(async ([path, loader]) => {
-        const content = await loader();
-        const filename = path.replace(/^.*\/swmm\//, '');
-        working[filename] = content as string;
-      })
-    );
-    const JSZip = (await import('jszip')).default;
-    const zip = new JSZip();
-    Object.entries(working).forEach(([name, content]) => {
-      zip.file(name, content);
+    const overlayLayer = layers.find(l => l.name === 'Overlay');
+    if (!overlayLayer) {
+      addLog('Overlay layer not found', 'error');
+      return;
+    }
+
+    const template = (
+      await import('./export_templates/swmm/SWMM_TEMPLATE.inp?raw')
+    ).default as string;
+    const { area, union } = await import('@turf/turf');
+
+    const subcatchLines: string[] = [];
+    const subareaLines: string[] = [];
+    const infilLines: string[] = [];
+    const polygonLines: string[] = [];
+
+    const groups: Record<string, any[]> = {};
+    overlayLayer.geojson.features.forEach((f, i) => {
+      const id = ((f.properties as any)?.DA_NAME as string) || `S${i + 1}`;
+      if (!groups[id]) groups[id] = [];
+      groups[id].push(f);
     });
-    const blob = await zip.generateAsync({ type: 'blob' });
-    const filename = `${(projectName || 'project')}_${projectVersion}_swmm.zip`;
+
+    Object.entries(groups).forEach(([id, feats]) => {
+      let merged = feats[0] as any;
+      for (let i = 1; i < feats.length; i++) {
+        const u = union(merged as any, feats[i] as any);
+        if (u) merged = u;
+      }
+
+      const a = area(merged as any) * 0.000247105; // acres
+      const width = a * 100; // simple width approximation
+
+      subcatchLines.push(
+        `${id}\t*\t*\t${a.toFixed(4)}\t25\t${width.toFixed(2)}\t0.5\t0`
+      );
+      subareaLines.push(`${id}\t0.01\t0.1\t0.05\t0.05\t25\tOUTLET`);
+      infilLines.push(`${id}\t3\t0.5\t4\t7\t0`);
+
+      const geom = merged.geometry;
+      const polys =
+        geom.type === 'Polygon'
+          ? [geom.coordinates]
+          : geom.type === 'MultiPolygon'
+          ? geom.coordinates
+          : [];
+      polys.forEach((coords: number[][][]) => {
+        const ring = coords[0];
+        ring.forEach(([x, y]) => {
+          polygonLines.push(`${id}\t${x}\t${y}`);
+        });
+        const [fx, fy] = ring[0];
+        polygonLines.push(`${id}\t${fx}\t${fy}`); // close polygon
+      });
+    });
+
+    const replaceSection = (content: string, section: string, lines: string) => {
+      const regex = new RegExp(`\\[${section}\\][\\s\\S]*?(?=\\n\\[|$)`);
+      return content.replace(regex, `[${section}]\n${lines}\n`);
+    };
+
+    const subcatchHeader =
+      ';;Name\tRain Gage\tOutlet\tArea\t%Imperv\tWidth\t%Slope\tCurbLen\tSnowPack\n';
+    const subareaHeader =
+      ';;Subcatchment\tN-Imperv\tN-Perv\tS-Imperv\tS-Perv\tPctZero\tRouteTo\tPctRouted\n';
+    const infilHeader =
+      ';;Subcatchment\tParam1\tParam2\tParam3\tParam4\tParam5\n';
+    const polygonHeader =
+      ';;Subcatchment\tX-Coord\tY-Coord\n';
+
+    let content = template;
+    content = replaceSection(
+      content,
+      'SUBCATCHMENTS',
+      subcatchHeader + subcatchLines.join('\n')
+    );
+    content = replaceSection(
+      content,
+      'SUBAREAS',
+      subareaHeader + subareaLines.join('\n')
+    );
+    content = replaceSection(
+      content,
+      'INFILTRATION',
+      infilHeader + infilLines.join('\n')
+    );
+    content = replaceSection(
+      content,
+      'POLYGONS',
+      polygonHeader + polygonLines.join('\n')
+    );
+
+    const blob = new Blob([content], { type: 'text/plain' });
+    const filename = `${(projectName || 'project')}_${projectVersion}.inp`;
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
-    addLog('SWMM template exported');
+    addLog('SWMM file exported');
     setExportModalOpen(false);
-  }, [addLog, projectName, projectVersion]);
+  }, [addLog, layers, projectName, projectVersion]);
 
   const handleExportShapefiles = useCallback(async () => {
     const processedLayers = layers.filter(l => l.category === 'Process');
