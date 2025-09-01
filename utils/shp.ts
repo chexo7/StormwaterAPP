@@ -1,4 +1,10 @@
-import type { Feature, FeatureCollection, Polygon, GeoJsonProperties } from 'geojson';
+import type {
+  Feature,
+  FeatureCollection,
+  Polygon,
+  GeoJsonProperties,
+  Geometry,
+} from 'geojson';
 import { flattenEach, rewind, area as turfArea } from '@turf/turf';
 
 /**
@@ -9,31 +15,40 @@ import { flattenEach, rewind, area as turfArea } from '@turf/turf';
  * - Agrega ID incremental (UID) y área en acres (AREA_AC)
  */
 export function prepareForShapefile(fc: FeatureCollection, layerName: string): FeatureCollection {
-  const out: Feature<Polygon, GeoJsonProperties>[] = [];
+  const out: Feature<Geometry, GeoJsonProperties>[] = [];
   let uid = 1;
 
   flattenEach(fc as any, (feat) => {
     if (!feat || !feat.geometry) return;
-    if (feat.geometry.type !== 'Polygon' && feat.geometry.type !== 'MultiPolygon') return;
+    const geomType = feat.geometry.type;
 
-    // Reorienta anillos para Shapefile (exterior CW, agujeros CCW)
-    const rew = rewind(feat as any, { reverse: true });
+    if (geomType === 'Polygon' || geomType === 'MultiPolygon') {
+      // Reorienta anillos para Shapefile (exterior CW, agujeros CCW)
+      const rew = rewind(feat as any, { reverse: true });
 
-    // Área en acres (útil para QA y evita “features invisibles” por agujeros mal interpretados)
-    const m2 = turfArea(rew as any);
-    const acres = Number((m2 * 0.000247105381).toFixed(6));
+      // Área en acres (útil para QA y evita “features invisibles” por agujeros mal interpretados)
+      const m2 = turfArea(rew as any);
+      const acres = Number((m2 * 0.000247105381).toFixed(6));
 
-    // Sanitiza propiedades para DBF
-    const props = sanitizeProps(
-      { ...(feat.properties || {}), UID: uid, AREA_AC: acres },
-      layerName
-    );
+      // Sanitiza propiedades para DBF
+      const props = sanitizeProps(
+        { ...(feat.properties || {}), UID: uid, AREA_AC: acres },
+        layerName
+      );
 
-    out.push({
-      type: 'Feature',
-      geometry: (rew.geometry as Polygon),
-      properties: props
-    });
+      out.push({
+        type: 'Feature',
+        geometry: rew.geometry as Polygon,
+        properties: props,
+      });
+    } else {
+      const props = sanitizeProps({ ...(feat.properties || {}), UID: uid }, layerName);
+      out.push({
+        type: 'Feature',
+        geometry: feat.geometry as Geometry,
+        properties: props,
+      });
+    }
 
     uid++;
   });
