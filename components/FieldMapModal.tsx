@@ -22,21 +22,14 @@ const FieldMapModal: React.FC<FieldMapModalProps> = ({ layerName, properties, on
     : [
         { key: 'label', label: 'Label' },
         { key: 'ground', label: 'Elevation Ground [ft]' },
-        { key: 'invert', label: 'Elevation Invert[ft]' },
+        { key: 'inv_n', label: 'Invert N [ft]' },
+        { key: 'inv_s', label: 'Invert S [ft]' },
+        { key: 'inv_e', label: 'Invert E [ft]' },
+        { key: 'inv_w', label: 'Invert W [ft]' },
       ];
 
   useEffect(() => {
-    const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
-    const guess: Record<string, string> = {};
-    required.forEach(r => {
-      const target = norm(r.label);
-      const found = fields.find(f => {
-        const nf = norm(f);
-        return nf === target || nf.includes(target) || target.includes(nf);
-      });
-      if (found) guess[r.key] = found;
-    });
-    setMapping(guess);
+    setMapping({});
   }, [fields, layerName]);
 
   const handleChange = (key: string, value: string) => {
@@ -44,6 +37,12 @@ const FieldMapModal: React.FC<FieldMapModalProps> = ({ layerName, properties, on
   };
 
   const handleSubmit = () => {
+    const chosen = Object.values(mapping).filter(Boolean);
+    const hasDuplicate = chosen.some((v, i) => chosen.indexOf(v) !== i);
+    if (hasDuplicate) {
+      alert('Each field must map to a unique attribute.');
+      return;
+    }
     onConfirm(mapping);
   };
 

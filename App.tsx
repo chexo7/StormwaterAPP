@@ -131,6 +131,7 @@ const App: React.FC = () => {
       return;
     }
 
+    let fmap = fieldMap;
     const editable = KNOWN_LAYER_NAMES.includes(name);
 
     if (name === 'Drainage Areas') {
@@ -158,6 +159,65 @@ const App: React.FC = () => {
       } as FeatureCollection;
     }
 
+    if (name === 'Catch Basins / Manholes') {
+      const used = new Set<string>();
+      geojson = {
+        ...geojson,
+        features: geojson.features.map((f) => {
+          const props = f.properties || {};
+          const getNum = (key: string) => {
+            const mKey = fmap?.[key];
+            if (!mKey) return undefined;
+            const val = Number((props as any)[mKey]);
+            return val === 0 || isNaN(val) ? undefined : val;
+          };
+          let label = '';
+          const rawLabel = fmap?.label ? String((props as any)[fmap.label] ?? '').trim() : '';
+          if (rawLabel) {
+            label = rawLabel;
+          } else {
+            let num = 0;
+            do {
+              num = Math.floor(Math.random() * 200) + 1;
+              label = `CB-MH-${num}`;
+            } while (used.has(label));
+          }
+          used.add(label);
+          const gRaw = fmap?.ground ? (props as any)[fmap.ground] : undefined;
+          const gNum = gRaw === undefined || gRaw === null || gRaw === '' ? undefined : Number(gRaw);
+          const ground = isNaN(gNum as number) ? undefined : gNum;
+          const invN = getNum('inv_n');
+          const invS = getNum('inv_s');
+          const invE = getNum('inv_e');
+          const invW = getNum('inv_w');
+          const invs = [invN, invS, invE, invW].filter((v) => v !== undefined) as number[];
+          const invOut = invs.length ? Math.min(...invs) : undefined;
+          return {
+            ...f,
+            properties: {
+              ...props,
+              Label: label,
+              'Elevation Ground [ft]': ground ?? '',
+              'Invert N [ft]': invN ?? '',
+              'Invert S [ft]': invS ?? '',
+              'Invert E [ft]': invE ?? '',
+              'Invert W [ft]': invW ?? '',
+              'Inv Out [ft]': invOut ?? '',
+            },
+          };
+        }),
+      } as FeatureCollection;
+      fmap = {
+        label: 'Label',
+        ground: 'Elevation Ground [ft]',
+        inv_n: 'Invert N [ft]',
+        inv_s: 'Invert S [ft]',
+        inv_e: 'Invert E [ft]',
+        inv_w: 'Invert W [ft]',
+        inv_out: 'Inv Out [ft]',
+      };
+    }
+
     if (name === 'Soil Layer from Web Soil Survey') {
       geojson = {
         ...geojson,
@@ -171,7 +231,7 @@ const App: React.FC = () => {
       const existing = prevLayers.find(l => l.name === name);
       if (existing) {
         const updated = prevLayers.map(l =>
-          l.name === name ? { ...l, geojson, editable, fieldMap: fieldMap ?? l.fieldMap } : l
+          l.name === name ? { ...l, geojson, editable, fieldMap: fmap ?? l.fieldMap } : l
         );
         addLog(`Updated layer ${name} with uploaded data`);
         return updated;
@@ -185,7 +245,7 @@ const App: React.FC = () => {
         fillColor: getDefaultColor(name),
         fillOpacity: DEFAULT_OPACITY,
         category: 'Original',
-        fieldMap,
+        fieldMap: fmap,
       };
       addLog(`Loaded layer ${name}${editable ? '' : ' (view only)'}`);
       return [...prevLayers, newLayer];
@@ -820,10 +880,7 @@ const App: React.FC = () => {
           getMapped(f.properties, jMap, 'ground', ['Elevation Ground [ft]']) ?? 0
         );
         const invert = Number(
-          getMapped(f.properties, jMap, 'invert', [
-            'Elevation Invert[ft]',
-            'Elevation Invert [ft]',
-          ]) ?? 0
+          getMapped(f.properties, jMap, 'inv_out', ['Inv Out [ft]']) ?? 0
         );
         const maxDepth = ground - invert;
         const coord = project.forward(
