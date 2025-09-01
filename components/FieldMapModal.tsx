@@ -11,7 +11,7 @@ const FieldMapModal: React.FC<FieldMapModalProps> = ({ layerName, properties, on
   const fields = Object.keys(properties || {});
   const [mapping, setMapping] = useState<Record<string, string>>({});
 
-  const required = layerName === 'Pipes'
+  const fieldDefs = layerName === 'Pipes'
     ? [
         { key: 'label', label: 'Label' },
         { key: 'inv_in', label: 'Elevation Invert In [ft]' },
@@ -22,13 +22,16 @@ const FieldMapModal: React.FC<FieldMapModalProps> = ({ layerName, properties, on
     : [
         { key: 'label', label: 'Label' },
         { key: 'ground', label: 'Elevation Ground [ft]' },
-        { key: 'invert', label: 'Elevation Invert[ft]' },
+        { key: 'inv_n', label: 'Invert N [ft]' },
+        { key: 'inv_s', label: 'Invert S [ft]' },
+        { key: 'inv_e', label: 'Invert E [ft]' },
+        { key: 'inv_w', label: 'Invert W [ft]' },
       ];
 
   useEffect(() => {
     const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
     const guess: Record<string, string> = {};
-    required.forEach(r => {
+    fieldDefs.forEach(r => {
       const target = norm(r.label);
       const found = fields.find(f => {
         const nf = norm(f);
@@ -54,7 +57,7 @@ const FieldMapModal: React.FC<FieldMapModalProps> = ({ layerName, properties, on
           <h2 className="text-lg font-semibold text-white">Map Fields</h2>
           <button className="text-gray-400 hover:text-white" onClick={onCancel}>✕</button>
         </div>
-        {required.map(r => (
+        {fieldDefs.map(r => (
           <div key={r.key}>
             <label className="block text-sm text-gray-300 mb-1">{r.label}</label>
             <select
