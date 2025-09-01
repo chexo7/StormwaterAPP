@@ -12,6 +12,7 @@ import ComputeModal, { ComputeTask } from './components/ComputeModal';
 import ExportModal from './components/ExportModal';
 import { loadLandCoverList, loadCnValues, CnRecord } from './utils/landcover';
 import { prepareForShapefile } from './utils/shp';
+import type { PCSWMMExportInput, DrainageArea } from './types/export-pcswmm';
 
 const DEFAULT_COLORS: Record<string, string> = {
   'Drainage Areas': '#67e8f9',
@@ -506,6 +507,61 @@ const App: React.FC = () => {
     runCompute();
   }, [runCompute]);
 
+  const handleExportPCSWMM = useCallback(async () => {
+    const overlayLayer = layers.find(l => l.name === 'Overlay');
+    if (!overlayLayer) {
+      addLog('Overlay layer not found', 'error');
+      return;
+    }
+    const { area } = await import('@turf/turf');
+    const acc: Record<string, { total: number; imperv: number }> = {};
+    overlayLayer.geojson.features.forEach(f => {
+      const da = (f.properties as any)?.DA_NAME || 'DA';
+      const lc = ((f.properties as any)?.LAND_COVER || '').toLowerCase();
+      const a = area(f as any);
+      if (!acc[da]) acc[da] = { total: 0, imperv: 0 };
+      acc[da].total += a;
+      if (lc.includes('imperv')) acc[da].imperv += a;
+    });
+    const drainageAreas: DrainageArea[] = Object.entries(acc).map(([id, v]) => ({
+      id,
+      area_m2: v.total,
+      pctImperv: v.total ? (v.imperv / v.total) * 100 : 0,
+      width_m: Math.sqrt(v.total),
+      slope_decimal: 0.01,
+      raingageId: 'RG1',
+      outletNodeId: 'OUTLET1'
+    }));
+    const payload: PCSWMMExportInput = {
+      projectName: projectName || 'project',
+      flowUnits: 'LPS',
+      infiltration: 'HORTON',
+      routing: 'DW',
+      startDate: '2025-01-01',
+      endDate: '2025-01-02',
+      drainageAreas
+    };
+    try {
+      const res = await fetch('/api/export/pcswwm.zip', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) throw new Error('Export failed');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${payload.projectName || 'pcswmm_export'}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+      addLog('PCSWMM project exported');
+      setExportModalOpen(false);
+    } catch {
+      addLog('PCSWMM export failed', 'error');
+    }
+  }, [addLog, layers, projectName]);
+
   const handleExportHydroCAD = useCallback(() => {
     const overlayLayer = layers.find(l => l.name === 'Overlay');
     if (!overlayLayer) {
@@ -667,6 +723,7 @@ const App: React.FC = () => {
       {exportModalOpen && (
         <ExportModal
           onExportHydroCAD={handleExportHydroCAD}
+          onExportPCSWMM={handleExportPCSWMM}
           onExportShapefiles={handleExportShapefiles}
           onClose={() => setExportModalOpen(false)}
           exportEnabled={computeSucceeded}
