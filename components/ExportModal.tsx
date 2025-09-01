@@ -23,9 +23,10 @@ const ExportModal: React.FC<ExportModalProps> = ({ onExportHydroCAD, onExportSWM
         <div>
           <label className="block text-sm text-gray-300 mb-1">State Plane</label>
           <select
-            className="w-full bg-gray-700 text-white p-2 rounded"
+            className="w-full bg-gray-700 text-white p-2 rounded max-h-60 overflow-y-auto"
             value={projection.epsg}
             onChange={(e) => onProjectionChange(e.target.value)}
+            size={8}
           >
             {STATE_PLANE_OPTIONS.map((opt) => (
               <option key={opt.epsg} value={opt.epsg}>
