@@ -754,6 +754,16 @@ const App: React.FC = () => {
       ';;Subcatchment\tParam1\tParam2\tParam3\tParam4\tParam5\n';
     const polygonHeader =
       ';;Subcatchment\tX-Coord\tY-Coord\n';
+    const junctionHeader =
+      ';;Name\tElevation  MaxDepth   InitDepth  SurDepth   Aponded\n';
+    const outfallHeader =
+      ';;Name\tElevation  Type       Stage Data       Gated    Route To\n';
+    const conduitHeader =
+      ';;Name\tFrom Node        To Node          Length     Roughness  InOffset   OutOffset  InitFlow   MaxFlow\n';
+    const xsectionHeader =
+      ';;Link           Shape        Geom1            Geom2      Geom3      Geom4      Barrels    Culvert\n';
+    const coordHeader =
+      ';;Node           X-Coord            Y-Coord\n';
 
     let content = template;
     content = replaceSection(
@@ -776,6 +786,11 @@ const App: React.FC = () => {
       'POLYGONS',
       polygonHeader + filteredPolygonLines.join('\n')
     );
+    content = replaceSection(content, 'JUNCTIONS', junctionHeader);
+    content = replaceSection(content, 'OUTFALLS', outfallHeader);
+    content = replaceSection(content, 'CONDUITS', conduitHeader);
+    content = replaceSection(content, 'XSECTIONS', xsectionHeader);
+    content = replaceSection(content, 'COORDINATES', coordHeader);
 
     if (filteredPolygonLines.length) {
       const allRings = filteredPolygonLines
