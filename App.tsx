@@ -241,7 +241,6 @@ const App: React.FC = () => {
           return {
             ...f,
             properties: {
-              ...props,
               'Label': label,
               'Elevation Invert In [ft]': invIn,
               'Elevation Invert Out [ft]': invOut,
@@ -282,7 +281,6 @@ const App: React.FC = () => {
           return {
             ...f,
             properties: {
-              ...props,
               'Label': label,
               'Elevation Ground [ft]': ground,
               'Invert N [ft]': invN,
