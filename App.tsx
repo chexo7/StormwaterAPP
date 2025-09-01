@@ -553,31 +553,46 @@ const App: React.FC = () => {
   }, [addLog, layers, projectName, projectVersion]);
 
   const handleExportSWMM = useCallback(async () => {
-    const files = import.meta.glob('./export_templates/swmm/**', { as: 'raw' });
-    const working: Record<string, string> = {};
-    await Promise.all(
-      Object.entries(files).map(async ([path, loader]) => {
-        const content = await loader();
-        const filename = path.replace(/^.*\/swmm\//, '');
-        working[filename] = content as string;
-      })
-    );
-    const JSZip = (await import('jszip')).default;
-    const zip = new JSZip();
-    Object.entries(working).forEach(([name, content]) => {
-      zip.file(name, content);
-    });
-    const blob = await zip.generateAsync({ type: 'blob' });
-    const filename = `${(projectName || 'project')}_${projectVersion}_swmm.zip`;
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
-    addLog('SWMM template exported');
-    setExportModalOpen(false);
-  }, [addLog, projectName, projectVersion]);
+    const daLayer =
+      layers.find(l => l.name === 'Drainage Area in LOD') ||
+      layers.find(l => l.name === 'Drainage Areas');
+    if (!daLayer) {
+      addLog('No drainage areas to export', 'error');
+      return;
+    }
+
+    const payload = {
+      defaults: {},
+      subcatchments: daLayer.geojson.features.map((f, i) => ({
+        name: (f.properties as any)?.DA_NAME || `S${i + 1}`,
+        geometry: f.geometry,
+      })),
+    };
+
+    try {
+      const resp = await fetch('/api/export-swmm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!resp.ok) {
+        addLog('Failed to export SWMM', 'error');
+        return;
+      }
+      const blob = await resp.blob();
+      const filename = `${(projectName || 'project')}_${projectVersion}.inp`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+      addLog('SWMM file exported');
+      setExportModalOpen(false);
+    } catch (e) {
+      addLog('Failed to export SWMM', 'error');
+    }
+  }, [addLog, layers, projectName, projectVersion]);
 
   const handleExportShapefiles = useCallback(async () => {
     const processedLayers = layers.filter(l => l.category === 'Process');

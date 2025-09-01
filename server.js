@@ -101,6 +101,93 @@ app.post('/api/area', (req, res) => {
   }
 });
 
+app.post('/api/export-swmm', (req, res) => {
+  const { defaults = {}, subcatchments } = req.body || {};
+  if (!Array.isArray(subcatchments) || subcatchments.length === 0) {
+    addLog('Invalid payload for export-swmm', 'error');
+    return res.status(400).json({ error: 'Invalid payload' });
+  }
+  const templatePath = path.join(
+    __dirname,
+    'export_templates',
+    'swmm',
+    'SWMM_TEMPLATE.inp'
+  );
+  fs.readFile(templatePath, 'utf8', (err, template) => {
+    if (err) {
+      addLog('Error reading SWMM template', 'error');
+      return res.status(500).send('Unable to read SWMM template');
+    }
+
+    const subIdx = template.indexOf('[SUBCATCHMENTS]');
+    const juncIdx = template.indexOf('[JUNCTIONS]');
+    const polyIdx = template.indexOf('[POLYGONS]');
+    const profIdx = template.indexOf('[PROFILES]');
+
+    const before = template.slice(0, subIdx);
+    const middle = template.slice(juncIdx, polyIdx);
+    const after = template.slice(profIdx);
+
+    const pctImperv = defaults.pctImperv ?? 25;
+    const slope = defaults.slope ?? 0.5;
+    const curbLen = defaults.curbLen ?? 0;
+    const rainGage = defaults.rainGage ?? '*';
+    const outlet = defaults.outlet ?? '*';
+    const nImperv = defaults.nImperv ?? 0.01;
+    const nPerv = defaults.nPerv ?? 0.1;
+    const sImperv = defaults.sImperv ?? 0.05;
+    const sPerv = defaults.sPerv ?? 0.05;
+    const pctZero = defaults.pctZero ?? 25;
+    const routeTo = defaults.routeTo ?? 'OUTLET';
+    const pctRouted = defaults.pctRouted ?? 0;
+    const p1 = defaults.infilParam1 ?? 3;
+    const p2 = defaults.infilParam2 ?? 0.5;
+    const p3 = defaults.infilParam3 ?? 4;
+    const p4 = defaults.infilParam4 ?? 7;
+    const p5 = defaults.infilParam5 ?? 0;
+
+    const subcatchLines = [];
+    const subareaLines = [];
+    const infilLines = [];
+    const polygonLines = [];
+
+    subcatchments.forEach((sc) => {
+      const geom = sc.geometry;
+      const areaHa = turfArea(geom) / 10000;
+      const width = (defaults.widthFactor ? areaHa * defaults.widthFactor : areaHa * 100);
+      subcatchLines.push(
+        `${sc.name} ${rainGage} ${outlet} ${areaHa.toFixed(4)} ${pctImperv} ${width.toFixed(2)} ${slope} ${curbLen}`
+      );
+      subareaLines.push(
+        `${sc.name} ${nImperv} ${nPerv} ${sImperv} ${sPerv} ${pctZero} ${routeTo} ${pctRouted}`
+      );
+      infilLines.push(`${sc.name} ${p1} ${p2} ${p3} ${p4} ${p5}`);
+
+      if (geom.type === 'Polygon') {
+        geom.coordinates[0].forEach((c) => {
+          polygonLines.push(`${sc.name} ${c[0]} ${c[1]}`);
+        });
+      } else if (geom.type === 'MultiPolygon') {
+        geom.coordinates.forEach((poly) => {
+          poly[0].forEach((c) => {
+            polygonLines.push(`${sc.name} ${c[0]} ${c[1]}`);
+          });
+        });
+      }
+    });
+
+    const subs = `[SUBCATCHMENTS]\n;;Name           Rain Gage        Outlet           Area     %Imperv  Width    %Slope   CurbLen  SnowPack\n;;-------------- ---------------- ---------------- -------- -------- -------- -------- -------- ----------------\n${subcatchLines.join('\n')}\n\n[SUBAREAS]\n;;Subcatchment   N-Imperv   N-Perv     S-Imperv   S-Perv     PctZero    RouteTo    PctRouted\n;;-------------- ---------- ---------- ---------- ---------- ---------- ---------- ----------\n${subareaLines.join('\n')}\n\n[INFILTRATION]\n;;Subcatchment   Param1     Param2     Param3     Param4     Param5\n;;-------------- ---------- ---------- ---------- ---------- ----------\n${infilLines.join('\n')}\n\n`;
+
+    const polys = `[POLYGONS]\n;;Subcatchment   X-Coord            Y-Coord\n;;-------------- ------------------ ------------------\n${polygonLines.join('\n')}\n\n`;
+
+    const content = before + subs + middle + polys + after;
+
+    res.setHeader('Content-Type', 'text/plain');
+    res.setHeader('Content-Disposition', 'attachment; filename="swmm.inp"');
+    res.send(content);
+  });
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.listen(port, () => {
