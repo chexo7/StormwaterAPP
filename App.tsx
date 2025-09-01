@@ -587,6 +587,12 @@ const App: React.FC = () => {
       entry.polygons.push(...rings);
       grouped.set(id, entry);
     });
+    const closeRing = (ring: number[][]): number[][] => {
+      if (ring.length < 3) return ring;
+      const [fx, fy] = ring[0];
+      const [lx, ly] = ring[ring.length - 1];
+      return fx === lx && fy === ly ? ring : [...ring, ring[0]];
+    };
 
     Array.from(grouped.entries())
       .sort(([a], [b]) => a.localeCompare(b))
@@ -597,14 +603,19 @@ const App: React.FC = () => {
       );
       subareaLines.push(`${id}\t0.01\t0.1\t0.05\t0.05\t25\tOUTLET`);
       infilLines.push(`${id}\t3\t0.5\t4\t7\t0`);
-
-      polygons.forEach((ring, idx) => {
-        if (idx > 0) polygonLines.push(id);
-        ring.forEach(([x, y]) => {
+      polygons.forEach(ring => {
+        const cleaned = ring.filter(
+          (p, i, arr) => i === 0 || p[0] !== arr[i - 1][0] || p[1] !== arr[i - 1][1]
+        );
+        const closed = closeRing(cleaned);
+        closed.forEach(([x, y]) => {
           polygonLines.push(`${id}\t${x}\t${y}`);
         });
       });
     });
+
+    const bad = polygonLines.find(l => l.trim().split(/\s+/).length !== 3);
+    if (bad) throw new Error(`[POLYGONS] malformed: "${bad}"`);
 
     const replaceSection = (content: string, section: string, lines: string) => {
       const regex = new RegExp(`\\[${section}\\][\\s\\S]*?(?=\\n\\[|$)`);
