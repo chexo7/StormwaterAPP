@@ -569,23 +569,37 @@ const App: React.FC = () => {
     const infilLines: string[] = [];
     const polygonLines: string[] = [];
 
+    const grouped = new Map<
+      string,
+      { area: number; polygons: number[][][] }
+    >();
+
     overlayLayer.geojson.features.forEach((f, i) => {
       const id = ((f.properties as any)?.DA_NAME as string) || `S${i + 1}`;
       const a = area(f as any) * 0.000247105; // acres
-      const width = a * 100; // simple width approximation
+      const geom = f.geometry;
+      const rings: number[][][] =
+        geom.type === 'Polygon'
+          ? [geom.coordinates[0] as number[][]]
+          : (geom as any).coordinates.map((p: any) => p[0] as number[][]);
+      const entry = grouped.get(id) || { area: 0, polygons: [] };
+      entry.area += a;
+      entry.polygons.push(...rings);
+      grouped.set(id, entry);
+    });
 
+    Array.from(grouped.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .forEach(([id, { area: a, polygons }]) => {
+      const width = a * 100; // simple width approximation
       subcatchLines.push(
         `${id}\t*\t*\t${a.toFixed(4)}\t25\t${width.toFixed(2)}\t0.5\t0`
       );
       subareaLines.push(`${id}\t0.01\t0.1\t0.05\t0.05\t25\tOUTLET`);
       infilLines.push(`${id}\t3\t0.5\t4\t7\t0`);
 
-      const geom = f.geometry;
-      const rings =
-        geom.type === 'Polygon'
-          ? [geom.coordinates[0]]
-          : (geom as any).coordinates.map((p: any) => p[0]);
-      rings.forEach((ring: number[][]) => {
+      polygons.forEach((ring, idx) => {
+        if (idx > 0) polygonLines.push(id);
         ring.forEach(([x, y]) => {
           polygonLines.push(`${id}\t${x}\t${y}`);
         });
