@@ -553,31 +553,52 @@ const App: React.FC = () => {
   }, [addLog, layers, projectName, projectVersion]);
 
   const handleExportSWMM = useCallback(async () => {
-    const files = import.meta.glob('./export_templates/swmm/**', { as: 'raw' });
-    const working: Record<string, string> = {};
-    await Promise.all(
-      Object.entries(files).map(async ([path, loader]) => {
-        const content = await loader();
-        const filename = path.replace(/^.*\/swmm\//, '');
-        working[filename] = content as string;
-      })
-    );
-    const JSZip = (await import('jszip')).default;
-    const zip = new JSZip();
-    Object.entries(working).forEach(([name, content]) => {
-      zip.file(name, content);
+    const overlayLayer = layers.find(l => l.name === 'Overlay');
+    if (!overlayLayer) {
+      addLog('Overlay layer not found', 'error');
+      return;
+    }
+    const turf = await import('@turf/turf');
+    const subcatchments = overlayLayer.geojson.features.map((f, i) => {
+      const id = (f.properties as any)?.DA_NAME || `S${i + 1}`;
+      let coords: [number, number][] = [];
+      if (f.geometry.type === 'Polygon') {
+        coords = (f.geometry.coordinates[0] as [number, number][]);
+      } else if (f.geometry.type === 'MultiPolygon') {
+        const poly = (f.geometry.coordinates[0] || []) as [number, number][][];
+        coords = poly[0] || [];
+      }
+      const areaAcres = turf.area(f as any) * 0.000247105; // m^2 to acres
+      return { name: id, area: areaAcres, polygon: coords };
     });
-    const blob = await zip.generateAsync({ type: 'blob' });
-    const filename = `${(projectName || 'project')}_${projectVersion}_swmm.zip`;
+
+    const payload = {
+      defaults: {
+        percentImperv: 25,
+      },
+      subcatchments,
+    };
+
+    const resp = await fetch('/api/export-swmm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!resp.ok) {
+      addLog('SWMM export failed', 'error');
+      return;
+    }
+    const blob = await resp.blob();
+    const filename = `${(projectName || 'project')}_${projectVersion}.inp`;
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
-    addLog('SWMM template exported');
+    addLog('SWMM file exported');
     setExportModalOpen(false);
-  }, [addLog, projectName, projectVersion]);
+  }, [addLog, layers, projectName, projectVersion]);
 
   const handleExportShapefiles = useCallback(async () => {
     const processedLayers = layers.filter(l => l.category === 'Process');
