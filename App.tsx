@@ -12,6 +12,8 @@ import ComputeModal, { ComputeTask } from './components/ComputeModal';
 import ExportModal from './components/ExportModal';
 import { loadLandCoverList, loadCnValues, CnRecord } from './utils/landcover';
 import { prepareForShapefile } from './utils/shp';
+import proj4 from 'proj4';
+import { STATE_PLANE_OPTIONS } from './utils/stateplanes';
 
 const DEFAULT_COLORS: Record<string, string> = {
   'Drainage Areas': '#67e8f9',
@@ -30,6 +32,26 @@ const getDefaultColor = (name: string) => DEFAULT_COLORS[name] || '#67e8f9';
 type UpdateHsgFn = (layerId: string, featureIndex: number, hsg: string) => void;
 type UpdateDaNameFn = (layerId: string, featureIndex: number, name: string) => void;
 type UpdateLandCoverFn = (layerId: string, featureIndex: number, value: string) => void;
+
+function reprojectFeatureCollection(
+  fc: FeatureCollection,
+  converter: proj4.Converter
+): FeatureCollection {
+  const reprojectCoords = (coords: any): any =>
+    typeof coords[0] === 'number'
+      ? converter.forward(coords as [number, number])
+      : coords.map(reprojectCoords);
+  return {
+    type: 'FeatureCollection',
+    features: fc.features.map((f) => ({
+      ...f,
+      geometry: {
+        ...f.geometry,
+        coordinates: reprojectCoords((f.geometry as any).coordinates),
+      } as any,
+    })),
+  };
+}
 
 const App: React.FC = () => {
   const [layers, setLayers] = useState<LayerData[]>([]);
@@ -53,6 +75,9 @@ const App: React.FC = () => {
   const [projectName, setProjectName] = useState<string>('');
   const [projectVersion, setProjectVersion] = useState<string>('V1');
   const [exportModalOpen, setExportModalOpen] = useState<boolean>(false);
+  const [exportEpsg, setExportEpsg] = useState<string>(
+    STATE_PLANE_OPTIONS[0].epsg
+  );
 
   const requiredLayers = [
     'Drainage Areas',
@@ -550,7 +575,7 @@ const App: React.FC = () => {
       addLog('HydroCAD file exported');
       setExportModalOpen(false);
     });
-  }, [addLog, layers, projectName, projectVersion]);
+  }, [addLog, layers, projectName, projectVersion, exportEpsg]);
 
   const handleExportSWMM = useCallback(async () => {
     const daLayer = layers.find(l => l.name === 'Drainage Areas');
@@ -570,6 +595,13 @@ const App: React.FC = () => {
       bbox,
       kinks,
     } = await import('@turf/turf');
+
+    const proj4Def = await fetch(`https://epsg.io/${exportEpsg}.proj4`).then((r) =>
+      r.text()
+    );
+    proj4.defs(`EPSG:${exportEpsg}`, proj4Def);
+    const converter = proj4('EPSG:4326', `EPSG:${exportEpsg}`);
+    const isFeet = /\+units=(us-ft|ft)/.test(proj4Def);
 
     const sanitizeId = (s: string, i: number) =>
       (s || `S${i + 1}`)
@@ -741,6 +773,12 @@ const App: React.FC = () => {
       validIds.has(l.split(/\s+/)[0])
     );
 
+    const projectedPolygonLines = filteredPolygonLines.map((l) => {
+      const [id, x, y] = l.split(/\s+/);
+      const [px, py] = converter.forward([Number(x), Number(y)]);
+      return `${id}\t${px}\t${py}`;
+    });
+
     const replaceSection = (content: string, section: string, lines: string) => {
       const regex = new RegExp(String.raw`\[${section}\][\s\S]*?(?=\r?\n\[|$)`);
       return content.replace(regex, `[${section}]\n${lines}\n`);
@@ -784,7 +822,7 @@ const App: React.FC = () => {
     content = replaceSection(
       content,
       'POLYGONS',
-      polygonHeader + filteredPolygonLines.join('\n')
+      polygonHeader + projectedPolygonLines.join('\n')
     );
     content = replaceSection(content, 'JUNCTIONS', junctionHeader);
     content = replaceSection(content, 'OUTFALLS', outfallHeader);
@@ -792,8 +830,8 @@ const App: React.FC = () => {
     content = replaceSection(content, 'XSECTIONS', xsectionHeader);
     content = replaceSection(content, 'COORDINATES', coordHeader);
 
-    if (filteredPolygonLines.length) {
-      const allRings = filteredPolygonLines
+    if (projectedPolygonLines.length) {
+      const allRings = projectedPolygonLines
         .map((l) => l.split(/\s+/))
         .map(([_, x, y]) => [Number(x), Number(y)]);
       const [minX, minY, maxX, maxY] = bbox({
@@ -810,7 +848,7 @@ const App: React.FC = () => {
       const dy = (maxY - minY) * 0.01;
       const mapBlock = `[MAP]\nDIMENSIONS       ${minX - dx} ${minY - dy}  ${
         maxX + dx
-      } ${maxY + dy}\nUNITS            Meters\n`;
+      } ${maxY + dy}\nUNITS            ${isFeet ? 'Feet' : 'Meters'}\n`;
       content = content.replace(
         /\[MAP\][\s\S]*?(?=\r?\n\[|$)/,
         mapBlock
@@ -839,21 +877,34 @@ const App: React.FC = () => {
     const shpwrite = (await import('@mapbox/shp-write')).default as any;
     const zip = new JSZip();
 
+    const [proj4Def, wkt] = await Promise.all([
+      fetch(`https://epsg.io/${exportEpsg}.proj4`).then((r) => r.text()),
+      fetch(`https://epsg.io/${exportEpsg}.wkt`).then((r) => r.text()),
+    ]);
+    proj4.defs(`EPSG:${exportEpsg}`, proj4Def);
+    const converter = proj4('EPSG:4326', `EPSG:${exportEpsg}`);
+
     for (const layer of processedLayers) {
       const prepared = prepareForShapefile(layer.geojson, layer.name);
-      addLog(`Exporting "${layer.name}": ${prepared.features.length} features`);
-      const layerZipBuffer = await shpwrite.zip(prepared, { outputType: 'arraybuffer' });
+      const projected = reprojectFeatureCollection(prepared, converter);
+      addLog(`Exporting "${layer.name}": ${projected.features.length} features`);
+      const layerZipBuffer = await shpwrite.zip(projected, {
+        outputType: 'arraybuffer',
+        prj: wkt,
+      });
       const layerZip = await JSZip.loadAsync(layerZipBuffer);
       const folderName = layer.name.replace(/[^a-z0-9_\-]/gi, '_');
       const folder = zip.folder(folderName);
       if (!folder) continue;
       await Promise.all(
-        Object.keys(layerZip.files).map(async filename => {
+        Object.keys(layerZip.files).map(async (filename) => {
           const content = await layerZip.files[filename].async('arraybuffer');
           folder.file(filename, content);
         })
       );
-      const dbf = Object.keys(layerZip.files).find(f => f.toLowerCase().endsWith('.dbf'));
+      const dbf = Object.keys(layerZip.files).find((f) =>
+        f.toLowerCase().endsWith('.dbf')
+      );
       if (dbf) {
         const base = dbf.replace(/\.dbf$/i, '');
         folder.file(`${base}.cpg`, 'UTF-8');
@@ -870,7 +921,7 @@ const App: React.FC = () => {
     URL.revokeObjectURL(url);
     addLog('Processed shapefiles exported');
     setExportModalOpen(false);
-  }, [addLog, layers, projectName, projectVersion]);
+  }, [addLog, layers, projectName, projectVersion, exportEpsg]);
 
   return (
     <div className="flex flex-col h-screen bg-gray-900 text-gray-100 font-sans">
@@ -948,6 +999,8 @@ const App: React.FC = () => {
           onExportShapefiles={handleExportShapefiles}
           onClose={() => setExportModalOpen(false)}
           exportEnabled={computeSucceeded}
+          selectedEpsg={exportEpsg}
+          onEpsgChange={setExportEpsg}
         />
       )}
     </div>
