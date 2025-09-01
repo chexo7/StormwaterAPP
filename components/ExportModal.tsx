@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import { STATE_PLANE_OPTIONS } from '../utils/projections';
 import type { ProjectionOption } from '../types';
 
@@ -13,24 +13,43 @@ interface ExportModalProps {
 }
 
 const ExportModal: React.FC<ExportModalProps> = ({ onExportHydroCAD, onExportSWMM, onExportShapefiles, onClose, exportEnabled, projection, onProjectionChange }) => {
+  const [filter, setFilter] = useState('');
+
+  const filteredOptions = useMemo(
+    () =>
+      STATE_PLANE_OPTIONS.filter(
+        (opt) =>
+          opt.name.toLowerCase().includes(filter.toLowerCase()) ||
+          opt.epsg.includes(filter)
+      ),
+    [filter]
+  );
+
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[2000]">
-      <div className="bg-gray-800 p-6 rounded-lg border border-gray-600 w-80 space-y-4">
+      <div className="bg-gray-800 p-6 rounded-lg border border-gray-600 w-96 space-y-4">
         <div className="flex justify-between items-center">
           <h2 className="text-lg font-semibold text-white">Export</h2>
           <button className="text-gray-400 hover:text-white" onClick={onClose}>✕</button>
         </div>
         <div>
           <label className="block text-sm text-gray-300 mb-1">State Plane</label>
+          <input
+            type="text"
+            placeholder="Filter by name or EPSG"
+            className="w-full mb-2 bg-gray-700 text-white p-2 rounded"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+          />
           <select
             size={8}
             className="w-full bg-gray-700 text-white p-2 rounded overflow-y-auto"
             value={projection.epsg}
             onChange={(e) => onProjectionChange(e.target.value)}
           >
-            {STATE_PLANE_OPTIONS.map((opt) => (
-              <option key={opt.epsg} value={opt.epsg}>
-                {opt.name}
+            {filteredOptions.map((opt) => (
+              <option key={opt.epsg} value={opt.epsg} title={`${opt.epsg} - ${opt.name}`}>
+                {`EPSG:${opt.epsg} - ${opt.name}`}
               </option>
             ))}
           </select>
