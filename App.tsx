@@ -12,6 +12,10 @@ import ComputeModal, { ComputeTask } from './components/ComputeModal';
 import ExportModal from './components/ExportModal';
 import { loadLandCoverList, loadCnValues, CnRecord } from './utils/landcover';
 import { prepareForShapefile } from './utils/shp';
+import proj4 from 'proj4';
+import { STATE_PLANE_OPTIONS } from './utils/projections';
+import type { ProjectionOption } from './types';
+import { reprojectFeatureCollection } from './utils/reproject';
 
 const DEFAULT_COLORS: Record<string, string> = {
   'Drainage Areas': '#67e8f9',
@@ -53,6 +57,7 @@ const App: React.FC = () => {
   const [projectName, setProjectName] = useState<string>('');
   const [projectVersion, setProjectVersion] = useState<string>('V1');
   const [exportModalOpen, setExportModalOpen] = useState<boolean>(false);
+  const [projection, setProjection] = useState<ProjectionOption>(STATE_PLANE_OPTIONS[0]);
 
   const requiredLayers = [
     'Drainage Areas',
@@ -550,7 +555,7 @@ const App: React.FC = () => {
       addLog('HydroCAD file exported');
       setExportModalOpen(false);
     });
-  }, [addLog, layers, projectName, projectVersion]);
+  }, [addLog, layers, projectName, projectVersion, projection]);
 
   const handleExportSWMM = useCallback(async () => {
     const daLayer = layers.find(l => l.name === 'Drainage Areas');
@@ -570,6 +575,8 @@ const App: React.FC = () => {
       bbox,
       kinks,
     } = await import('@turf/turf');
+
+    const project = proj4('EPSG:4326', projection.proj4);
 
     const sanitizeId = (s: string, i: number) =>
       (s || `S${i + 1}`)
@@ -702,14 +709,15 @@ const App: React.FC = () => {
           } catch {}
           const closed = closeRing(ringToWrite);
           const safeClosed = closed.filter(isFinitePair);
-          if (safeClosed.length < 4) {
+          const projectedRing = safeClosed.map((p) => project.forward(p as [number, number]));
+          if (projectedRing.length < 4) {
             addLog(
               `[POLYGONS] Se descartó un anillo degenerado de ${id}`,
               'warn'
             );
             return;
           }
-          safeClosed.forEach(([x, y]) => {
+          projectedRing.forEach(([x, y]) => {
             polygonLines.push(`${id}\t${x}\t${y}`);
           });
           hasRing = true;
@@ -810,7 +818,9 @@ const App: React.FC = () => {
       const dy = (maxY - minY) * 0.01;
       const mapBlock = `[MAP]\nDIMENSIONS       ${minX - dx} ${minY - dy}  ${
         maxX + dx
-      } ${maxY + dy}\nUNITS            Meters\n`;
+      } ${maxY + dy}\nUNITS            ${
+        projection.units === 'feet' ? 'Feet' : 'Meters'
+      }\n`;
       content = content.replace(
         /\[MAP\][\s\S]*?(?=\r?\n\[|$)/,
         mapBlock
@@ -827,7 +837,7 @@ const App: React.FC = () => {
     URL.revokeObjectURL(url);
     addLog('SWMM file exported');
     setExportModalOpen(false);
-  }, [addLog, layers, projectName, projectVersion]);
+    }, [addLog, layers, projectName, projectVersion, projection]);
 
   const handleExportShapefiles = useCallback(async () => {
     const processedLayers = layers.filter(l => l.category === 'Process');
@@ -841,8 +851,13 @@ const App: React.FC = () => {
 
     for (const layer of processedLayers) {
       const prepared = prepareForShapefile(layer.geojson, layer.name);
-      addLog(`Exporting "${layer.name}": ${prepared.features.length} features`);
-      const layerZipBuffer = await shpwrite.zip(prepared, { outputType: 'arraybuffer' });
+      const projected = reprojectFeatureCollection(prepared, projection.proj4);
+      addLog(`Exporting "${layer.name}": ${projected.features.length} features`);
+      let prj: string | undefined;
+      try {
+        prj = await fetch(`https://epsg.io/${projection.epsg}.prj`).then(r => r.text());
+      } catch {}
+      const layerZipBuffer = await shpwrite.zip(projected, { outputType: 'arraybuffer', prj });
       const layerZip = await JSZip.loadAsync(layerZipBuffer);
       const folderName = layer.name.replace(/[^a-z0-9_\-]/gi, '_');
       const folder = zip.folder(folderName);
@@ -855,8 +870,8 @@ const App: React.FC = () => {
       );
       const dbf = Object.keys(layerZip.files).find(f => f.toLowerCase().endsWith('.dbf'));
       if (dbf) {
-        const base = dbf.replace(/\.dbf$/i, '');
-        folder.file(`${base}.cpg`, 'UTF-8');
+      const base = dbf.replace(/\.dbf$/i, '');
+      folder.file(`${base}.cpg`, 'UTF-8');
       }
     }
 
@@ -870,7 +885,7 @@ const App: React.FC = () => {
     URL.revokeObjectURL(url);
     addLog('Processed shapefiles exported');
     setExportModalOpen(false);
-  }, [addLog, layers, projectName, projectVersion]);
+  }, [addLog, layers, projectName, projectVersion, projection]);
 
   return (
     <div className="flex flex-col h-screen bg-gray-900 text-gray-100 font-sans">
@@ -948,6 +963,11 @@ const App: React.FC = () => {
           onExportShapefiles={handleExportShapefiles}
           onClose={() => setExportModalOpen(false)}
           exportEnabled={computeSucceeded}
+          projection={projection}
+          onProjectionChange={(epsg) => {
+            const proj = STATE_PLANE_OPTIONS.find(p => p.epsg === epsg);
+            if (proj) setProjection(proj);
+          }}
         />
       )}
     </div>
