@@ -553,31 +553,64 @@ const App: React.FC = () => {
   }, [addLog, layers, projectName, projectVersion]);
 
   const handleExportSWMM = useCallback(async () => {
-    const files = import.meta.glob('./export_templates/swmm/**', { as: 'raw' });
-    const working: Record<string, string> = {};
-    await Promise.all(
-      Object.entries(files).map(async ([path, loader]) => {
-        const content = await loader();
-        const filename = path.replace(/^.*\/swmm\//, '');
-        working[filename] = content as string;
-      })
-    );
-    const JSZip = (await import('jszip')).default;
-    const zip = new JSZip();
-    Object.entries(working).forEach(([name, content]) => {
-      zip.file(name, content);
+    const drainageLayer = layers.find(l => l.name === 'Drainage Areas');
+    if (!drainageLayer) {
+      addLog('Drainage Areas layer not found', 'error');
+      return;
+    }
+
+    const files = import.meta.glob('./export_templates/swmm/SWMM_TEMPLATE.inp', { as: 'raw' });
+    const loader = files['./export_templates/swmm/SWMM_TEMPLATE.inp'];
+    if (!loader) {
+      addLog('SWMM template not found', 'error');
+      return;
+    }
+    const template = (await loader()) as string;
+
+    let polygonSection =
+      '[POLYGONS]\n' +
+      ';;Subcatchment   X-Coord            Y-Coord\n' +
+      ';;-------------- ------------------ ------------------\n';
+
+    drainageLayer.geojson.features.forEach((f, i) => {
+      const name = (f.properties as any)?.DA_NAME || `S${i + 1}`;
+      const geom = f.geometry as any;
+      let rings: number[][][] = [];
+      if (geom.type === 'Polygon') {
+        rings = [geom.coordinates[0]];
+      } else if (geom.type === 'MultiPolygon') {
+        rings = geom.coordinates.map((p: number[][][]) => p[0]);
+      } else {
+        return;
+      }
+      rings.forEach(ring => {
+        ring.forEach((coord: number[]) => {
+          const [x, y] = coord;
+          polygonSection += `${name}               ${x}       ${y}\n`;
+        });
+        const first = ring[0];
+        const last = ring[ring.length - 1];
+        if (first[0] !== last[0] || first[1] !== last[1]) {
+          polygonSection += `${name}               ${first[0]}       ${first[1]}\n`;
+        }
+      });
     });
-    const blob = await zip.generateAsync({ type: 'blob' });
-    const filename = `${(projectName || 'project')}_${projectVersion}_swmm.zip`;
+
+    polygonSection += '\n';
+
+    const updated = template.replace(/\[POLYGONS\][\s\S]*?(\n\[)/, polygonSection + '$1');
+
+    const blob = new Blob([updated], { type: 'text/plain' });
+    const filename = `${(projectName || 'project')}_${projectVersion}.inp`;
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
-    addLog('SWMM template exported');
+    addLog('SWMM file exported');
     setExportModalOpen(false);
-  }, [addLog, projectName, projectVersion]);
+  }, [addLog, layers, projectName, projectVersion]);
 
   const handleExportShapefiles = useCallback(async () => {
     const processedLayers = layers.filter(l => l.category === 'Process');
