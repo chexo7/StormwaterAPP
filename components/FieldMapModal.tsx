@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 
 interface FieldMapModalProps {
   layerName: string;
@@ -11,39 +11,43 @@ const FieldMapModal: React.FC<FieldMapModalProps> = ({ layerName, properties, on
   const fields = Object.keys(properties || {});
   const [mapping, setMapping] = useState<Record<string, string>>({});
 
-  const required = layerName === 'Pipes'
-    ? [
-        { key: 'label', label: 'Label' },
-        { key: 'inv_in', label: 'Elevation Invert In [ft]' },
-        { key: 'inv_out', label: 'Elevation Invert Out [ft]' },
-        { key: 'diameter', label: 'Diameter [in]' },
-        { key: 'roughness', label: 'Roughness' },
-      ]
-    : [
-        { key: 'label', label: 'Label' },
-        { key: 'ground', label: 'Elevation Ground [ft]' },
-        { key: 'invert', label: 'Elevation Invert[ft]' },
-      ];
-
-  useEffect(() => {
-    const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
-    const guess: Record<string, string> = {};
-    required.forEach(r => {
-      const target = norm(r.label);
-      const found = fields.find(f => {
-        const nf = norm(f);
-        return nf === target || nf.includes(target) || target.includes(nf);
-      });
-      if (found) guess[r.key] = found;
-    });
-    setMapping(guess);
-  }, [fields, layerName]);
+  let required: { key: string; label: string }[] = [];
+  if (layerName === 'Pipes') {
+    required = [
+      { key: 'label', label: 'Label' },
+      { key: 'inv_in', label: 'Elevation Invert In [ft]' },
+      { key: 'inv_out', label: 'Elevation Invert Out [ft]' },
+      { key: 'diameter', label: 'Diameter [in]' },
+      { key: 'roughness', label: 'Roughness' },
+    ];
+  } else if (layerName === 'Catch Basins / Manholes') {
+    required = [
+      { key: 'label', label: 'Label' },
+      { key: 'ground', label: 'Elevation Ground [ft]' },
+      { key: 'inv_n', label: 'Invert N [ft]' },
+      { key: 'inv_s', label: 'Invert S [ft]' },
+      { key: 'inv_e', label: 'Invert E [ft]' },
+      { key: 'inv_w', label: 'Invert W [ft]' },
+    ];
+  } else {
+    required = [
+      { key: 'label', label: 'Label' },
+      { key: 'ground', label: 'Elevation Ground [ft]' },
+      { key: 'invert', label: 'Elevation Invert[ft]' },
+    ];
+  }
 
   const handleChange = (key: string, value: string) => {
     setMapping(prev => ({ ...prev, [key]: value }));
   };
 
   const handleSubmit = () => {
+    const values = Object.values(mapping).filter((v) => v);
+    const dup = values.filter((v, i) => values.indexOf(v) !== i);
+    if (dup.length) {
+      alert('Duplicate field selections detected');
+      return;
+    }
     onConfirm(mapping);
   };
 
