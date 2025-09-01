@@ -101,6 +101,92 @@ app.post('/api/area', (req, res) => {
   }
 });
 
+app.post('/api/export-swmm', (req, res) => {
+  const { defaults, subcatchments } = req.body || {};
+  if (!defaults || !Array.isArray(subcatchments)) {
+    addLog('Invalid payload for SWMM export', 'error');
+    return res.status(400).json({ error: 'Invalid payload' });
+  }
+
+  const templatePath = path.join(
+    __dirname,
+    'export_templates',
+    'swmm',
+    'SWMM_TEMPLATE.inp'
+  );
+
+  fs.readFile(templatePath, 'utf8', (err, template) => {
+    if (err) {
+      addLog('Error reading SWMM template', 'error');
+      return res.status(500).send('Unable to read SWMM template');
+    }
+
+    try {
+      const subcatchLines = [];
+      const subareaLines = [];
+      const infiltrationLines = [];
+      const polygonLines = [];
+
+      subcatchments.forEach((sc, idx) => {
+        const name = sc.name || `S${idx + 1}`;
+        const coords = sc.polygon;
+        if (!Array.isArray(coords)) return;
+
+        const polyFeature = {
+          type: 'Feature',
+          properties: {},
+          geometry: { type: 'Polygon', coordinates: [coords] }
+        };
+        const areaAcres = turfArea(polyFeature) * 0.000247105;
+
+        subcatchLines.push(
+          `${name}               ${defaults.rainGage}                ${defaults.outlet}                ${areaAcres.toFixed(4)}   ${defaults.percentImperv}       ${defaults.width}    ${defaults.percentSlope}      ${defaults.curbLen}`
+        );
+        subareaLines.push(
+          `${name}               ${defaults.nImperv}       ${defaults.nPerv}        ${defaults.sImperv}       ${defaults.sPerv}       ${defaults.pctZero}         ${defaults.routeTo}    ${defaults.pctRouted || 0}`
+        );
+        infiltrationLines.push(
+          `${name}               ${defaults.infParam1}          ${defaults.infParam2}        ${defaults.infParam3}          ${defaults.infParam4}          ${defaults.infParam5}`
+        );
+        coords.forEach(pt => {
+          polygonLines.push(`${name}               ${pt[0]}       ${pt[1]}`);
+        });
+      });
+
+      const replaceSection = (content, section, lines) => {
+        const parts = content.split(/\r?\n/);
+        const start = parts.findIndex(l => l === `[${section}]`);
+        if (start === -1) return content;
+        let end = start + 1;
+        while (end < parts.length && !parts[end].startsWith('[')) end++;
+        let headerEnd = start + 1;
+        while (headerEnd < end && parts[headerEnd].startsWith(';;')) headerEnd++;
+        const result = [
+          ...parts.slice(0, headerEnd),
+          ...lines,
+          '',
+          ...parts.slice(end)
+        ];
+        return result.join('\n');
+      };
+
+      let content = template;
+      content = replaceSection(content, 'SUBCATCHMENTS', subcatchLines);
+      content = replaceSection(content, 'SUBAREAS', subareaLines);
+      content = replaceSection(content, 'INFILTRATION', infiltrationLines);
+      content = replaceSection(content, 'POLYGONS', polygonLines);
+
+      res.setHeader('Content-Type', 'text/plain');
+      res.setHeader('Content-Disposition', 'attachment; filename="swmm.inp"');
+      addLog('SWMM file generated');
+      res.send(content);
+    } catch (e) {
+      addLog('Error generating SWMM file', 'error');
+      res.status(500).send('Error generating SWMM file');
+    }
+  });
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.listen(port, () => {

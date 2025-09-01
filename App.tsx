@@ -553,31 +553,70 @@ const App: React.FC = () => {
   }, [addLog, layers, projectName, projectVersion]);
 
   const handleExportSWMM = useCallback(async () => {
-    const files = import.meta.glob('./export_templates/swmm/**', { as: 'raw' });
-    const working: Record<string, string> = {};
-    await Promise.all(
-      Object.entries(files).map(async ([path, loader]) => {
-        const content = await loader();
-        const filename = path.replace(/^.*\/swmm\//, '');
-        working[filename] = content as string;
+    const daLayer = layers.find(l => l.name === 'Drainage Area in LOD');
+    if (!daLayer) {
+      addLog('Drainage Area in LOD layer not found', 'error');
+      return;
+    }
+    const defaults = {
+      rainGage: '*',
+      outlet: '*',
+      percentImperv: 25,
+      width: 33.44,
+      percentSlope: 0.5,
+      curbLen: 0,
+      nImperv: 0.01,
+      nPerv: 0.1,
+      sImperv: 0.05,
+      sPerv: 0.05,
+      pctZero: 25,
+      routeTo: 'OUTLET',
+      pctRouted: 0,
+      infParam1: 3,
+      infParam2: 0.5,
+      infParam3: 4,
+      infParam4: 7,
+      infParam5: 0
+    };
+
+    const subcatchments = daLayer.geojson.features
+      .map((f, idx) => {
+        const name = (f.properties as any)?.DA_NAME || `S${idx + 1}`;
+        let coords: number[][] | undefined;
+        if (f.geometry.type === 'Polygon') {
+          coords = f.geometry.coordinates[0] as number[][];
+        } else if (f.geometry.type === 'MultiPolygon') {
+          coords = f.geometry.coordinates[0][0] as number[][];
+        }
+        if (!coords) return null;
+        return { name, polygon: coords };
       })
-    );
-    const JSZip = (await import('jszip')).default;
-    const zip = new JSZip();
-    Object.entries(working).forEach(([name, content]) => {
-      zip.file(name, content);
-    });
-    const blob = await zip.generateAsync({ type: 'blob' });
-    const filename = `${(projectName || 'project')}_${projectVersion}_swmm.zip`;
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
-    addLog('SWMM template exported');
-    setExportModalOpen(false);
-  }, [addLog, projectName, projectVersion]);
+      .filter((s): s is { name: string; polygon: number[][] } => !!s);
+
+    try {
+      const res = await fetch('/api/export-swmm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ defaults, subcatchments })
+      });
+      if (!res.ok) {
+        addLog('SWMM export failed', 'error');
+        return;
+      }
+      const blob = await res.blob();
+      const filename = `${(projectName || 'project')}_${projectVersion}_swmm.inp`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+      addLog('SWMM file exported');
+      setExportModalOpen(false);
+    } catch {
+      addLog('SWMM export failed', 'error');
+    }
+  }, [addLog, layers, projectName, projectVersion]);
 
   const handleExportShapefiles = useCallback(async () => {
     const processedLayers = layers.filter(l => l.category === 'Process');
