@@ -22,7 +22,10 @@ const FieldMapModal: React.FC<FieldMapModalProps> = ({ layerName, properties, on
     : [
         { key: 'label', label: 'Label' },
         { key: 'ground', label: 'Elevation Ground [ft]' },
-        { key: 'invert', label: 'Elevation Invert[ft]' },
+        { key: 'inv_n', label: 'Invert N [ft]' },
+        { key: 'inv_s', label: 'Invert S [ft]' },
+        { key: 'inv_e', label: 'Invert E [ft]' },
+        { key: 'inv_w', label: 'Invert W [ft]' },
       ];
 
   useEffect(() => {
