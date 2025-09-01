@@ -2,7 +2,9 @@ import express from 'express';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import JSZip from 'jszip';
 import { intersect as turfIntersect, area as turfArea } from '@turf/turf';
+import { insertAfterSection, buildSUBCATCHMENTS, buildSUBAREAS, buildINFILTRATION, buildOUTFALLS } from './lib/pcswmm-writer.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -98,6 +100,34 @@ app.post('/api/area', (req, res) => {
   } catch (err) {
     addLog('Invalid polygon for area', 'error');
     res.status(400).json({ error: 'Invalid polygon' });
+  }
+});
+
+app.post('/api/export/pcswmm.zip', async (req, res) => {
+  try {
+    const input = req.body;
+    const tplDir = path.join(__dirname, 'export_templates', 'swmm');
+    const inpTpl = await fs.promises.readFile(path.join(tplDir, 'SWMM_TEMPLATE.inp'), 'utf8');
+    let inp = inpTpl;
+    inp = insertAfterSection(inp, 'SUBCATCHMENTS', buildSUBCATCHMENTS(input));
+    inp = insertAfterSection(inp, 'SUBAREAS', buildSUBAREAS(input));
+    inp = insertAfterSection(inp, 'INFILTRATION', buildINFILTRATION(input));
+    inp = insertAfterSection(inp, 'OUTFALLS', buildOUTFALLS(input));
+
+    const zip = new JSZip();
+    zip.file(`${input.projectName || 'project'}.inp`, inp.replace(/\n/g, '\r\n'));
+    for (const fname of ['SWMM_TEMPLATE.ini', 'SWMM_TEMPLATE.thm', 'SWMM_TEMPLATE.chi', 'README.md']) {
+      try {
+        const buf = await fs.promises.readFile(path.join(tplDir, fname));
+        zip.file(fname.replace('SWMM_TEMPLATE', input.projectName || 'project'), buf);
+      } catch {}
+    }
+    const content = await zip.generateAsync({ type: 'nodebuffer' });
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${(input.projectName || 'pcswmm_export')}.zip"`);
+    res.status(200).send(content);
+  } catch (e) {
+    res.status(400).json({ error: e.message });
   }
 });
 
