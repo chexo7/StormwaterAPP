@@ -101,6 +101,85 @@ app.post('/api/area', (req, res) => {
   }
 });
 
+app.post('/api/export-swmm', (req, res) => {
+  const { defaults = {}, subcatchments } = req.body || {};
+  if (!Array.isArray(subcatchments) || subcatchments.length === 0) {
+    addLog('Invalid SWMM export payload', 'error');
+    return res.status(400).json({ error: 'Invalid payload' });
+  }
+
+  try {
+    const templatePath = path.join(
+      __dirname,
+      'export_templates',
+      'swmm',
+      'SWMM_TEMPLATE.inp'
+    );
+    const template = fs.readFileSync(templatePath, 'utf8');
+    const start = template.indexOf('[SUBCATCHMENTS]');
+    const end = template.indexOf('[PROFILES]');
+    const prefix = template.slice(0, start);
+    const suffix = template.slice(end);
+
+    const d = defaults;
+    let sections = '[SUBCATCHMENTS]\n;;Name           Rain Gage        Outlet           Area     %Imperv  Width    %Slope   CurbLen  SnowPack\n;;-------------- ---------------- ---------------- -------- -------- -------- -------- -------- ----------------\n';
+    subcatchments.forEach((sc, i) => {
+      const name = sc.name || `S${i + 1}`;
+      const area = turfArea(sc.geometry || {});
+      const areaA = (area * 0.000247105).toFixed(4);
+      sections += `${name.padEnd(15)}${(d.rainGage || '*').padEnd(17)}${
+        (d.outlet || '*').padEnd(17)
+      }${areaA.padEnd(9)}${String(d.pctImperv || 0).padEnd(9)}${
+        String(d.width || 0).padEnd(9)
+      }${String(d.slope || 0).padEnd(9)}${
+        String(d.curbLen || 0).padEnd(9)
+      }${d.snowPack || ''}\n`;
+    });
+
+    sections += '\n[SUBAREAS]\n;;Subcatchment   N-Imperv   N-Perv     S-Imperv   S-Perv     PctZero    RouteTo    PctRouted\n;;-------------- ---------- ---------- ---------- ---------- ---------- ---------- ----------\n';
+    subcatchments.forEach((sc, i) => {
+      const name = sc.name || `S${i + 1}`;
+      sections += `${name.padEnd(15)}${String(d.nImperv || 0).padEnd(11)}${
+        String(d.nPerv || 0).padEnd(11)
+      }${String(d.sImperv || 0).padEnd(11)}${String(d.sPerv || 0).padEnd(11)}${
+        String(d.pctZero || 0).padEnd(11)
+      }${(d.routeTo || 'OUTLET').padEnd(11)}${String(d.pctRouted || 0)}\n`;
+    });
+
+    sections += '\n[INFILTRATION]\n;;Subcatchment   Param1     Param2     Param3     Param4     Param5\n;;-------------- ---------- ---------- ---------- ---------- ----------\n';
+    subcatchments.forEach((sc, i) => {
+      const name = sc.name || `S${i + 1}`;
+      const inf = d.infil || {};
+      sections += `${name.padEnd(15)}${String(inf.param1 || 0).padEnd(11)}${
+        String(inf.param2 || 0).padEnd(11)
+      }${String(inf.param3 || 0).padEnd(11)}${String(inf.param4 || 0).padEnd(11)}${
+        String(inf.param5 || 0)
+      }\n`;
+    });
+
+    sections += '\n[POLYGONS]\n;;Subcatchment   X-Coord            Y-Coord\n;;-------------- ------------------ ------------------\n';
+    subcatchments.forEach((sc, i) => {
+      const name = sc.name || `S${i + 1}`;
+      let coords = [];
+      if (sc.geometry && sc.geometry.type === 'Polygon') {
+        coords = sc.geometry.coordinates[0];
+      } else if (sc.geometry && sc.geometry.type === 'MultiPolygon') {
+        coords = sc.geometry.coordinates[0][0];
+      }
+      coords.forEach(c => {
+        sections += `${name.padEnd(15)}${String(c[0]).padEnd(19)}${String(c[1])}\n`;
+      });
+      sections += '\n';
+    });
+
+    const content = prefix + sections + suffix;
+    res.type('text/plain').send(content);
+  } catch (err) {
+    addLog('Failed to export SWMM', 'error');
+    res.status(500).json({ error: 'Failed to export SWMM' });
+  }
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.listen(port, () => {
