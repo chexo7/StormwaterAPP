@@ -168,6 +168,91 @@ const App: React.FC = () => {
       } as FeatureCollection;
     }
 
+    if (name === 'Pipes' && fieldMap) {
+      const cbLayer = layers.find(l => l.name === 'Catch Basins / Manholes');
+      const cbFeatures =
+        cbLayer?.geojson.features.filter(
+          f => f.geometry && f.geometry.type === 'Point'
+        ) || [];
+      const nearestCb = (pt: [number, number]) => {
+        let best: any = null;
+        let bestDist = Infinity;
+        cbFeatures.forEach(cb => {
+          const c = (cb.geometry as any).coordinates as [number, number];
+          const dx = pt[0] - c[0];
+          const dy = pt[1] - c[1];
+          const d = dx * dx + dy * dy;
+          if (d < bestDist) {
+            bestDist = d;
+            best = cb;
+          }
+        });
+        return best;
+      };
+      const getDir = (a: [number, number], b: [number, number]) => {
+        const dx = b[0] - a[0];
+        const dy = b[1] - a[1];
+        if (Math.abs(dx) > Math.abs(dy)) return dx >= 0 ? 'E' : 'W';
+        return dy >= 0 ? 'N' : 'S';
+      };
+      const invFromCb = (cb: any, dir: 'N' | 'S' | 'E' | 'W') => {
+        if (!cb) return null;
+        const p = cb.properties || {};
+        const keyMap: Record<string, string> = {
+          N: 'Invert N [ft]',
+          S: 'Invert S [ft]',
+          E: 'Invert E [ft]',
+          W: 'Invert W [ft]',
+        };
+        const val = Number(p[keyMap[dir]]);
+        if (val && !isNaN(val)) return val;
+        const outVal = Number(p['Inv Out [ft]']);
+        return outVal && !isNaN(outVal) ? outVal : null;
+      };
+      geojson = {
+        ...geojson,
+        features: geojson.features.map((f, i) => {
+          const props = f.properties || {};
+          const lblSrc = fieldMap.label && props[fieldMap.label] != null ? props[fieldMap.label] : null;
+          const label = lblSrc && String(lblSrc).trim() !== '' ? String(lblSrc) : `Pipe-${i + 1}`;
+          const diamSrc = fieldMap.diameter && props[fieldMap.diameter] !== undefined ? Number(props[fieldMap.diameter]) : NaN;
+          const roughSrc = fieldMap.roughness && props[fieldMap.roughness] !== undefined ? Number(props[fieldMap.roughness]) : NaN;
+          let invIn = fieldMap.inv_in && props[fieldMap.inv_in] !== undefined ? Number(props[fieldMap.inv_in]) : null;
+          let invOut = fieldMap.inv_out && props[fieldMap.inv_out] !== undefined ? Number(props[fieldMap.inv_out]) : null;
+          if (f.geometry && f.geometry.type === 'LineString' && cbFeatures.length) {
+            const coords = f.geometry.coordinates as number[][];
+            const start = coords[0] as [number, number];
+            const end = coords[coords.length - 1] as [number, number];
+            const second = coords[1] as [number, number] | undefined;
+            const prev = coords[coords.length - 2] as [number, number] | undefined;
+            if (!invIn && second) {
+              const cb = nearestCb(start);
+              const dir = getDir(start, second);
+              invIn = invFromCb(cb, dir);
+            }
+            if (!invOut && prev) {
+              const cb2 = nearestCb(end);
+              const dir2 = getDir(end, prev);
+              invOut = invFromCb(cb2, dir2);
+            }
+          }
+          const diameter = !isNaN(diamSrc) && diamSrc > 0 ? diamSrc : 15;
+          const roughness = !isNaN(roughSrc) && roughSrc > 0 ? roughSrc : 0.012;
+          return {
+            ...f,
+            properties: {
+              ...props,
+              'Label': label,
+              'Elevation Invert In [ft]': invIn,
+              'Elevation Invert Out [ft]': invOut,
+              'Diameter [in]': diameter,
+              'Roughness': roughness,
+            },
+          };
+        }),
+      } as FeatureCollection;
+    }
+
     if (name === 'Catch Basins / Manholes' && fieldMap) {
       geojson = {
         ...geojson,
@@ -233,7 +318,7 @@ const App: React.FC = () => {
       addLog(`Loaded layer ${name}${editable ? '' : ' (view only)'}`);
       return [...prevLayers, newLayer];
     });
-  }, [addLog, landCoverOptions]);
+  }, [addLog, landCoverOptions, layers]);
 
   const handlePreviewReady = useCallback((geojson: FeatureCollection, fileName: string, detectedName: string) => {
     setIsLoading(false);
@@ -377,13 +462,22 @@ const App: React.FC = () => {
   }, [addLog]);
 
   const handleConfirmPreview = useCallback((name: string, data: FeatureCollection) => {
-    if (name === 'Pipes' || name === 'Catch Basins / Manholes') {
+    if (name === 'Pipes') {
+      if (!layers.some(l => l.name === 'Catch Basins / Manholes')) {
+        const msg = 'Catch Basins / Manholes layer must be loaded before Pipes';
+        setError(msg);
+        addLog(msg, 'error');
+        setPreviewLayer(null);
+        return;
+      }
+      setMappingLayer({ name, data });
+    } else if (name === 'Catch Basins / Manholes') {
       setMappingLayer({ name, data });
     } else {
       handleLayerAdded(data, name);
     }
     setPreviewLayer(null);
-  }, [handleLayerAdded]);
+  }, [handleLayerAdded, layers, addLog]);
 
   const handleCancelPreview = useCallback(() => {
     setPreviewLayer(null);
