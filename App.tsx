@@ -167,6 +167,49 @@ const App: React.FC = () => {
         }))
       } as FeatureCollection;
     }
+
+    if (name === 'Catch Basins / Manholes' && fieldMap) {
+      geojson = {
+        ...geojson,
+        features: geojson.features.map((f, i) => {
+          const props = f.properties || {};
+          const lblSrc = fieldMap.label && props[fieldMap.label] != null ? props[fieldMap.label] : null;
+          const label = lblSrc && String(lblSrc).trim() !== ''
+            ? String(lblSrc)
+            : `CB-MH-${Math.floor(Math.random() * 200) + 1}`;
+          const getInv = (k: string) => {
+            const col = fieldMap[k];
+            if (!col) return null;
+            const val = Number((props as any)[col]);
+            if (!val || val === 0 || isNaN(val)) return null;
+            return val;
+          };
+          const invN = getInv('inv_n');
+          const invS = getInv('inv_s');
+          const invE = getInv('inv_e');
+          const invW = getInv('inv_w');
+          const invs = [invN, invS, invE, invW].filter((v): v is number => v !== null);
+          const invOut = invs.length ? Math.min(...invs) : null;
+          const ground =
+            fieldMap.ground && props[fieldMap.ground] !== undefined
+              ? Number((props as any)[fieldMap.ground]) || null
+              : null;
+          return {
+            ...f,
+            properties: {
+              ...props,
+              'Label': label,
+              'Elevation Ground [ft]': ground,
+              'Invert N [ft]': invN,
+              'Invert S [ft]': invS,
+              'Invert E [ft]': invE,
+              'Invert W [ft]': invW,
+              'Inv Out [ft]': invOut,
+            },
+          };
+        }),
+      } as FeatureCollection;
+    }
     setLayers(prevLayers => {
       const existing = prevLayers.find(l => l.name === name);
       if (existing) {
@@ -819,12 +862,20 @@ const App: React.FC = () => {
         const ground = Number(
           getMapped(f.properties, jMap, 'ground', ['Elevation Ground [ft]']) ?? 0
         );
-        const invert = Number(
-          getMapped(f.properties, jMap, 'invert', [
-            'Elevation Invert[ft]',
-            'Elevation Invert [ft]',
-          ]) ?? 0
+        const invN = Number(
+          getMapped(f.properties, jMap, 'inv_n', ['Invert N [ft]']) ?? 0
         );
+        const invS = Number(
+          getMapped(f.properties, jMap, 'inv_s', ['Invert S [ft]']) ?? 0
+        );
+        const invE = Number(
+          getMapped(f.properties, jMap, 'inv_e', ['Invert E [ft]']) ?? 0
+        );
+        const invW = Number(
+          getMapped(f.properties, jMap, 'inv_w', ['Invert W [ft]']) ?? 0
+        );
+        const invCandidates = [invN, invS, invE, invW].filter((v) => v !== 0);
+        const invert = invCandidates.length ? Math.min(...invCandidates) : 0;
         const maxDepth = ground - invert;
         const coord = project.forward(
           (f.geometry as any).coordinates as [number, number]
