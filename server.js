@@ -3,6 +3,12 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { intersect as turfIntersect, area as turfArea } from '@turf/turf';
+import processFileMap from './process-file-map.json' assert { type: 'json' };
+
+// processFileMap maps backend processes (e.g., exportHydroCAD, exportSWMM,
+// exportShapefiles) to the spatial data layers they require. Update
+// process-file-map.json whenever process requirements change so future
+// automation can determine which files are needed for each operation.
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
