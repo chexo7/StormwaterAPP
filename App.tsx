@@ -209,6 +209,11 @@ const App: React.FC = () => {
         const outVal = Number(p['Inv Out [ft]']);
         return outVal && !isNaN(outVal) ? outVal : null;
       };
+      const invOutFromCb = (cb: any) => {
+        if (!cb) return null;
+        const val = Number(cb.properties?.['Inv Out [ft]']);
+        return val && !isNaN(val) ? val : null;
+      };
       geojson = {
         ...geojson,
         features: geojson.features.map((f, i) => {
@@ -219,22 +224,48 @@ const App: React.FC = () => {
           const roughSrc = fieldMap.roughness && props[fieldMap.roughness] !== undefined ? Number(props[fieldMap.roughness]) : NaN;
           let invIn = fieldMap.inv_in && props[fieldMap.inv_in] !== undefined ? Number(props[fieldMap.inv_in]) : null;
           let invOut = fieldMap.inv_out && props[fieldMap.inv_out] !== undefined ? Number(props[fieldMap.inv_out]) : null;
+          let direction: string | null = null;
+          let inletOffset: number | null = null;
+          let outletOffset: number | null = null;
           if (f.geometry && f.geometry.type === 'LineString' && cbFeatures.length) {
             const coords = f.geometry.coordinates as number[][];
             const start = coords[0] as [number, number];
             const end = coords[coords.length - 1] as [number, number];
             const second = coords[1] as [number, number] | undefined;
             const prev = coords[coords.length - 2] as [number, number] | undefined;
-            if (!invIn && second) {
-              const cb = nearestCb(start);
-              const dir = getDir(start, second);
-              invIn = invFromCb(cb, dir);
+            const cbStart = nearestCb(start);
+            const cbEnd = nearestCb(end);
+            const dirStart = second ? getDir(start, second) : null;
+            const dirEnd = prev ? getDir(end, prev) : null;
+            if (!invIn && dirStart) {
+              invIn = invFromCb(cbStart, dirStart);
             }
-            if (!invOut && prev) {
-              const cb2 = nearestCb(end);
-              const dir2 = getDir(end, prev);
-              invOut = invFromCb(cb2, dir2);
+            if (!invOut && dirEnd) {
+              invOut = invFromCb(cbEnd, dirEnd);
             }
+            const nodeStart = invOutFromCb(cbStart);
+            const nodeEnd = invOutFromCb(cbEnd);
+            let fromCb = cbStart;
+            let toCb = cbEnd;
+            let invInVal = invIn;
+            let invOutVal = invOut;
+            let fromNode = nodeStart;
+            let toNode = nodeEnd;
+            if (nodeStart != null && nodeEnd != null && nodeStart < nodeEnd) {
+              fromCb = cbEnd;
+              toCb = cbStart;
+              invInVal = invOut;
+              invOutVal = invIn;
+              fromNode = nodeEnd;
+              toNode = nodeStart;
+            }
+            const fromLabel = fromCb?.properties?.['Label'];
+            const toLabel = toCb?.properties?.['Label'];
+            direction = fromLabel && toLabel ? `${fromLabel} to ${toLabel}` : null;
+            inletOffset = invInVal != null && fromNode != null ? invInVal - fromNode : null;
+            outletOffset = invOutVal != null && toNode != null ? invOutVal - toNode : null;
+            invIn = invInVal;
+            invOut = invOutVal;
           }
           const diameter = !isNaN(diamSrc) && diamSrc > 0 ? diamSrc : 15;
           const roughness = !isNaN(roughSrc) && roughSrc > 0 ? roughSrc : 0.012;
@@ -242,8 +273,11 @@ const App: React.FC = () => {
             ...f,
             properties: {
               'Label': label,
+              'Directions': direction,
               'Elevation Invert In [ft]': invIn,
               'Elevation Invert Out [ft]': invOut,
+              'Inlet Offset [InOffset]': inletOffset,
+              'Outlet Offset [OutOffset]': outletOffset,
               'Diameter [in]': diameter,
               'Roughness': roughness,
             },
