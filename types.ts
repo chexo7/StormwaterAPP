@@ -12,6 +12,7 @@ export interface LayerData {
   fillColor: string;
   fillOpacity: number;
   category?: string;
+  fieldMap?: Record<string, string>;
 }
 
 export interface LogEntry {

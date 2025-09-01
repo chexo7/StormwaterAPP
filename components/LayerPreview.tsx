@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { FeatureCollection } from 'geojson';
-import { ALL_LAYER_NAMES, KNOWN_LAYER_NAMES, OTHER_CATEGORY } from '../utils/constants';
+import { ALL_LAYER_NAMES, OTHER_CATEGORY, SUPPORTED_LAYER_NAMES } from '../utils/constants';
 
 interface LayerPreviewProps {
   data: FeatureCollection;
@@ -14,7 +14,7 @@ const LayerPreview: React.FC<LayerPreviewProps> = ({ data, fileName, detectedNam
   const [category, setCategory] = useState<string>(OTHER_CATEGORY);
 
   useEffect(() => {
-    if (KNOWN_LAYER_NAMES.includes(detectedName)) {
+    if (SUPPORTED_LAYER_NAMES.includes(detectedName)) {
       setCategory(detectedName);
     } else {
       setCategory(OTHER_CATEGORY);
