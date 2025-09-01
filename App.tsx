@@ -167,6 +167,60 @@ const App: React.FC = () => {
         }))
       } as FeatureCollection;
     }
+
+    if (name === 'Catch Basins / Manholes' && fieldMap) {
+      const usedNums = new Set<number>();
+      geojson = {
+        ...geojson,
+        features: geojson.features.map(f => {
+          const props = { ...(f.properties || {}) } as Record<string, any>;
+          const getVal = (key: string) => {
+            const col = fieldMap ? fieldMap[key] : undefined;
+            return col && props[col] !== undefined ? props[col] : undefined;
+          };
+          let label = String(getVal('label') ?? '');
+          if (!label) {
+            let num = Math.floor(Math.random() * 200) + 1;
+            while (usedNums.has(num)) {
+              num = Math.floor(Math.random() * 200) + 1;
+            }
+            usedNums.add(num);
+            label = `CB-MH-${num}`;
+          }
+          const groundRaw = getVal('ground');
+          const ground = groundRaw !== undefined && groundRaw !== '' ? Number(groundRaw) : undefined;
+          const invN = Number(getVal('inv_n') ?? 0) || undefined;
+          const invS = Number(getVal('inv_s') ?? 0) || undefined;
+          const invE = Number(getVal('inv_e') ?? 0) || undefined;
+          const invW = Number(getVal('inv_w') ?? 0) || undefined;
+          const invs = [invN, invS, invE, invW].filter(v => v !== undefined);
+          const invOut = invs.length ? Math.min(...(invs as number[])) : undefined;
+          return {
+            ...f,
+            properties: {
+              ...props,
+              'Label': label,
+              'Elevation Ground [ft]': ground ?? '',
+              'Invert N [ft]': invN ?? '',
+              'Invert S [ft]': invS ?? '',
+              'Invert E [ft]': invE ?? '',
+              'Invert W [ft]': invW ?? '',
+              'Inv Out [ft]': invOut ?? ''
+            }
+          };
+        })
+      } as FeatureCollection;
+
+      fieldMap = {
+        label: 'Label',
+        ground: 'Elevation Ground [ft]',
+        inv_n: 'Invert N [ft]',
+        inv_s: 'Invert S [ft]',
+        inv_e: 'Invert E [ft]',
+        inv_w: 'Invert W [ft]',
+        inv_out: 'Inv Out [ft]'
+      };
+    }
     setLayers(prevLayers => {
       const existing = prevLayers.find(l => l.name === name);
       if (existing) {
@@ -820,7 +874,8 @@ const App: React.FC = () => {
           getMapped(f.properties, jMap, 'ground', ['Elevation Ground [ft]']) ?? 0
         );
         const invert = Number(
-          getMapped(f.properties, jMap, 'invert', [
+          getMapped(f.properties, jMap, 'inv_out', [
+            'Inv Out [ft]',
             'Elevation Invert[ft]',
             'Elevation Invert [ft]',
           ]) ?? 0
