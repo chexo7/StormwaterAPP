@@ -562,28 +562,66 @@ const App: React.FC = () => {
     const template = (
       await import('./export_templates/swmm/SWMM_TEMPLATE.inp?raw')
     ).default as string;
-    const { area, rewind, cleanCoords } = await import('@turf/turf');
+    const {
+      area: turfArea,
+      rewind,
+      cleanCoords,
+      centroid,
+      kinks,
+      bbox,
+    } = await import('@turf/turf');
+
+    const sanitizeId = (s: string, i: number) =>
+      (s || `S${i + 1}`)
+        .trim()
+        .replace(/[^\w\-]/g, '_')
+        .replace(/_+/g, '_')
+        .slice(0, 31);
+
+    const isFinitePair = (p: number[]) =>
+      Number.isFinite(p[0]) && Number.isFinite(p[1]);
+
+    const uniq = (ring: number[][]) => {
+      const seen = new Set<string>();
+      const out: number[][] = [];
+      for (const p of ring) {
+        const k = `${p[0].toFixed(6)}|${p[1].toFixed(6)}`;
+        if (!seen.has(k)) {
+          seen.add(k);
+          out.push(p);
+        }
+      }
+      return out;
+    };
+
+    const reorderByAngle = (ring: number[][]) => {
+      const c = centroid({
+        type: 'Feature',
+        geometry: { type: 'Polygon', coordinates: [ring] },
+        properties: {},
+      } as any).geometry.coordinates as number[];
+      return ring
+        .map(([x, y]) => ({ x, y, ang: Math.atan2(y - c[1], x - c[0]) }))
+        .sort((a, b) => a.ang - b.ang)
+        .map((p) => [p.x, p.y]);
+    };
 
     const subcatchLines: string[] = [];
     const subareaLines: string[] = [];
     const infilLines: string[] = [];
     const polygonLines: string[] = [];
 
-    const grouped = new Map<
-      string,
-      { area: number; polygons: number[][][] }
-    >();
+    const grouped = new Map<string, { polygons: number[][][] }>();
 
     overlayLayer.geojson.features.forEach((f, i) => {
-      const id = ((f.properties as any)?.DA_NAME as string) || `S${i + 1}`;
-      const a = area(f as any) * 0.000247105; // acres
+      const raw = String((f.properties as any)?.DA_NAME ?? '');
+      const id = sanitizeId(raw, i);
       const geom = f.geometry;
       const rings: number[][][] =
         geom.type === 'Polygon'
           ? [geom.coordinates[0] as number[][]]
           : (geom as any).coordinates.map((p: any) => p[0] as number[][]);
-      const entry = grouped.get(id) || { area: 0, polygons: [] };
-      entry.area += a;
+      const entry = grouped.get(id) || { polygons: [] };
       entry.polygons.push(...rings);
       grouped.set(id, entry);
     });
@@ -598,42 +636,106 @@ const App: React.FC = () => {
 
     Array.from(grouped.entries())
       .sort(([a], [b]) => a.localeCompare(b))
-      .forEach(([id, { area: a, polygons }]) => {
-      const width = a * 100; // simple width approximation
-      subcatchLines.push(
-        `${id}\t*\t*\t${a.toFixed(4)}\t25\t${width.toFixed(2)}\t0.5\t0`
-      );
-      subareaLines.push(`${id}\t0.01\t0.1\t0.05\t0.05\t25\tOUTLET`);
-      infilLines.push(`${id}\t3\t0.5\t4\t7\t0`);
+      .forEach(([id, { polygons }]) => {
+        const ringLines: string[] = [];
+        let areaAcc = 0;
 
-      polygons.forEach((ring) => {
-        const gj = {
-          type: 'Feature',
-          geometry: { type: 'Polygon', coordinates: [ring] },
-          properties: {},
-        } as any;
-        const cleanedGj = cleanCoords(gj);
-        const rewound = rewind(cleanedGj, { reverse: false });
-        const ringCoords = rewound.geometry
-          .coordinates[0] as number[][];
-        const cleaned = ringCoords.filter(
-          (p, i, arr) =>
-            i === 0 || p[0] !== arr[i - 1][0] || p[1] !== arr[i - 1][1]
-        );
-        const closed = closeRing(cleaned);
-        closed.forEach(([x, y]) => {
-          polygonLines.push(`${id}\t${x}\t${y}`);
-        });
+        polygons
+          .slice()
+          .sort(
+            (aRing, bRing) =>
+              Math.abs(
+                turfArea({
+                  type: 'Feature',
+                  geometry: { type: 'Polygon', coordinates: [bRing] },
+                  properties: {},
+                } as any)
+              ) -
+              Math.abs(
+                turfArea({
+                  type: 'Feature',
+                  geometry: { type: 'Polygon', coordinates: [aRing] },
+                  properties: {},
+                } as any)
+              )
+          )
+          .forEach((ring) => {
+            const gj = {
+              type: 'Feature',
+              geometry: { type: 'Polygon', coordinates: [ring] },
+              properties: {},
+            } as any;
+            const cleanedGj = cleanCoords(gj);
+            const rewound = rewind(cleanedGj, { reverse: false });
+            const ringCoords = rewound.geometry.coordinates[0] as number[][];
+            const cleaned = ringCoords.filter(
+              (p, i, arr) =>
+                i === 0 || p[0] !== arr[i - 1][0] || p[1] !== arr[i - 1][1]
+            );
+            const dedup = uniq(cleaned);
+            if (dedup.length < 3) {
+              addLog(`[POLYGONS] anillo degenerado en ${id}`, 'warn');
+              return;
+            }
+            let ringToWrite = dedup;
+            try {
+              if (
+                kinks({
+                  type: 'Feature',
+                  geometry: { type: 'Polygon', coordinates: [dedup] },
+                  properties: {},
+                } as any).features.length
+              ) {
+                ringToWrite = reorderByAngle(dedup);
+              }
+            } catch {}
+            const safeClosed = closeRing(ringToWrite).filter(isFinitePair);
+            if (safeClosed.length < 4) {
+              addLog(
+                `[POLYGONS] Se descartó un anillo degenerado de ${id}`,
+                'warn'
+              );
+              return;
+            }
+            areaAcc +=
+              Math.abs(
+                turfArea({
+                  type: 'Feature',
+                  geometry: { type: 'Polygon', coordinates: [safeClosed] },
+                  properties: {},
+                } as any)
+              ) * 0.000247105;
+            safeClosed.forEach(([x, y]) => {
+              ringLines.push(`${id}\t${x}\t${y}`);
+            });
+          });
+
+        if (ringLines.length) {
+          const width = areaAcc * 100; // simple width approximation
+          subcatchLines.push(
+            `${id}\t*\t*\t${areaAcc.toFixed(4)}\t25\t${width.toFixed(
+              2
+            )}\t0.5\t0`
+          );
+          subareaLines.push(`${id}\t0.01\t0.1\t0.05\t0.05\t25\tOUTLET`);
+          infilLines.push(`${id}\t3\t0.5\t4\t7\t0`);
+          polygonLines.push(...ringLines);
+        }
       });
-    });
 
     const bad = polygonLines.find(
       (l) => l.trim().split(/\s+/).length !== 3
     );
     if (bad) throw new Error(`[POLYGONS] mal formado: "${bad}"`);
+    const bad2 = polygonLines.find((l) =>
+      !/^\S+\s+-?\d+(\.\d+)?(e[+-]?\d+)?\s+-?\d+(\.\d+)?(e[+-]?\d+)?$/i.test(
+        l.trim()
+      )
+    );
+    if (bad2) throw new Error(`[POLYGONS] token numérico inválido: "${bad2}"`);
 
     const replaceSection = (content: string, section: string, lines: string) => {
-      const regex = new RegExp(`\\[${section}\\][\\s\\S]*?(?=\\n\\[|$)`);
+      const regex = new RegExp(String.raw`\[${section}\][\s\S]*?(?=\r?\n\[|$)`);
       return content.replace(regex, `[${section}]\n${lines}\n`);
     };
 
@@ -667,6 +769,28 @@ const App: React.FC = () => {
       'POLYGONS',
       polygonHeader + polygonLines.join('\n')
     );
+
+    if (polygonLines.length) {
+      const allCoords = polygonLines
+        .map((l) => l.split(/\s+/))
+        .map(([_, x, y]) => [Number(x), Number(y)] as [number, number]);
+      const [minX, minY, maxX, maxY] = bbox({
+        type: 'FeatureCollection',
+        features: [
+          {
+            type: 'Feature',
+            geometry: { type: 'MultiPoint', coordinates: allCoords },
+            properties: {},
+          },
+        ],
+      } as any);
+      const dx = (maxX - minX) * 0.01;
+      const dy = (maxY - minY) * 0.01;
+      const mapLines = `DIMENSIONS       ${minX - dx} ${minY - dy}  ${maxX + dx} ${
+        maxY + dy
+      }\nUNITS            Meters`;
+      content = replaceSection(content, 'MAP', mapLines);
+    }
 
     const blob = new Blob([content], { type: 'text/plain' });
     const filename = `${(projectName || 'project')}_${projectVersion}.inp`;
