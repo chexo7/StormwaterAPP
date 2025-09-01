@@ -12,6 +12,8 @@ import ComputeModal, { ComputeTask } from './components/ComputeModal';
 import ExportModal from './components/ExportModal';
 import { loadLandCoverList, loadCnValues, CnRecord } from './utils/landcover';
 import { prepareForShapefile } from './utils/shp';
+import { PROJECTION_OPTIONS, ProjectionOption, loadProjection, reprojectFeatureCollection } from './utils/projections';
+import proj4 from 'proj4';
 
 const DEFAULT_COLORS: Record<string, string> = {
   'Drainage Areas': '#67e8f9',
@@ -53,6 +55,7 @@ const App: React.FC = () => {
   const [projectName, setProjectName] = useState<string>('');
   const [projectVersion, setProjectVersion] = useState<string>('V1');
   const [exportModalOpen, setExportModalOpen] = useState<boolean>(false);
+  const [projection, setProjection] = useState<ProjectionOption>(PROJECTION_OPTIONS[0]);
 
   const requiredLayers = [
     'Drainage Areas',
@@ -559,6 +562,10 @@ const App: React.FC = () => {
       return;
     }
 
+    const { epsg, units } = projection;
+    await loadProjection(epsg);
+    const transformer = proj4('EPSG:4326', `EPSG:${epsg}`);
+
     const template = (
       await import('./export_templates/swmm/SWMM_TEMPLATE.inp?raw')
     ).default as string;
@@ -624,6 +631,7 @@ const App: React.FC = () => {
         geom.type === 'Polygon'
           ? [geom.coordinates[0] as number[][]]
           : (geom as any).coordinates.map((p: any) => p[0] as number[][]);
+      const projRings = rings.map(ring => ring.map(pt => transformer.forward(pt as [number, number])));
       let outerArea = 0;
       for (const ring of rings) {
         outerArea += Math.abs(
@@ -637,7 +645,7 @@ const App: React.FC = () => {
       const a = outerArea * 0.000247105; // acres
       const entry = grouped.get(id) || { area: 0, polygons: [] };
       entry.area += a;
-      entry.polygons.push(...rings);
+      entry.polygons.push(...projRings);
       grouped.set(id, entry);
     });
 
@@ -810,7 +818,7 @@ const App: React.FC = () => {
       const dy = (maxY - minY) * 0.01;
       const mapBlock = `[MAP]\nDIMENSIONS       ${minX - dx} ${minY - dy}  ${
         maxX + dx
-      } ${maxY + dy}\nUNITS            Meters\n`;
+      } ${maxY + dy}\nUNITS            ${units === 'feet' ? 'Feet' : 'Meters'}\n`;
       content = content.replace(
         /\[MAP\][\s\S]*?(?=\r?\n\[|$)/,
         mapBlock
@@ -827,7 +835,7 @@ const App: React.FC = () => {
     URL.revokeObjectURL(url);
     addLog('SWMM file exported');
     setExportModalOpen(false);
-  }, [addLog, layers, projectName, projectVersion]);
+  }, [addLog, layers, projectName, projectVersion, projection]);
 
   const handleExportShapefiles = useCallback(async () => {
     const processedLayers = layers.filter(l => l.category === 'Process');
@@ -835,14 +843,17 @@ const App: React.FC = () => {
       addLog('No processed layers to export', 'error');
       return;
     }
+    const { epsg } = projection;
+    const wkt = await loadProjection(epsg);
     const JSZip = (await import('jszip')).default;
     const shpwrite = (await import('@mapbox/shp-write')).default as any;
     const zip = new JSZip();
 
     for (const layer of processedLayers) {
       const prepared = prepareForShapefile(layer.geojson, layer.name);
-      addLog(`Exporting "${layer.name}": ${prepared.features.length} features`);
-      const layerZipBuffer = await shpwrite.zip(prepared, { outputType: 'arraybuffer' });
+      const projected = reprojectFeatureCollection(prepared, '4326', epsg);
+      addLog(`Exporting "${layer.name}": ${projected.features.length} features`);
+      const layerZipBuffer = await shpwrite.zip(projected, { outputType: 'arraybuffer' });
       const layerZip = await JSZip.loadAsync(layerZipBuffer);
       const folderName = layer.name.replace(/[^a-z0-9_\-]/gi, '_');
       const folder = zip.folder(folderName);
@@ -853,6 +864,11 @@ const App: React.FC = () => {
           folder.file(filename, content);
         })
       );
+      const shpFile = Object.keys(layerZip.files).find(f => f.toLowerCase().endsWith('.shp'));
+      if (shpFile) {
+        const base = shpFile.replace(/\.shp$/i, '');
+        folder.file(`${base}.prj`, wkt);
+      }
       const dbf = Object.keys(layerZip.files).find(f => f.toLowerCase().endsWith('.dbf'));
       if (dbf) {
         const base = dbf.replace(/\.dbf$/i, '');
@@ -870,7 +886,7 @@ const App: React.FC = () => {
     URL.revokeObjectURL(url);
     addLog('Processed shapefiles exported');
     setExportModalOpen(false);
-  }, [addLog, layers, projectName, projectVersion]);
+  }, [addLog, layers, projectName, projectVersion, projection]);
 
   return (
     <div className="flex flex-col h-screen bg-gray-900 text-gray-100 font-sans">
@@ -948,6 +964,8 @@ const App: React.FC = () => {
           onExportShapefiles={handleExportShapefiles}
           onClose={() => setExportModalOpen(false)}
           exportEnabled={computeSucceeded}
+          projection={projection}
+          onProjectionChange={setProjection}
         />
       )}
     </div>
