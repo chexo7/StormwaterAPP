@@ -552,6 +552,36 @@ const App: React.FC = () => {
     });
   }, [addLog, layers, projectName, projectVersion]);
 
+  const handleExportSWMM = useCallback(async () => {
+    const templateFiles = [
+      'SWMM_TEMPLATE.chi',
+      'SWMM_TEMPLATE.db',
+      'SWMM_TEMPLATE.ini',
+      'SWMM_TEMPLATE.inp',
+      'SWMM_TEMPLATE.thm',
+    ];
+    const JSZip = (await import('jszip')).default;
+    const zip = new JSZip();
+
+    for (const file of templateFiles) {
+      const url = new URL(`./export_templates/swmm/${file}`, import.meta.url);
+      const res = await fetch(url);
+      const content = await res.arrayBuffer();
+      zip.file(file, content);
+    }
+
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const filename = `${(projectName || 'project')}_${projectVersion}_swmm.zip`;
+    const dlUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = dlUrl;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(dlUrl);
+    addLog('SWMM template exported');
+    setExportModalOpen(false);
+  }, [addLog, projectName, projectVersion]);
+
   const handleExportShapefiles = useCallback(async () => {
     const processedLayers = layers.filter(l => l.category === 'Process');
     if (processedLayers.length === 0) {
@@ -667,6 +697,7 @@ const App: React.FC = () => {
       {exportModalOpen && (
         <ExportModal
           onExportHydroCAD={handleExportHydroCAD}
+          onExportSWMM={handleExportSWMM}
           onExportShapefiles={handleExportShapefiles}
           onClose={() => setExportModalOpen(false)}
           exportEnabled={computeSucceeded}
