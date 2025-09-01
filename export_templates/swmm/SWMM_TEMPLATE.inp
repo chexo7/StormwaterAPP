@@ -45,6 +45,46 @@ THREADS              20
 CONSTANT         0.0
 DRY_ONLY         NO
 
+[SUBCATCHMENTS]
+;;Name           Rain Gage        Outlet           Area     %Imperv  Width    %Slope   CurbLen  SnowPack        
+;;-------------- ---------------- ---------------- -------- -------- -------- -------- -------- ----------------
+S1               *                *                0.3344   25       33.44    0.5      0                        
+
+[SUBAREAS]
+;;Subcatchment   N-Imperv   N-Perv     S-Imperv   S-Perv     PctZero    RouteTo    PctRouted 
+;;-------------- ---------- ---------- ---------- ---------- ---------- ---------- ----------
+S1               0.01       0.1        0.05       0.05       25         OUTLET    
+
+[INFILTRATION]
+;;Subcatchment   Param1     Param2     Param3     Param4     Param5    
+;;-------------- ---------- ---------- ---------- ---------- ----------
+S1               3          0.5        4          7          0         
+
+[JUNCTIONS]
+;;Name           Elevation  MaxDepth   InitDepth  SurDepth   Aponded   
+;;-------------- ---------- ---------- ---------- ---------- ----------
+J1               0          0          0          0          0         
+J2               0          0          0          0          0         
+
+[OUTFALLS]
+;;Name           Elevation  Type       Stage Data       Gated    Route To        
+;;-------------- ---------- ---------- ---------------- -------- ----------------
+OF1              0          FREE                        NO                       
+
+[CONDUITS]
+;;Name           From Node        To Node          Length     Roughness  InOffset   OutOffset  InitFlow   MaxFlow   
+;;-------------- ---------------- ---------------- ---------- ---------- ---------- ---------- ---------- ----------
+C1               J1               J2               454.023    0.01       0          0          0          0         
+
+[XSECTIONS]
+;;Link           Shape        Geom1            Geom2      Geom3      Geom4      Barrels    Culvert   
+;;-------------- ------------ ---------------- ---------- ---------- ---------- ---------- ----------
+C1               CIRCULAR     1                0          0          0          1                    
+
+[LOSSES]
+;;Link           Kentry     Kexit      Kavg       Flap Gate  Seepage   
+;;-------------- ---------- ---------- ---------- ---------- ----------
+
 [REPORT]
 ;;Reporting Options
 INPUT      YES
@@ -56,18 +96,28 @@ LINKS ALL
 [TAGS]
 
 [MAP]
-DIMENSIONS       0                0                10000            10000           
+DIMENSIONS       -1352010.52083156 3346333.7301622  -1351346.27859378 3346678.15206328
 UNITS            Meters
 
 [COORDINATES]
 ;;Node           X-Coord            Y-Coord           
 ;;-------------- ------------------ ------------------
+J1               -1351803.441       3346662.497       
+J2               -1351376.471       3346507.974       
+OF1              -1351380.538       3345944.781       
 
 [VERTICES]
 ;;Link           X-Coord            Y-Coord           
 ;;-------------- ------------------ ------------------
 
 [POLYGONS]
+;;Subcatchment   X-Coord            Y-Coord           
+;;-------------- ------------------ ------------------
+S1               -1351799.374       3346430.713       
+S1               -1351882.735       3346349.386       
+S1               -1351980.328       3346388.016       
+S1               -1351927.465       3346499.842       
+S1               -1351799.374       3346430.713       
 
 [PROFILES]
 ;;Name           Links     
