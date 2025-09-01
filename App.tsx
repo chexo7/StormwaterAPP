@@ -553,9 +553,9 @@ const App: React.FC = () => {
   }, [addLog, layers, projectName, projectVersion]);
 
   const handleExportSWMM = useCallback(async () => {
-    const overlayLayer = layers.find(l => l.name === 'Overlay');
-    if (!overlayLayer) {
-      addLog('Overlay layer not found', 'error');
+    const daLayer = layers.find(l => l.name === 'Drainage Areas');
+    if (!daLayer) {
+      addLog('Drainage Areas layer not found', 'error');
       return;
     }
 
@@ -616,7 +616,7 @@ const App: React.FC = () => {
       { area: number; polygons: number[][][] }
     >();
 
-    overlayLayer.geojson.features.forEach((f, i) => {
+    daLayer.geojson.features.forEach((f, i) => {
       const raw = String((f.properties as any)?.DA_NAME ?? '');
       const id = sanitizeId(raw, i);
       const geom = f.geometry;
