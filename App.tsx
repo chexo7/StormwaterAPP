@@ -12,6 +12,11 @@ import ComputeModal, { ComputeTask } from './components/ComputeModal';
 import ExportModal from './components/ExportModal';
 import { loadLandCoverList, loadCnValues, CnRecord } from './utils/landcover';
 import { prepareForShapefile } from './utils/shp';
+import {
+  PROJECTIONS,
+  ProjectionOption,
+  reprojectGeoJson,
+} from './utils/projections';
 
 const DEFAULT_COLORS: Record<string, string> = {
   'Drainage Areas': '#67e8f9',
@@ -53,6 +58,7 @@ const App: React.FC = () => {
   const [projectName, setProjectName] = useState<string>('');
   const [projectVersion, setProjectVersion] = useState<string>('V1');
   const [exportModalOpen, setExportModalOpen] = useState<boolean>(false);
+  const [projection, setProjection] = useState<ProjectionOption>(PROJECTIONS[0]);
 
   const requiredLayers = [
     'Drainage Areas',
@@ -550,10 +556,10 @@ const App: React.FC = () => {
       addLog('HydroCAD file exported');
       setExportModalOpen(false);
     });
-  }, [addLog, layers, projectName, projectVersion]);
+  }, [addLog, layers, projectName, projectVersion, projection]);
 
   const handleExportSWMM = useCallback(async () => {
-    const daLayer = layers.find(l => l.name === 'Drainage Areas');
+    const daLayer = layers.find((l) => l.name === 'Drainage Areas');
     if (!daLayer) {
       addLog('Drainage Areas layer not found', 'error');
       return;
@@ -570,6 +576,8 @@ const App: React.FC = () => {
       bbox,
       kinks,
     } = await import('@turf/turf');
+
+    const projectedDa = reprojectGeoJson(daLayer.geojson, projection);
 
     const sanitizeId = (s: string, i: number) =>
       (s || `S${i + 1}`)
@@ -611,21 +619,24 @@ const App: React.FC = () => {
     const infilLines: string[] = [];
     const polygonLines: string[] = [];
 
-    const grouped = new Map<
-      string,
-      { area: number; polygons: number[][][] }
-    >();
+    const grouped = new Map<string, { area: number; polygons: number[][][] }>();
 
     daLayer.geojson.features.forEach((f, i) => {
       const raw = String((f.properties as any)?.DA_NAME ?? '');
       const id = sanitizeId(raw, i);
-      const geom = f.geometry;
-      const rings: number[][][] =
-        geom.type === 'Polygon'
-          ? [geom.coordinates[0] as number[][]]
-          : (geom as any).coordinates.map((p: any) => p[0] as number[][]);
+      const geomOrig = f.geometry;
+      const geomProj = projectedDa.features[i].geometry as typeof geomOrig;
+      const ringsOrig: number[][][] =
+        geomOrig.type === 'Polygon'
+          ? [geomOrig.coordinates[0] as number[][]]
+          : (geomOrig as any).coordinates.map((p: any) => p[0] as number[][]);
+      const ringsProj: number[][][] =
+        geomProj.type === 'Polygon'
+          ? [geomProj.coordinates[0] as number[][]]
+          : (geomProj as any).coordinates.map((p: any) => p[0] as number[][]);
+
       let outerArea = 0;
-      for (const ring of rings) {
+      for (const ring of ringsOrig) {
         outerArea += Math.abs(
           turfArea({
             type: 'Feature',
@@ -637,7 +648,7 @@ const App: React.FC = () => {
       const a = outerArea * 0.000247105; // acres
       const entry = grouped.get(id) || { area: 0, polygons: [] };
       entry.area += a;
-      entry.polygons.push(...rings);
+      entry.polygons.push(...ringsProj);
       grouped.set(id, entry);
     });
 
@@ -810,7 +821,9 @@ const App: React.FC = () => {
       const dy = (maxY - minY) * 0.01;
       const mapBlock = `[MAP]\nDIMENSIONS       ${minX - dx} ${minY - dy}  ${
         maxX + dx
-      } ${maxY + dy}\nUNITS            Meters\n`;
+      } ${maxY + dy}\nUNITS            ${
+        projection.units === 'ft' ? 'Feet' : 'Meters'
+      }\n`;
       content = content.replace(
         /\[MAP\][\s\S]*?(?=\r?\n\[|$)/,
         mapBlock
@@ -827,7 +840,7 @@ const App: React.FC = () => {
     URL.revokeObjectURL(url);
     addLog('SWMM file exported');
     setExportModalOpen(false);
-  }, [addLog, layers, projectName, projectVersion]);
+  }, [addLog, layers, projectName, projectVersion, projection]);
 
   const handleExportShapefiles = useCallback(async () => {
     const processedLayers = layers.filter(l => l.category === 'Process');
@@ -841,8 +854,12 @@ const App: React.FC = () => {
 
     for (const layer of processedLayers) {
       const prepared = prepareForShapefile(layer.geojson, layer.name);
+      const projected = reprojectGeoJson(prepared, projection);
       addLog(`Exporting "${layer.name}": ${prepared.features.length} features`);
-      const layerZipBuffer = await shpwrite.zip(prepared, { outputType: 'arraybuffer' });
+      const layerZipBuffer = await shpwrite.zip(projected, {
+        outputType: 'arraybuffer',
+        prj: projection.wkt,
+      });
       const layerZip = await JSZip.loadAsync(layerZipBuffer);
       const folderName = layer.name.replace(/[^a-z0-9_\-]/gi, '_');
       const folder = zip.folder(folderName);
@@ -870,7 +887,7 @@ const App: React.FC = () => {
     URL.revokeObjectURL(url);
     addLog('Processed shapefiles exported');
     setExportModalOpen(false);
-  }, [addLog, layers, projectName, projectVersion]);
+  }, [addLog, layers, projectName, projectVersion, projection]);
 
   return (
     <div className="flex flex-col h-screen bg-gray-900 text-gray-100 font-sans">
@@ -948,6 +965,8 @@ const App: React.FC = () => {
           onExportShapefiles={handleExportShapefiles}
           onClose={() => setExportModalOpen(false)}
           exportEnabled={computeSucceeded}
+          projection={projection}
+          onProjectionChange={setProjection}
         />
       )}
     </div>
