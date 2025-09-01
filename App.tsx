@@ -31,6 +31,21 @@ const DEFAULT_OPACITY = 0.5;
 
 const getDefaultColor = (name: string) => DEFAULT_COLORS[name] || '#67e8f9';
 
+const normalizeKey = (key: string) => key.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+const getProp = (props: any, candidates: string[], fallback: any = undefined) => {
+  if (!props) return fallback;
+  const map: Record<string, any> = {};
+  for (const k of Object.keys(props)) {
+    map[normalizeKey(k)] = (props as any)[k];
+  }
+  for (const c of candidates) {
+    const n = normalizeKey(c);
+    if (n in map) return map[n];
+  }
+  return fallback;
+};
+
 type UpdateHsgFn = (layerId: string, featureIndex: number, hsg: string) => void;
 type UpdateDaNameFn = (layerId: string, featureIndex: number, name: string) => void;
 type UpdateLandCoverFn = (layerId: string, featureIndex: number, value: string) => void;
@@ -754,18 +769,34 @@ const App: React.FC = () => {
       validIds.has(l.split(/\s+/)[0])
     );
 
-    const jLayer = layers.find((l) => l.name === 'Junctions');
+    const jLayer = layers.find((l) => l.name === 'Catch Basins / Manholes');
     const pLayer = layers.find((l) => l.name === 'Pipes');
 
-    const nodes: { id: string; coord: [number, number] }[] = [];
+    const nodes: { id: string; coord: [number, number]; invert: number }[] = [];
 
     if (jLayer) {
       jLayer.geojson.features.forEach((f, i) => {
         if (!f.geometry || f.geometry.type !== 'Point') return;
-        const raw = String((f.properties as any)?.label ?? '');
+        const raw = String(
+          getProp(f.properties, ['label', 'name', 'Label']) ?? ''
+        );
         const id = sanitizeId(raw, i);
-        const ground = Number((f.properties as any)?.elevation_ground ?? 0);
-        const invert = Number((f.properties as any)?.elevation_inv ?? 0);
+        const ground = Number(
+          getProp(f.properties, [
+            'Elevation Ground [ft]',
+            'Elevation Ground',
+            'Ground Elevation',
+            'elevation_ground',
+          ]) ?? 0
+        );
+        const invert = Number(
+          getProp(f.properties, [
+            'Elevation Invert[ft]',
+            'Elevation Invert',
+            'Invert Elevation',
+            'elevation_inv',
+          ]) ?? 0
+        );
         const maxDepth = ground - invert;
         const coord = project.forward(
           (f.geometry as any).coordinates as [number, number]
@@ -777,7 +808,7 @@ const App: React.FC = () => {
           junctionLines.push(`${id}\t${invert}\t${maxDepth}\t0\t0\t0`);
         }
         coordLines.push(`${id}\t${coord[0]}\t${coord[1]}`);
-        nodes.push({ id, coord });
+        nodes.push({ id, coord, invert });
       });
     }
 
@@ -809,7 +840,9 @@ const App: React.FC = () => {
     if (pLayer && nodes.length) {
       pLayer.geojson.features.forEach((f, i) => {
         if (!f.geometry || f.geometry.type !== 'LineString') return;
-        const raw = String((f.properties as any)?.label ?? '');
+        const raw = String(
+          getProp(f.properties, ['label', 'name', 'Label']) ?? ''
+        );
         const id = sanitizeId(raw, i);
         const coords = f.geometry.coordinates as number[][];
         const start = project.forward(coords[0] as [number, number]);
@@ -817,11 +850,33 @@ const App: React.FC = () => {
         const from = findNearestNode(start);
         const to = findNearestNode(end);
         const len = lineLength(coords);
-        const rough = Number((f.properties as any)?.n ?? 0);
-        const diamIn = Number((f.properties as any)?.d ?? 0);
+        const rough = Number(
+          getProp(f.properties, ['Rougness', 'Roughness', 'n']) ?? 0
+        );
+        const diamIn = Number(
+          getProp(f.properties, ['Diameter [in]', 'Diameter', 'd']) ?? 0
+        );
+        const invIn = Number(
+          getProp(f.properties, [
+            'Elevation Invert In [ft]',
+            'Invert In',
+            'Elevation Invert In',
+            'invert_in',
+          ]) ?? 0
+        );
+        const invOut = Number(
+          getProp(f.properties, [
+            'Elevation Invert Out [ft]',
+            'Invert Out',
+            'Elevation Invert Out',
+            'invert_out',
+          ]) ?? 0
+        );
+        const inOffset = from ? invIn - from.invert : 0;
+        const outOffset = to ? invOut - to.invert : 0;
         const diamFt = diamIn / 12;
         conduitLines.push(
-          `${id}\t${from?.id ?? ''}\t${to?.id ?? ''}\t${len.toFixed(3)}\t${rough}\t0\t0\t0\t0`
+          `${id}\t${from?.id ?? ''}\t${to?.id ?? ''}\t${len.toFixed(3)}\t${rough}\t${inOffset}\t${outOffset}\t0\t0`
         );
         xsectionLines.push(`${id}\tCIRCULAR\t${diamFt}\t0\t0\t0\t1`);
       });
@@ -942,7 +997,7 @@ const App: React.FC = () => {
       l =>
         l.category === 'Process' ||
         l.name === 'Pipes' ||
-        l.name === 'Junctions'
+        l.name === 'Catch Basins / Manholes'
     );
     if (processedLayers.length === 0) {
       addLog('No processed layers to export', 'error');
