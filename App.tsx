@@ -210,6 +210,99 @@ const App: React.FC = () => {
         }),
       } as FeatureCollection;
     }
+
+    if (name === 'Pipes' && fieldMap) {
+      const cbLayer = layers.find((l) => l.name === 'Catch Basins / Manholes');
+      if (!cbLayer) {
+        const msg = 'Load Catch Basins / Manholes layer before Pipes';
+        setError(msg);
+        addLog(msg, 'error');
+        return;
+      }
+      const cbFeatures = cbLayer.geojson.features.filter(
+        (f) => f.geometry && f.geometry.type === 'Point'
+      );
+      const cbCoords = cbFeatures.map((f) => ({
+        feature: f,
+        coord: (f.geometry as any).coordinates as [number, number],
+      }));
+
+      const findCb = (pt: [number, number]) => {
+        let best = cbCoords[0];
+        let bestDist = Infinity;
+        for (const c of cbCoords) {
+          const dx = pt[0] - c.coord[0];
+          const dy = pt[1] - c.coord[1];
+          const d = dx * dx + dy * dy;
+          if (d < bestDist) {
+            bestDist = d;
+            best = c;
+          }
+        }
+        return best?.feature;
+      };
+
+      const dirFrom = (a: [number, number], b: [number, number]) => {
+        const dx = b[0] - a[0];
+        const dy = b[1] - a[1];
+        if (Math.abs(dx) >= Math.abs(dy)) {
+          return dx >= 0 ? 'E' : 'W';
+        }
+        return dy >= 0 ? 'N' : 'S';
+      };
+
+      const getInvDir = (props: any, dir: string) => {
+        const map: Record<string, string> = {
+          N: 'Invert N [ft]',
+          S: 'Invert S [ft]',
+          E: 'Invert E [ft]',
+          W: 'Invert W [ft]',
+        };
+        const v = Number((props || {})[map[dir]]);
+        if (!v || isNaN(v)) {
+          const out = Number((props || {})['Inv Out [ft]']);
+          return !out || isNaN(out) ? 0 : out;
+        }
+        return v;
+      };
+
+      let pipeCount = 1;
+      geojson = {
+        ...geojson,
+        features: geojson.features.map((f) => {
+          if (!f.geometry || f.geometry.type !== 'LineString') return f;
+          const props = f.properties || {};
+          const coords = (f.geometry as any).coordinates as number[][];
+          const start = coords[0];
+          const second = coords[1] || start;
+          const end = coords[coords.length - 1];
+          const prev = coords[coords.length - 2] || end;
+          const startCb = findCb(start);
+          const endCb = findCb(end);
+          const inDir = dirFrom(start, second);
+          const outDir = dirFrom(prev, end);
+          const invIn = startCb ? getInvDir(startCb.properties, inDir) : 0;
+          const invOut = endCb ? getInvDir(endCb.properties, outDir) : 0;
+          const lblSrc = fieldMap.label && props[fieldMap.label] != null ? props[fieldMap.label] : null;
+          const label = lblSrc && String(lblSrc).trim() !== '' ? String(lblSrc) : `Pipe-${pipeCount++}`;
+          let diam = fieldMap.diameter ? Number((props as any)[fieldMap.diameter]) : NaN;
+          if (!diam || isNaN(diam)) diam = 15;
+          let rough = fieldMap.roughness ? Number((props as any)[fieldMap.roughness]) : NaN;
+          if (!rough || isNaN(rough)) rough = 0.012;
+          return {
+            ...f,
+            properties: {
+              ...props,
+              'Label': label,
+              'Elevation Invert In [ft]': invIn,
+              'Elevation Invert Out [ft]': invOut,
+              'Diameter [in]': diam,
+              'Roughness': rough,
+            },
+          };
+        }),
+      } as FeatureCollection;
+    }
     setLayers(prevLayers => {
       const existing = prevLayers.find(l => l.name === name);
       if (existing) {
@@ -233,7 +326,7 @@ const App: React.FC = () => {
       addLog(`Loaded layer ${name}${editable ? '' : ' (view only)'}`);
       return [...prevLayers, newLayer];
     });
-  }, [addLog, landCoverOptions]);
+  }, [addLog, landCoverOptions, layers]);
 
   const handlePreviewReady = useCallback((geojson: FeatureCollection, fileName: string, detectedName: string) => {
     setIsLoading(false);
@@ -377,13 +470,20 @@ const App: React.FC = () => {
   }, [addLog]);
 
   const handleConfirmPreview = useCallback((name: string, data: FeatureCollection) => {
-    if (name === 'Pipes' || name === 'Catch Basins / Manholes') {
+    if (name === 'Pipes') {
+      if (!layers.some((l) => l.name === 'Catch Basins / Manholes')) {
+        addLog('Load Catch Basins / Manholes layer before Pipes', 'error');
+        setPreviewLayer(null);
+        return;
+      }
+      setMappingLayer({ name, data });
+    } else if (name === 'Catch Basins / Manholes') {
       setMappingLayer({ name, data });
     } else {
       handleLayerAdded(data, name);
     }
     setPreviewLayer(null);
-  }, [handleLayerAdded]);
+  }, [handleLayerAdded, layers, addLog]);
 
   const handleCancelPreview = useCallback(() => {
     setPreviewLayer(null);
