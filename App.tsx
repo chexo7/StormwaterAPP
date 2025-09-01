@@ -132,6 +132,7 @@ const App: React.FC = () => {
     }
 
     const editable = KNOWN_LAYER_NAMES.includes(name);
+    let map = fieldMap;
 
     if (name === 'Drainage Areas') {
       geojson = {
@@ -167,11 +168,54 @@ const App: React.FC = () => {
         }))
       } as FeatureCollection;
     }
+
+    if (name === 'Catch Basins / Manholes') {
+      const origMap = map || {};
+      const newMap = {
+        label: 'Label',
+        ground: 'Elevation Ground [ft]',
+        inv_n: 'Invert N [ft]',
+        inv_s: 'Invert S [ft]',
+        inv_e: 'Invert E [ft]',
+        inv_w: 'Invert W [ft]',
+      } as Record<string, string>;
+      geojson = {
+        ...geojson,
+        features: geojson.features.map(f => {
+          const props = { ...(f.properties || {}) } as Record<string, any>;
+          let label = props[origMap.label] ?? props.Label ?? '';
+          if (!label) {
+            label = `CB-MH-${Math.floor(Math.random() * 200) + 1}`;
+          }
+          const ground = Number(props[origMap.ground] ?? props['Elevation Ground [ft]'] ?? 0);
+          const invN = Number(props[origMap.inv_n] ?? props['Invert N [ft]'] ?? 0);
+          const invS = Number(props[origMap.inv_s] ?? props['Invert S [ft]'] ?? 0);
+          const invE = Number(props[origMap.inv_e] ?? props['Invert E [ft]'] ?? 0);
+          const invW = Number(props[origMap.inv_w] ?? props['Invert W [ft]'] ?? 0);
+          const inverts = [invN, invS, invE, invW].filter(v => typeof v === 'number' && !isNaN(v) && v !== 0);
+          const invOut = inverts.length ? Math.min(...inverts) : 0;
+          return {
+            ...f,
+            properties: {
+              ...props,
+              Label: label,
+              'Elevation Ground [ft]': ground,
+              'Invert N [ft]': invN,
+              'Invert S [ft]': invS,
+              'Invert E [ft]': invE,
+              'Invert W [ft]': invW,
+              'Inv Out [ft]': invOut,
+            },
+          };
+        }),
+      } as FeatureCollection;
+      map = newMap;
+    }
     setLayers(prevLayers => {
       const existing = prevLayers.find(l => l.name === name);
       if (existing) {
         const updated = prevLayers.map(l =>
-          l.name === name ? { ...l, geojson, editable, fieldMap: fieldMap ?? l.fieldMap } : l
+          l.name === name ? { ...l, geojson, editable, fieldMap: map ?? l.fieldMap } : l
         );
         addLog(`Updated layer ${name} with uploaded data`);
         return updated;
@@ -185,7 +229,7 @@ const App: React.FC = () => {
         fillColor: getDefaultColor(name),
         fillOpacity: DEFAULT_OPACITY,
         category: 'Original',
-        fieldMap,
+        fieldMap: map,
       };
       addLog(`Loaded layer ${name}${editable ? '' : ' (view only)'}`);
       return [...prevLayers, newLayer];
@@ -814,17 +858,30 @@ const App: React.FC = () => {
       const jMap = jLayer.fieldMap;
       jLayer.geojson.features.forEach((f, i) => {
         if (!f.geometry || f.geometry.type !== 'Point') return;
-        const raw = String(getMapped(f.properties, jMap, 'label', ['Label']) ?? '');
+        let raw = String(getMapped(f.properties, jMap, 'label', ['Label']) ?? '');
+        if (!raw) {
+          raw = `CB-MH-${Math.floor(Math.random() * 200) + 1}`;
+        }
         const id = sanitizeId(raw, i);
         const ground = Number(
           getMapped(f.properties, jMap, 'ground', ['Elevation Ground [ft]']) ?? 0
         );
-        const invert = Number(
-          getMapped(f.properties, jMap, 'invert', [
-            'Elevation Invert[ft]',
-            'Elevation Invert [ft]',
-          ]) ?? 0
+        const invN = Number(
+          getMapped(f.properties, jMap, 'inv_n', ['Invert N [ft]']) ?? 0
         );
+        const invS = Number(
+          getMapped(f.properties, jMap, 'inv_s', ['Invert S [ft]']) ?? 0
+        );
+        const invE = Number(
+          getMapped(f.properties, jMap, 'inv_e', ['Invert E [ft]']) ?? 0
+        );
+        const invW = Number(
+          getMapped(f.properties, jMap, 'inv_w', ['Invert W [ft]']) ?? 0
+        );
+        const inverts = [invN, invS, invE, invW].filter(
+          (v) => typeof v === 'number' && !isNaN(v) && v !== 0
+        );
+        const invert = inverts.length ? Math.min(...inverts) : 0;
         const maxDepth = ground - invert;
         const coord = project.forward(
           (f.geometry as any).coordinates as [number, number]
