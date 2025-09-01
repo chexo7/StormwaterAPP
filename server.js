@@ -101,6 +101,65 @@ app.post('/api/area', (req, res) => {
   }
 });
 
+app.post('/api/export-swmm', (req, res) => {
+  const { defaults = {}, subcatchments = [] } = req.body || {};
+  if (!Array.isArray(subcatchments) || subcatchments.length === 0) {
+    addLog('No subcatchments provided for SWMM export', 'error');
+    return res.status(400).send('No subcatchments provided');
+  }
+  const templatePath = path.join(
+    __dirname,
+    'export_templates',
+    'swmm',
+    'SWMM_TEMPLATE.inp'
+  );
+  const template = fs.readFileSync(templatePath, 'utf8');
+  const top = template.slice(0, template.indexOf('[SUBCATCHMENTS]'));
+  const middle = template.slice(
+    template.indexOf('[JUNCTIONS]'),
+    template.indexOf('[POLYGONS]')
+  );
+  const bottom = template.slice(template.indexOf('[PROFILES]'));
+
+  const pctImperv = defaults.percentImperv || 25;
+
+  const subcatchLines = subcatchments
+    .map(
+      sc =>
+        `${sc.name}               *                *                ${sc.area.toFixed(4)}   ${pctImperv}       ${(sc.area * 100).toFixed(2)}    0.5      0`
+    )
+    .join('\n');
+  const subcatchSection =
+    `[SUBCATCHMENTS]\n;;Name           Rain Gage        Outlet           Area     %Imperv  Width    %Slope   CurbLen  SnowPack\n;;-------------- ---------------- ---------------- -------- -------- -------- -------- -------- ----------------\n${subcatchLines}\n\n`;
+
+  const subareaLines = subcatchments
+    .map(
+      sc =>
+        `${sc.name}               0.01       0.1        0.05       0.05       25         OUTLET`
+    )
+    .join('\n');
+  const subareaSection =
+    `[SUBAREAS]\n;;Subcatchment   N-Imperv   N-Perv     S-Imperv   S-Perv     PctZero    RouteTo    PctRouted\n;;-------------- ---------- ---------- ---------- ---------- ---------- ---------- ----------\n${subareaLines}\n\n`;
+
+  const infLines = subcatchments
+    .map(sc => `${sc.name}               3          0.5        4          7          0`)
+    .join('\n');
+  const infSection =
+    `[INFILTRATION]\n;;Subcatchment   Param1     Param2     Param3     Param4     Param5\n;;-------------- ---------- ---------- ---------- ---------- ----------\n${infLines}\n\n`;
+
+  const polyLines = subcatchments
+    .map(sc => sc.polygon.map(pt => `${sc.name}               ${pt[0]}       ${pt[1]}`).join('\n'))
+    .join('\n');
+  const polySection =
+    `[POLYGONS]\n;;Subcatchment   X-Coord            Y-Coord\n;;-------------- ------------------ ------------------\n${polyLines}\n\n`;
+
+  const content = top + subcatchSection + subareaSection + infSection + middle + polySection + bottom;
+  res.setHeader('Content-Type', 'text/plain');
+  res.setHeader('Content-Disposition', 'attachment; filename="swmm.inp"');
+  addLog('SWMM file generated');
+  res.send(content);
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.listen(port, () => {
