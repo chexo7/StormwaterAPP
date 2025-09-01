@@ -9,7 +9,17 @@ interface FieldMapModalProps {
 
 const FieldMapModal: React.FC<FieldMapModalProps> = ({ layerName, properties, onConfirm, onCancel }) => {
   const fields = Object.keys(properties || {});
-  const [mapping, setMapping] = useState<Record<string, string>>({});
+  const [mapping, setMapping] = useState<Record<string, string>>(() => {
+    if (layerName === 'Catch Basins / Manholes') {
+      const lowerMap = Object.fromEntries(fields.map(f => [f.toLowerCase(), f]));
+      const init: Record<string, string> = {};
+      ['inv_n', 'inv_s', 'inv_e', 'inv_w'].forEach(k => {
+        if (lowerMap[k]) init[k] = lowerMap[k];
+      });
+      return init;
+    }
+    return {};
+  });
 
   let required: { key: string; label: string }[] = [];
   if (layerName === 'Pipes') {
