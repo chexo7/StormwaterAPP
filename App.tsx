@@ -10,6 +10,7 @@ import { KNOWN_LAYER_NAMES } from './utils/constants';
 import LayerPreview from './components/LayerPreview';
 import ComputeModal, { ComputeTask } from './components/ComputeModal';
 import ExportModal from './components/ExportModal';
+import FieldMapModal from './components/FieldMapModal';
 import { loadLandCoverList, loadCnValues, CnRecord } from './utils/landcover';
 import { prepareForShapefile } from './utils/shp';
 import proj4 from 'proj4';
@@ -51,6 +52,10 @@ const App: React.FC = () => {
     data: FeatureCollection;
     fileName: string;
     detectedName: string;
+  } | null>(null);
+  const [mappingLayer, setMappingLayer] = useState<{
+    name: string;
+    data: FeatureCollection;
   } | null>(null);
   const [computeTasks, setComputeTasks] = useState<ComputeTask[] | null>(null);
   const [computeSucceeded, setComputeSucceeded] = useState<boolean>(false);
@@ -116,7 +121,7 @@ const App: React.FC = () => {
     }
   }, [computeTasks]);
 
-  const handleLayerAdded = useCallback((geojson: FeatureCollection, name: string) => {
+  const handleLayerAdded = useCallback((geojson: FeatureCollection, name: string, fieldMap?: Record<string, string>) => {
     setIsLoading(false);
     setError(null);
     if (geojson.features.length === 0) {
@@ -165,7 +170,9 @@ const App: React.FC = () => {
     setLayers(prevLayers => {
       const existing = prevLayers.find(l => l.name === name);
       if (existing) {
-        const updated = prevLayers.map(l => l.name === name ? { ...l, geojson, editable } : l);
+        const updated = prevLayers.map(l =>
+          l.name === name ? { ...l, geojson, editable, fieldMap: fieldMap ?? l.fieldMap } : l
+        );
         addLog(`Updated layer ${name} with uploaded data`);
         return updated;
       }
@@ -178,6 +185,7 @@ const App: React.FC = () => {
         fillColor: getDefaultColor(name),
         fillOpacity: DEFAULT_OPACITY,
         category: 'Original',
+        fieldMap,
       };
       addLog(`Loaded layer ${name}${editable ? '' : ' (view only)'}`);
       return [...prevLayers, newLayer];
@@ -326,7 +334,11 @@ const App: React.FC = () => {
   }, [addLog]);
 
   const handleConfirmPreview = useCallback((name: string, data: FeatureCollection) => {
-    handleLayerAdded(data, name);
+    if (name === 'Pipes' || name === 'Catch Basins / Manholes') {
+      setMappingLayer({ name, data });
+    } else {
+      handleLayerAdded(data, name);
+    }
     setPreviewLayer(null);
   }, [handleLayerAdded]);
 
@@ -334,6 +346,17 @@ const App: React.FC = () => {
     setPreviewLayer(null);
     addLog('Preview canceled');
   }, [addLog]);
+
+  const handleFieldMapConfirm = useCallback((map: Record<string, string>) => {
+    if (mappingLayer) {
+      handleLayerAdded(mappingLayer.data, mappingLayer.name, map);
+      setMappingLayer(null);
+    }
+  }, [mappingLayer, handleLayerAdded]);
+
+  const handleFieldMapCancel = useCallback(() => {
+    setMappingLayer(null);
+  }, []);
 
   const runCompute = useCallback(async () => {
     setComputeSucceeded(false);
@@ -770,19 +793,37 @@ const App: React.FC = () => {
       return undefined;
     };
 
+    const getMapped = (
+      props: any,
+      map: Record<string, string> | undefined,
+      key: string,
+      candidates: string[]
+    ) => {
+      if (map && map[key] && props && (props as any)[map[key]] !== undefined) {
+        return (props as any)[map[key]];
+      }
+      return getProp(props, candidates);
+    };
+
     const jLayer = layers.find((l) => l.name === 'Catch Basins / Manholes');
     const pLayer = layers.find((l) => l.name === 'Pipes');
 
     const nodes: { id: string; coord: [number, number]; invert: number }[] = [];
 
     if (jLayer) {
+      const jMap = jLayer.fieldMap;
       jLayer.geojson.features.forEach((f, i) => {
         if (!f.geometry || f.geometry.type !== 'Point') return;
-        const raw = String(getProp(f.properties, ['Label']) ?? '');
+        const raw = String(getMapped(f.properties, jMap, 'label', ['Label']) ?? '');
         const id = sanitizeId(raw, i);
-        const ground = Number(getProp(f.properties, ['Elevation Ground [ft]']) ?? 0);
+        const ground = Number(
+          getMapped(f.properties, jMap, 'ground', ['Elevation Ground [ft]']) ?? 0
+        );
         const invert = Number(
-          getProp(f.properties, ['Elevation Invert[ft]', 'Elevation Invert [ft]']) ?? 0
+          getMapped(f.properties, jMap, 'invert', [
+            'Elevation Invert[ft]',
+            'Elevation Invert [ft]',
+          ]) ?? 0
         );
         const maxDepth = ground - invert;
         const coord = project.forward(
@@ -825,9 +866,10 @@ const App: React.FC = () => {
     };
 
     if (pLayer && nodes.length) {
+      const pMap = pLayer.fieldMap;
       pLayer.geojson.features.forEach((f, i) => {
         if (!f.geometry || f.geometry.type !== 'LineString') return;
-        const raw = String(getProp(f.properties, ['Label']) ?? '');
+        const raw = String(getMapped(f.properties, pMap, 'label', ['Label']) ?? '');
         const id = sanitizeId(raw, i);
         const coords = f.geometry.coordinates as number[][];
         const start = project.forward(coords[0] as [number, number]);
@@ -836,14 +878,16 @@ const App: React.FC = () => {
         const to = findNearestNode(end);
         const len = lineLength(coords);
         const rough = Number(
-          getProp(f.properties, ['Rougness', 'Roughness']) ?? 0
+          getMapped(f.properties, pMap, 'roughness', ['Rougness', 'Roughness']) ?? 0
         );
-        const diamIn = Number(getProp(f.properties, ['Diameter [in]']) ?? 0);
+        const diamIn = Number(
+          getMapped(f.properties, pMap, 'diameter', ['Diameter [in]']) ?? 0
+        );
         const invIn = Number(
-          getProp(f.properties, ['Elevation Invert In [ft]']) ?? 0
+          getMapped(f.properties, pMap, 'inv_in', ['Elevation Invert In [ft]']) ?? 0
         );
         const invOut = Number(
-          getProp(f.properties, ['Elevation Invert Out [ft]']) ?? 0
+          getMapped(f.properties, pMap, 'inv_out', ['Elevation Invert Out [ft]']) ?? 0
         );
         const diamFt = diamIn / 12;
         const inOffset = from ? invIn - from.invert : 0;
@@ -1099,6 +1143,14 @@ const App: React.FC = () => {
             const proj = STATE_PLANE_OPTIONS.find(p => p.epsg === epsg);
             if (proj) setProjection(proj);
           }}
+        />
+      )}
+      {mappingLayer && (
+        <FieldMapModal
+          layerName={mappingLayer.name}
+          properties={mappingLayer.data.features[0]?.properties || {}}
+          onConfirm={handleFieldMapConfirm}
+          onCancel={handleFieldMapCancel}
         />
       )}
     </div>
