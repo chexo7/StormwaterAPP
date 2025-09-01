@@ -562,12 +562,20 @@ const App: React.FC = () => {
     const template = (
       await import('./export_templates/swmm/SWMM_TEMPLATE.inp?raw')
     ).default as string;
-    const { area } = await import('@turf/turf');
+    const { area, cleanCoords, rewind, simplify } = await import('@turf/turf');
 
     const subcatchLines: string[] = [];
     const subareaLines: string[] = [];
     const infilLines: string[] = [];
     const polygonLines: string[] = [];
+
+    const closeRing = (ring: number[][]) => {
+      if (ring.length < 3) return ring;
+      const [fx, fy] = ring[0];
+      const [lx, ly] = ring[ring.length - 1];
+      const isClosed = fx === lx && fy === ly;
+      return isClosed ? ring : [...ring, ring[0]];
+    };
 
     const grouped = new Map<
       string,
@@ -598,13 +606,30 @@ const App: React.FC = () => {
       subareaLines.push(`${id}\t0.01\t0.1\t0.05\t0.05\t25\tOUTLET`);
       infilLines.push(`${id}\t3\t0.5\t4\t7\t0`);
 
-      polygons.forEach((ring, idx) => {
-        if (idx > 0) polygonLines.push(id);
-        ring.forEach(([x, y]) => {
+      polygons.forEach(ring => {
+        const gj = {
+          type: 'Feature',
+          geometry: { type: 'Polygon', coordinates: [ring] },
+          properties: {},
+        } as any;
+        const cleanedGj = cleanCoords(gj);
+        const simplified = simplify(cleanedGj, { tolerance: 1e-6, highQuality: true });
+        const rewound = rewind(simplified, { reverse: false });
+        const processed = rewound.geometry.coordinates[0] as number[][];
+        const cleaned = processed.filter(
+          (p, i, arr) => i === 0 || p[0] !== arr[i - 1][0] || p[1] !== arr[i - 1][1]
+        );
+        const closed = closeRing(cleaned);
+        closed.forEach(([x, y]) => {
           polygonLines.push(`${id}\t${x}\t${y}`);
         });
       });
     });
+
+    const bad = polygonLines.find(
+      l => l.trim().split(/\s+/).length !== 3
+    );
+    if (bad) throw new Error(`[POLYGONS] mal formado: "${bad}"`);
 
     const replaceSection = (content: string, section: string, lines: string) => {
       const regex = new RegExp(`\\[${section}\\][\\s\\S]*?(?=\\n\\[|$)`);
