@@ -11,19 +11,31 @@ const FieldMapModal: React.FC<FieldMapModalProps> = ({ layerName, properties, on
   const fields = Object.keys(properties || {});
   const [mapping, setMapping] = useState<Record<string, string>>({});
 
-  const required = layerName === 'Pipes'
-    ? [
-        { key: 'label', label: 'Label' },
-        { key: 'inv_in', label: 'Elevation Invert In [ft]' },
-        { key: 'inv_out', label: 'Elevation Invert Out [ft]' },
-        { key: 'diameter', label: 'Diameter [in]' },
-        { key: 'roughness', label: 'Roughness' },
-      ]
-    : [
-        { key: 'label', label: 'Label' },
-        { key: 'ground', label: 'Elevation Ground [ft]' },
-        { key: 'invert', label: 'Elevation Invert[ft]' },
-      ];
+  let required: { key: string; label: string }[];
+  if (layerName === 'Pipes') {
+    required = [
+      { key: 'label', label: 'Label' },
+      { key: 'inv_in', label: 'Elevation Invert In [ft]' },
+      { key: 'inv_out', label: 'Elevation Invert Out [ft]' },
+      { key: 'diameter', label: 'Diameter [in]' },
+      { key: 'roughness', label: 'Roughness' },
+    ];
+  } else if (layerName === 'Catch Basins / Manholes') {
+    required = [
+      { key: 'label', label: 'Label' },
+      { key: 'ground', label: 'Elevation Ground [ft]' },
+      { key: 'invert_n', label: 'Invert N [ft]' },
+      { key: 'invert_s', label: 'Invert S [ft]' },
+      { key: 'invert_e', label: 'Invert E [ft]' },
+      { key: 'invert_w', label: 'Invert W [ft]' },
+    ];
+  } else {
+    required = [
+      { key: 'label', label: 'Label' },
+      { key: 'ground', label: 'Elevation Ground [ft]' },
+      { key: 'invert', label: 'Elevation Invert[ft]' },
+    ];
+  }
 
   useEffect(() => {
     const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
