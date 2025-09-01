@@ -562,6 +562,48 @@ const App: React.FC = () => {
         working[filename] = content as string;
       })
     );
+
+    const daLayer = layers.find(l => l.name === 'Drainage Areas');
+    if (daLayer) {
+      const templateName = 'SWMM_TEMPLATE.inp';
+      const template = working[templateName];
+      if (template) {
+        const polygonLines: string[] = [];
+        daLayer.geojson.features.forEach((f, idx) => {
+          const name =
+            ((f.properties as any)?.DA_NAME?.toString().trim()) || `DA${idx + 1}`;
+          let coords: any[] = [];
+          const geom: any = f.geometry;
+          if (geom?.type === 'Polygon') {
+            coords = geom.coordinates[0];
+          } else if (geom?.type === 'MultiPolygon') {
+            coords = geom.coordinates[0][0];
+          }
+          if (coords.length > 0) {
+            const first = coords[0];
+            const last = coords[coords.length - 1];
+            if (first[0] !== last[0] || first[1] !== last[1]) {
+              coords.push(first);
+            }
+            coords.forEach(([x, y]: number[]) => {
+              polygonLines.push(`${name}               ${x}       ${y}`);
+            });
+          }
+        });
+        const polygonsHeader =
+          '[POLYGONS]\n;;Subcatchment   X-Coord            Y-Coord\n;;-------------- ------------------ ------------------\n';
+        const newPolygons = polygonsHeader + polygonLines.join('\n') + '\n\n';
+        const start = template.indexOf('[POLYGONS]');
+        const end = template.indexOf('[PROFILES]');
+        if (start !== -1 && end !== -1 && start < end) {
+          working[templateName] =
+            template.slice(0, start) + newPolygons + template.slice(end);
+        } else {
+          working[templateName] = template + '\n' + newPolygons;
+        }
+      }
+    }
+
     const JSZip = (await import('jszip')).default;
     const zip = new JSZip();
     Object.entries(working).forEach(([name, content]) => {
@@ -577,7 +619,7 @@ const App: React.FC = () => {
     URL.revokeObjectURL(url);
     addLog('SWMM template exported');
     setExportModalOpen(false);
-  }, [addLog, projectName, projectVersion]);
+  }, [addLog, layers, projectName, projectVersion]);
 
   const handleExportShapefiles = useCallback(async () => {
     const processedLayers = layers.filter(l => l.category === 'Process');
