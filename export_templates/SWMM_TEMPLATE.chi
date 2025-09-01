@@ -1,0 +1,37 @@
+#PCSWMM project file
+#Please do not edit
+[General]
+PCSWMM.NET Version=7.7.3910
+SWMM5 Version=5.2.4
+Version=3
+Map EPSG=2249
+CS Name=NAD83 Massachusetts Mainland ftUS
+[2D]
+2DModeling=False
+[Project Summary]
+Compute Time=n/a
+Routing Error=n/a
+Runoff Error=n/a
+[Authors]
+Author0=Sergio Acevedo,45901.4314859028
+[Layers]
+layer0=Subcatchments
+layer1=Outlets
+layer2=Weirs
+layer3=Orifices
+layer4=Pumps
+layer5=Conduits
+layer6=Storages
+layer7=Dividers
+layer8=Outfalls
+layer9=Junctions
+[Scenarios]
+"Scenarios0"="C:\Users\sacevedo2\OneDrive - GHD\Desktop\borrar\swmm\test.inp",False,False,1
+"Scenarios1"="C:\Users\sacevedo2\OneDrive - GHD\Desktop\borrar\swmm\SWMM_TEMPLATE.inp",False,False,SWMM_TEMPLATE
+[Graph]
+Plotting Position=Gringorten
+[Erosion]
+ErosionOn=False
+Use C TS=False
+Calculate LS=False
+Use TSS=False
