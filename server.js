@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { intersect as turfIntersect, area as turfArea } from '@turf/turf';
-import processFileMap from './process-file-map.json' assert { type: 'json' };
+import processFileMap from './process-file-map.json' with { type: 'json' };
 
 // processFileMap maps backend processes (e.g., exportHydroCAD, exportSWMM,
 // exportShapefiles) to the spatial data layers they require. Update
