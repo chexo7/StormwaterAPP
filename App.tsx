@@ -90,6 +90,10 @@ const App: React.FC = () => {
     !!pipesLayer &&
     pipesLayer.geojson.features.length > 0;
 
+  const exportHydroCADEnabled = computeSucceeded;
+  const exportShapefilesEnabled = computeSucceeded;
+  const exportSWMMEnabled = computeSucceeded || pipe3DEnabled;
+
   const addLog = useCallback((message: string, type: 'info' | 'error' = 'info') => {
     setLogs(prev => [...prev, { message, type, source: 'frontend' as const }]);
   }, []);
@@ -759,10 +763,6 @@ const App: React.FC = () => {
 
   const handleExportSWMM = useCallback(async () => {
     const daLayer = layers.find(l => l.name === 'Drainage Areas');
-    if (!daLayer) {
-      addLog('Drainage Areas layer not found', 'error');
-      return;
-    }
 
     const template = (
       await import('./export_templates/swmm/SWMM_TEMPLATE.inp?raw')
@@ -828,30 +828,32 @@ const App: React.FC = () => {
       { area: number; polygons: number[][][] }
     >();
 
-    daLayer.geojson.features.forEach((f, i) => {
-      const raw = String((f.properties as any)?.DA_NAME ?? '');
-      const id = sanitizeId(raw, i);
-      const geom = f.geometry;
-      const rings: number[][][] =
-        geom.type === 'Polygon'
-          ? [geom.coordinates[0] as number[][]]
-          : (geom as any).coordinates.map((p: any) => p[0] as number[][]);
-      let outerArea = 0;
-      for (const ring of rings) {
-        outerArea += Math.abs(
-          turfArea({
-            type: 'Feature',
-            geometry: { type: 'Polygon', coordinates: [ring] },
-            properties: {},
-          } as any)
-        );
-      }
-      const a = outerArea * 0.000247105; // acres
-      const entry = grouped.get(id) || { area: 0, polygons: [] };
-      entry.area += a;
-      entry.polygons.push(...rings);
-      grouped.set(id, entry);
-    });
+    if (daLayer) {
+      daLayer.geojson.features.forEach((f, i) => {
+        const raw = String((f.properties as any)?.DA_NAME ?? '');
+        const id = sanitizeId(raw, i);
+        const geom = f.geometry;
+        const rings: number[][][] =
+          geom.type === 'Polygon'
+            ? [geom.coordinates[0] as number[][]]
+            : (geom as any).coordinates.map((p: any) => p[0] as number[][]);
+        let outerArea = 0;
+        for (const ring of rings) {
+          outerArea += Math.abs(
+            turfArea({
+              type: 'Feature',
+              geometry: { type: 'Polygon', coordinates: [ring] },
+              properties: {},
+            } as any)
+          );
+        }
+        const a = outerArea * 0.000247105; // acres
+        const entry = grouped.get(id) || { area: 0, polygons: [] };
+        entry.area += a;
+        entry.polygons.push(...rings);
+        grouped.set(id, entry);
+      });
+    }
 
     const closeRing = (ring: number[][]) => {
       if (ring.length < 3) return ring;
@@ -1547,7 +1549,11 @@ const App: React.FC = () => {
       <Header
         computeEnabled={computeEnabled}
         onCompute={handleCompute}
-        exportEnabled={computeSucceeded}
+        exportEnabled={
+          exportHydroCADEnabled ||
+          exportShapefilesEnabled ||
+          exportSWMMEnabled
+        }
         onExport={() => setExportModalOpen(true)}
         onView3D={handleView3D}
         view3DEnabled={pipe3DEnabled}
@@ -1619,7 +1625,9 @@ const App: React.FC = () => {
           onExportSWMM={handleExportSWMM}
           onExportShapefiles={handleExportShapefiles}
           onClose={() => setExportModalOpen(false)}
-          exportEnabled={computeSucceeded}
+          exportHydroCADEnabled={exportHydroCADEnabled}
+          exportSWMMEnabled={exportSWMMEnabled}
+          exportShapefilesEnabled={exportShapefilesEnabled}
           projection={projection}
           onProjectionChange={(epsg) => {
             const proj = STATE_PLANE_OPTIONS.find(p => p.epsg === epsg);
