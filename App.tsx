@@ -82,6 +82,14 @@ const App: React.FC = () => {
   const computeEnabled =
     requiredLayers.every(name => layers.some(l => l.name === name)) && lodValid;
 
+  const cbLayer = layers.find(l => l.name === 'Catch Basins / Manholes');
+  const pipeLayer = layers.find(l => l.name === 'Pipes');
+  const view3dEnabled =
+    !!cbLayer &&
+    !!pipeLayer &&
+    cbLayer.geojson.features.length > 0 &&
+    pipeLayer.geojson.features.length > 0;
+
   const addLog = useCallback((message: string, type: 'info' | 'error' = 'info') => {
     setLogs(prev => [...prev, { message, type, source: 'frontend' as const }]);
   }, []);
@@ -703,6 +711,79 @@ const App: React.FC = () => {
     runCompute();
   }, [runCompute]);
 
+  const handleView3d = useCallback(() => {
+    if (!cbLayer || !pipeLayer) return;
+    const cbs = cbLayer.geojson.features
+      .filter(f => f.geometry && f.geometry.type === 'Point')
+      .map(f => ({
+        label: (f.properties as any)?.['Label'] || '',
+        x: (f.geometry as any).coordinates[0],
+        y: (f.geometry as any).coordinates[1],
+        z: (f.properties as any)?.['Inv Out [ft]'] || 0,
+      }));
+    const pipes = pipeLayer.geojson.features
+      .filter(f => f.geometry && f.geometry.type === 'LineString')
+      .map(f => {
+        const coords = (f.geometry as any).coordinates;
+        const start = coords[0];
+        const end = coords[coords.length - 1];
+        const props = f.properties || {};
+        return {
+          start,
+          end,
+          invIn: (props as any)['Elevation Invert In [ft]'] || 0,
+          invOut: (props as any)['Elevation Invert Out [ft]'] || 0,
+        };
+      });
+    const data = { cbs, pipes };
+    const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"/><title>3D Pipe Network</title>
+<style>body,html{margin:0;padding:0;overflow:hidden;}</style>
+<script src="https://unpkg.com/three@0.161.0/build/three.min.js"></script>
+<script src="https://unpkg.com/three@0.161.0/examples/js/controls/OrbitControls.js"></script>
+</head><body></body>
+<script>
+const data = ${JSON.stringify(data)};
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 100000);
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity,minZ=Infinity,maxZ=-Infinity;
+data.cbs.forEach(cb=>{minX=Math.min(minX,cb.x);maxX=Math.max(maxX,cb.x);minY=Math.min(minY,cb.y);maxY=Math.max(maxY,cb.y);minZ=Math.min(minZ,-cb.z);maxZ=Math.max(maxZ,-cb.z);});
+data.pipes.forEach(p=>{minX=Math.min(minX,p.start[0],p.end[0]);maxX=Math.max(maxX,p.start[0],p.end[0]);minY=Math.min(minY,p.start[1],p.end[1]);maxY=Math.max(maxY,p.start[1],p.end[1]);minZ=Math.min(minZ,-p.invIn,-p.invOut);maxZ=Math.max(maxZ,-p.invIn,-p.invOut);});
+const centerX=(minX+maxX)/2, centerY=(minY+maxY)/2, centerZ=(minZ+maxZ)/2;
+camera.position.set(centerX, centerY - (maxY-minY)*1.5, centerZ + (maxX-minX)*1.5);
+controls.target.set(centerX, centerY, centerZ);
+data.pipes.forEach(p=>{
+  const pts=[
+    new THREE.Vector3(p.start[0], p.start[1], -p.invIn),
+    new THREE.Vector3(p.end[0], p.end[1], -p.invOut)
+  ];
+  const geo=new THREE.BufferGeometry().setFromPoints(pts);
+  const line=new THREE.Line(geo, new THREE.LineBasicMaterial({color:0x00ffff}));
+  scene.add(line);
+});
+data.cbs.forEach(cb=>{
+  const geo=new THREE.SphereGeometry((maxX-minX)/200 || 1,16,16);
+  const mat=new THREE.MeshBasicMaterial({color:0xff0000});
+  const mesh=new THREE.Mesh(geo,mat);
+  mesh.position.set(cb.x,cb.y,-cb.z);
+  scene.add(mesh);
+});
+const light=new THREE.AmbientLight(0xffffff,0.8);scene.add(light);
+function animate(){requestAnimationFrame(animate);controls.update();renderer.render(scene,camera);}animate();
+window.addEventListener('resize',()=>{camera.aspect=window.innerWidth/window.innerHeight;camera.updateProjectionMatrix();renderer.setSize(window.innerWidth,window.innerHeight);});
+</script></html>`;
+    const w = window.open('about:blank', '_blank');
+    if (w) {
+      w.document.write(html);
+      w.document.close();
+    }
+  }, [cbLayer, pipeLayer]);
+
   const handleExportHydroCAD = useCallback(() => {
     const overlayLayer = layers.find(l => l.name === 'Overlay');
     if (!overlayLayer) {
@@ -1246,6 +1327,8 @@ const App: React.FC = () => {
         onCompute={handleCompute}
         exportEnabled={computeSucceeded}
         onExport={() => setExportModalOpen(true)}
+        view3dEnabled={view3dEnabled}
+        onView3d={handleView3d}
         projectName={projectName}
         onProjectNameChange={setProjectName}
         projectVersion={projectVersion}
