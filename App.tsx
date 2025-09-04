@@ -90,6 +90,13 @@ const App: React.FC = () => {
     !!pipesLayer &&
     pipesLayer.geojson.features.length > 0;
 
+  const hasDrainageAreas = layers.some(l => l.name === 'Drainage Areas');
+  const exportHydroCADEnabled = computeSucceeded;
+  const exportShapefilesEnabled = computeSucceeded;
+  const exportSWMMEnabled = hasDrainageAreas || pipe3DEnabled;
+  const exportEnabled =
+    exportHydroCADEnabled || exportSWMMEnabled || exportShapefilesEnabled;
+
   const addLog = useCallback((message: string, type: 'info' | 'error' = 'info') => {
     setLogs(prev => [...prev, { message, type, source: 'frontend' as const }]);
   }, []);
@@ -759,8 +766,10 @@ const App: React.FC = () => {
 
   const handleExportSWMM = useCallback(async () => {
     const daLayer = layers.find(l => l.name === 'Drainage Areas');
-    if (!daLayer) {
-      addLog('Drainage Areas layer not found', 'error');
+    const jLayer = layers.find((l) => l.name === 'Catch Basins / Manholes');
+    const pLayer = layers.find((l) => l.name === 'Pipes');
+    if (!daLayer && !(jLayer && pLayer)) {
+      addLog('Drainage Areas layer not found and no pipe network', 'error');
       return;
     }
 
@@ -822,137 +831,139 @@ const App: React.FC = () => {
     const conduitLines: string[] = [];
     const xsectionLines: string[] = [];
     const coordLines: string[] = [];
+    let filteredPolygonLines: string[] = [];
+    if (daLayer) {
+      const grouped = new Map<
+        string,
+        { area: number; polygons: number[][][] }
+      >();
 
-    const grouped = new Map<
-      string,
-      { area: number; polygons: number[][][] }
-    >();
-
-    daLayer.geojson.features.forEach((f, i) => {
-      const raw = String((f.properties as any)?.DA_NAME ?? '');
-      const id = sanitizeId(raw, i);
-      const geom = f.geometry;
-      const rings: number[][][] =
-        geom.type === 'Polygon'
-          ? [geom.coordinates[0] as number[][]]
-          : (geom as any).coordinates.map((p: any) => p[0] as number[][]);
-      let outerArea = 0;
-      for (const ring of rings) {
-        outerArea += Math.abs(
-          turfArea({
-            type: 'Feature',
-            geometry: { type: 'Polygon', coordinates: [ring] },
-            properties: {},
-          } as any)
-        );
-      }
-      const a = outerArea * 0.000247105; // acres
-      const entry = grouped.get(id) || { area: 0, polygons: [] };
-      entry.area += a;
-      entry.polygons.push(...rings);
-      grouped.set(id, entry);
-    });
-
-    const closeRing = (ring: number[][]) => {
-      if (ring.length < 3) return ring;
-      const [fx, fy] = ring[0];
-      const [lx, ly] = ring[ring.length - 1];
-      const isClosed = fx === lx && fy === ly;
-      return isClosed ? ring : [...ring, ring[0]];
-    };
-
-    Array.from(grouped.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .forEach(([id, { area: a, polygons }]) => {
-        polygons.sort(
-          (aRing, bRing) =>
-            Math.abs(
-              turfArea({
-                type: 'Feature',
-                geometry: { type: 'Polygon', coordinates: [bRing] },
-                properties: {},
-              } as any)
-            ) -
-            Math.abs(
-              turfArea({
-                type: 'Feature',
-                geometry: { type: 'Polygon', coordinates: [aRing] },
-                properties: {},
-              } as any)
-            )
-        );
-        let hasRing = false;
-        polygons.forEach((ring) => {
-          const gj = {
-            type: 'Feature',
-            geometry: { type: 'Polygon', coordinates: [ring] },
-            properties: {},
-          } as any;
-          const cleanedGj = cleanCoords(gj);
-          const rewound = rewind(cleanedGj, { reverse: false });
-          const ringCoords = rewound.geometry.coordinates[0] as number[][];
-          const cleaned = ringCoords.filter(
-            (p, i, arr) =>
-              i === 0 || p[0] !== arr[i - 1][0] || p[1] !== arr[i - 1][1]
+      daLayer.geojson.features.forEach((f, i) => {
+        const raw = String((f.properties as any)?.DA_NAME ?? '');
+        const id = sanitizeId(raw, i);
+        const geom = f.geometry;
+        const rings: number[][][] =
+          geom.type === 'Polygon'
+            ? [geom.coordinates[0] as number[][]]
+            : (geom as any).coordinates.map((p: any) => p[0] as number[][]);
+        let outerArea = 0;
+        for (const ring of rings) {
+          outerArea += Math.abs(
+            turfArea({
+              type: 'Feature',
+              geometry: { type: 'Polygon', coordinates: [ring] },
+              properties: {},
+            } as any)
           );
-          const dedup = uniq(cleaned);
-          if (dedup.length < 3) {
-            addLog(`[POLYGONS] anillo degenerado en ${id}`, 'warn');
-            return;
-          }
-          let ringToWrite = dedup;
-          try {
-            if (
-              kinks({
-                type: 'Feature',
-                geometry: { type: 'Polygon', coordinates: [dedup] },
-                properties: {},
-              } as any).features.length
-            ) {
-              ringToWrite = reorderByAngle(dedup);
-            }
-          } catch {}
-          const closed = closeRing(ringToWrite);
-          const safeClosed = closed.filter(isFinitePair);
-          const projectedRing = safeClosed.map((p) => project.forward(p as [number, number]));
-          if (projectedRing.length < 4) {
-            addLog(
-              `[POLYGONS] Se descartó un anillo degenerado de ${id}`,
-              'warn'
-            );
-            return;
-          }
-          projectedRing.forEach(([x, y]) => {
-            polygonLines.push(`${id}\t${x}\t${y}`);
-          });
-          hasRing = true;
-        });
-        if (hasRing) {
-          const width = a * 100; // simple width approximation
-          subcatchLines.push(
-            `${id}\t*\t*\t${a.toFixed(4)}\t25\t${width.toFixed(2)}\t0.5\t0`
-          );
-          subareaLines.push(`${id}\t0.01\t0.1\t0.05\t0.05\t25\tOUTLET`);
-          infilLines.push(`${id}\t3\t0.5\t4\t7\t0`);
         }
+        const a = outerArea * 0.000247105; // acres
+        const entry = grouped.get(id) || { area: 0, polygons: [] };
+        entry.area += a;
+        entry.polygons.push(...rings);
+        grouped.set(id, entry);
       });
 
-    const bad = polygonLines.find(
-      (l) => l.trim().split(/\s+/).length !== 3
-    );
-    if (bad) throw new Error(`[POLYGONS] mal formado: "${bad}"`);
-    const bad2 = polygonLines.find(
-      (l) =>
-        !/^\S+\s+-?\d+(\.\d+)?(e[+-]?\d+)?\s+-?\d+(\.\d+)?(e[+-]?\d+)?$/i.test(
-          l.trim()
-        )
-    );
-    if (bad2) throw new Error(`[POLYGONS] token numérico inválido: "${bad2}"`);
+      const closeRing = (ring: number[][]) => {
+        if (ring.length < 3) return ring;
+        const [fx, fy] = ring[0];
+        const [lx, ly] = ring[ring.length - 1];
+        const isClosed = fx === lx && fy === ly;
+        return isClosed ? ring : [...ring, ring[0]];
+      };
 
-    const validIds = new Set(subcatchLines.map((l) => l.split(/\s+/)[0]));
-    const filteredPolygonLines = polygonLines.filter((l) =>
-      validIds.has(l.split(/\s+/)[0])
-    );
+      Array.from(grouped.entries())
+        .sort(([a], [b]) => a.localeCompare(b))
+        .forEach(([id, { area: a, polygons }]) => {
+          polygons.sort(
+            (aRing, bRing) =>
+              Math.abs(
+                turfArea({
+                  type: 'Feature',
+                  geometry: { type: 'Polygon', coordinates: [bRing] },
+                  properties: {},
+                } as any)
+              ) -
+              Math.abs(
+                turfArea({
+                  type: 'Feature',
+                  geometry: { type: 'Polygon', coordinates: [aRing] },
+                  properties: {},
+                } as any)
+              )
+          );
+          let hasRing = false;
+          polygons.forEach((ring) => {
+            const gj = {
+              type: 'Feature',
+              geometry: { type: 'Polygon', coordinates: [ring] },
+              properties: {},
+            } as any;
+            const cleanedGj = cleanCoords(gj);
+            const rewound = rewind(cleanedGj, { reverse: false });
+            const ringCoords = rewound.geometry.coordinates[0] as number[][];
+            const cleaned = ringCoords.filter(
+              (p, i, arr) =>
+                i === 0 || p[0] !== arr[i - 1][0] || p[1] !== arr[i - 1][1]
+            );
+            const dedup = uniq(cleaned);
+            if (dedup.length < 3) {
+              addLog(`[POLYGONS] anillo degenerado en ${id}`, 'warn');
+              return;
+            }
+            let ringToWrite = dedup;
+            try {
+              if (
+                kinks({
+                  type: 'Feature',
+                  geometry: { type: 'Polygon', coordinates: [dedup] },
+                  properties: {},
+                } as any).features.length
+              ) {
+                ringToWrite = reorderByAngle(dedup);
+              }
+            } catch {}
+            const closed = closeRing(ringToWrite);
+            const safeClosed = closed.filter(isFinitePair);
+            const projectedRing = safeClosed.map((p) => project.forward(p as [number, number]));
+            if (projectedRing.length < 4) {
+              addLog(
+                `[POLYGONS] Se descartó un anillo degenerado de ${id}`,
+                'warn'
+              );
+              return;
+            }
+            projectedRing.forEach(([x, y]) => {
+              polygonLines.push(`${id}\t${x}\t${y}`);
+            });
+            hasRing = true;
+          });
+          if (hasRing) {
+            const width = a * 100; // simple width approximation
+            subcatchLines.push(
+              `${id}\t*\t*\t${a.toFixed(4)}\t25\t${width.toFixed(2)}\t0.5\t0`
+            );
+            subareaLines.push(`${id}\t0.01\t0.1\t0.05\t0.05\t25\tOUTLET`);
+            infilLines.push(`${id}\t3\t0.5\t4\t7\t0`);
+          }
+        });
+
+      const bad = polygonLines.find(
+        (l) => l.trim().split(/\s+/).length !== 3
+      );
+      if (bad) throw new Error(`[POLYGONS] mal formado: "${bad}"`);
+      const bad2 = polygonLines.find(
+        (l) =>
+          !/^\S+\s+-?\d+(\.\d+)?(e[+-]?\d+)?\s+-?\d+(\.\d+)?(e[+-]?\d+)?$/i.test(
+            l.trim()
+          )
+      );
+      if (bad2) throw new Error(`[POLYGONS] token numérico inválido: "${bad2}"`);
+
+      const validIds = new Set(subcatchLines.map((l) => l.split(/\s+/)[0]));
+      filteredPolygonLines = polygonLines.filter((l) =>
+        validIds.has(l.split(/\s+/)[0])
+      );
+    }
 
     const getProp = (props: any, candidates: string[]) => {
       if (!props) return undefined;
@@ -982,11 +993,7 @@ const App: React.FC = () => {
       return getProp(props, candidates);
     };
 
-    const jLayer = layers.find((l) => l.name === 'Catch Basins / Manholes');
-    const pLayer = layers.find((l) => l.name === 'Pipes');
-
     const nodes: { id: string; coord: [number, number]; invert: number }[] = [];
-
     if (jLayer) {
       const jMap = jLayer.fieldMap;
       jLayer.geojson.features.forEach((f, i) => {
@@ -1547,7 +1554,7 @@ const App: React.FC = () => {
       <Header
         computeEnabled={computeEnabled}
         onCompute={handleCompute}
-        exportEnabled={computeSucceeded}
+        exportEnabled={exportEnabled}
         onExport={() => setExportModalOpen(true)}
         onView3D={handleView3D}
         view3DEnabled={pipe3DEnabled}
@@ -1619,7 +1626,9 @@ const App: React.FC = () => {
           onExportSWMM={handleExportSWMM}
           onExportShapefiles={handleExportShapefiles}
           onClose={() => setExportModalOpen(false)}
-          exportEnabled={computeSucceeded}
+          hydroCADEnabled={exportHydroCADEnabled}
+          swmmEnabled={exportSWMMEnabled}
+          shapefilesEnabled={exportShapefilesEnabled}
           projection={projection}
           onProjectionChange={(epsg) => {
             const proj = STATE_PLANE_OPTIONS.find(p => p.epsg === epsg);
