@@ -778,8 +778,8 @@ const App: React.FC = () => {
 
     const project = proj4('EPSG:4326', projection.proj4);
 
-    const sanitizeId = (s: string, i: number) =>
-      (s || `S${i + 1}`)
+    const sanitizeId = (s: string, i: number, prefix = 'S') =>
+      (s || `${prefix}-${i + 1}`)
         .trim()
         .replace(/[^\w\-]/g, '_')
         .replace(/_+/g, '_')
@@ -985,7 +985,21 @@ const App: React.FC = () => {
     const jLayer = layers.find((l) => l.name === 'Catch Basins / Manholes');
     const pLayer = layers.find((l) => l.name === 'Pipes');
 
-    const nodes: { id: string; coord: [number, number]; invert: number }[] = [];
+    if (pLayer && !jLayer) {
+      throw new Error(
+        'Debe cargar la capa de Catch Basins / Manholes antes de la de Pipes'
+      );
+    }
+
+    const nodes: {
+      id: string;
+      coord: [number, number];
+      invert: number;
+      invN: number;
+      invS: number;
+      invE: number;
+      invW: number;
+    }[] = [];
 
     if (jLayer) {
       const jMap = jLayer.fieldMap;
@@ -1009,7 +1023,11 @@ const App: React.FC = () => {
           getMapped(f.properties, jMap, 'inv_w', ['Invert W [ft]']) ?? 0
         );
         const invCandidates = [invN, invS, invE, invW].filter((v) => v !== 0);
-        const invert = invCandidates.length ? Math.min(...invCandidates) : 0;
+        if (!invCandidates.length)
+          throw new Error(
+            `[CB/MH] ${id} requiere al menos un valor de invert N/S/E/W`
+          );
+        const invert = Math.min(...invCandidates);
         const maxDepth = ground - invert;
         const coord = project.forward(
           (f.geometry as any).coordinates as [number, number]
@@ -1021,7 +1039,7 @@ const App: React.FC = () => {
           junctionLines.push(`${id}\t${invert}\t${maxDepth}\t0\t0\t0`);
         }
         coordLines.push(`${id}\t${coord[0]}\t${coord[1]}`);
-        nodes.push({ id, coord, invert });
+        nodes.push({ id, coord, invert, invN, invS, invE, invW });
       });
     }
 
@@ -1050,30 +1068,73 @@ const App: React.FC = () => {
       return len;
     };
 
+    const getOrientation = (
+      a: [number, number],
+      b: [number, number]
+    ): 'N' | 'S' | 'E' | 'W' => {
+      const dx = b[0] - a[0];
+      const dy = b[1] - a[1];
+      if (Math.abs(dx) > Math.abs(dy)) {
+        return dx > 0 ? 'E' : 'W';
+      }
+      return dy > 0 ? 'N' : 'S';
+    };
+
     if (pLayer && nodes.length) {
       const pMap = pLayer.fieldMap;
       pLayer.geojson.features.forEach((f, i) => {
         if (!f.geometry || f.geometry.type !== 'LineString') return;
         const raw = String(getMapped(f.properties, pMap, 'label', ['Label']) ?? '');
-        const id = sanitizeId(raw, i);
+        const id = sanitizeId(raw, i, 'Pipe');
         const coords = f.geometry.coordinates as number[][];
         const start = project.forward(coords[0] as [number, number]);
         const end = project.forward(coords[coords.length - 1] as [number, number]);
         const from = findNearestNode(start);
         const to = findNearestNode(end);
         const len = lineLength(coords);
-        const rough = Number(
-          getMapped(f.properties, pMap, 'roughness', ['Rougness', 'Roughness']) ?? 0
+        let rough = Number(
+          getMapped(f.properties, pMap, 'roughness', ['Rougness', 'Roughness']) ??
+            0
         );
-        const diamIn = Number(
+        if (!rough) rough = 0.012;
+        let diamIn = Number(
           getMapped(f.properties, pMap, 'diameter', ['Diameter [in]']) ?? 0
         );
-        const invIn = Number(
-          getMapped(f.properties, pMap, 'inv_in', ['Elevation Invert In [ft]']) ?? 0
+        if (!diamIn) diamIn = 15;
+        let invIn = Number(
+          getMapped(f.properties, pMap, 'inv_in', ['Elevation Invert In [ft]']) ??
+            0
         );
-        const invOut = Number(
-          getMapped(f.properties, pMap, 'inv_out', ['Elevation Invert Out [ft]']) ?? 0
+        let invOut = Number(
+          getMapped(f.properties, pMap, 'inv_out', ['Elevation Invert Out [ft]']) ??
+            0
         );
+        const startNext = coords[1]
+          ? project.forward(coords[1] as [number, number])
+          : start;
+        const endPrev = coords[coords.length - 2]
+          ? project.forward(coords[coords.length - 2] as [number, number])
+          : end;
+        if ((!invIn || invIn === 0) && from) {
+          const orient = getOrientation(from.coord, startNext);
+          invIn =
+            ({
+              N: from.invN,
+              S: from.invS,
+              E: from.invE,
+              W: from.invW,
+            } as any)[orient] ?? 0;
+        }
+        if ((!invOut || invOut === 0) && to) {
+          const orient = getOrientation(to.coord, endPrev);
+          invOut =
+            ({
+              N: to.invN,
+              S: to.invS,
+              E: to.invE,
+              W: to.invW,
+            } as any)[orient] ?? 0;
+        }
         const diamFt = diamIn / 12;
         const inOffset = from ? invIn - from.invert : 0;
         const outOffset = to ? invOut - to.invert : 0;
