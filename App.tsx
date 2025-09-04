@@ -1311,10 +1311,28 @@ const App: React.FC = () => {
 <head>
   <meta charset="utf-8" />
   <title>3D Pipe Network</title>
-  <style>html,body{height:100%;margin:0} canvas{display:block;width:100%;height:100%}</style>
+  <style>
+    html,body{height:100%;margin:0;overflow:hidden}
+    canvas{display:block;width:100%;height:100%}
+    #nav{position:absolute;top:10px;right:10px;display:flex;flex-direction:column;align-items:center;gap:8px;font-family:sans-serif}
+    #compass{background:rgba(255,255,255,0.8);border-radius:50%;padding:4px}
+    #compass canvas{display:block}
+    #pegman{width:24px;height:24px;background:orange;border-radius:4px}
+    #zoom{background:rgba(255,255,255,0.8);padding:4px;border-radius:8px;display:flex;flex-direction:column;align-items:center}
+    #zoom input{writing-mode:bt-lr;-webkit-appearance:slider-vertical;height:100px;margin:4px 0}
+  </style>
 </head>
 <body>
   <canvas id="c"></canvas>
+  <div id="nav">
+    <div id="compass"><canvas id="compassCanvas" width="64" height="64"></canvas></div>
+    <div id="pegman"></div>
+    <div id="zoom">
+      <button id="zoomIn">+</button>
+      <input id="zoomSlider" type="range" min="10" max="200" value="100" />
+      <button id="zoomOut">-</button>
+    </div>
+  </div>
 </body>
 </html>`);
     doc.close();
@@ -1340,7 +1358,10 @@ const App: React.FC = () => {
       renderer.setClearColor(0x000000);
 
       const scene = new THREE.Scene();
-      scene.background = new THREE.Color(0x000000);
+      const texLoader = new THREE.TextureLoader();
+      texLoader.load('https://unpkg.com/three@0.134.0/examples/textures/land_ocean_ice_cloud_2048.jpg', (tex) => {
+        scene.background = tex;
+      });
 
       const camera = new THREE.PerspectiveCamera(
         60,
@@ -1348,9 +1369,30 @@ const App: React.FC = () => {
         0.1,
         100000
       );
+      camera.up.set(0, 0, 1);
 
       const controls = new THREE.OrbitControls(camera, renderer.domElement);
       controls.enableDamping = true;
+      controls.screenSpacePanning = false;
+      controls.minPolarAngle = 0;
+      controls.maxPolarAngle = Math.PI;
+      controls.mouseButtons.LEFT = THREE.MOUSE.PAN;
+      controls.mouseButtons.RIGHT = THREE.MOUSE.ROTATE;
+      controls.mouseButtons.MIDDLE = THREE.MOUSE.DOLLY;
+      controls.touches.ONE = THREE.TOUCH.PAN;
+      controls.touches.TWO = THREE.TOUCH.DOLLY_ROTATE;
+      canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+      const compassCanvas = doc.getElementById('compassCanvas') as HTMLCanvasElement;
+      const compassRenderer = new THREE.WebGLRenderer({ canvas: compassCanvas, alpha: true });
+      compassRenderer.setSize(64, 64);
+      compassRenderer.setClearColor(0x000000, 0);
+      const compassScene = new THREE.Scene();
+      const compassCamera = new THREE.PerspectiveCamera(50, 1, 0.1, 10);
+      compassCamera.up.set(0, 0, 1);
+      compassCamera.position.set(0, 0, 2);
+      const compassAxes = new THREE.AxesHelper(1);
+      compassScene.add(compassAxes);
 
       const xs: number[] = [], ys: number[] = [], zs: number[] = [];
       data.nodes.forEach((n) => {
@@ -1398,6 +1440,34 @@ const App: React.FC = () => {
       }
       reset();
 
+      const slider = doc.getElementById('zoomSlider') as HTMLInputElement;
+
+      function updateSlider() {
+        const distance = camera.position.distanceTo(controls.target);
+        slider.value = String((distance / size) * 100);
+      }
+
+      doc.getElementById('zoomIn')?.addEventListener('click', () => {
+        controls.dollyIn(1.2);
+        controls.update();
+        updateSlider();
+      });
+      doc.getElementById('zoomOut')?.addEventListener('click', () => {
+        controls.dollyOut(1.2);
+        controls.update();
+        updateSlider();
+      });
+      slider?.addEventListener('input', () => {
+        const distance = camera.position.distanceTo(controls.target);
+        const desired = (slider.valueAsNumber / 100) * size;
+        const ratio = distance / desired;
+        if (ratio > 1) controls.dollyIn(ratio);
+        else controls.dollyOut(1 / ratio);
+        controls.update();
+      });
+      controls.addEventListener('change', updateSlider);
+      updateSlider();
+
       const amb = new THREE.AmbientLight(0xffffff, 0.6);
       scene.add(amb);
       const dir = new THREE.DirectionalLight(0xffffff, 0.8);
@@ -1443,6 +1513,8 @@ const App: React.FC = () => {
       function animate() {
         controls.update();
         renderer.render(scene, camera);
+        compassAxes.quaternion.copy(camera.quaternion);
+        compassRenderer.render(compassScene, compassCamera);
         win.requestAnimationFrame(animate);
       }
       animate();
