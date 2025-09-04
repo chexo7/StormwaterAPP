@@ -1349,8 +1349,15 @@ const App: React.FC = () => {
         100000
       );
 
-      const controls = new THREE.OrbitControls(camera, renderer.domElement);
+      const controls = new THREE.MapControls(camera, renderer.domElement);
       controls.enableDamping = true;
+      controls.dampingFactor = 0.05;
+      controls.screenSpacePanning = true;
+      controls.mouseButtons = {
+        LEFT: THREE.MOUSE.PAN,
+        MIDDLE: THREE.MOUSE.DOLLY,
+        RIGHT: THREE.MOUSE.ROTATE,
+      };
 
       const xs: number[] = [], ys: number[] = [], zs: number[] = [];
       data.nodes.forEach((n) => {
