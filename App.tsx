@@ -1259,10 +1259,12 @@ const App: React.FC = () => {
           (f.geometry as any).coordinates as [number, number]
         );
         const props = f.properties as any;
-        const ground = Number(props?.['Elevation Ground [ft]'] ?? 0);
-        const invOut = Number(props?.['Inv Out [ft]'] ?? 0);
+        const ground = parseFloat(props?.['Elevation Ground [ft]']);
+        const invOut = parseFloat(props?.['Inv Out [ft]']);
+        if (!isFinite(ground) || !isFinite(invOut)) return null;
         return { x, y, ground, invOut, diam: 4 };
-      });
+      })
+      .filter((n): n is { x: number; y: number; ground: number; invOut: number; diam: number } => n !== null);
     const pipes = pLayer.geojson.features
       .filter(
         (f) =>
@@ -1279,19 +1281,22 @@ const App: React.FC = () => {
         const [ex, ey] = projectFn.forward(
           coords[coords.length - 1] as [number, number]
         );
-        const invIn = Number(
-          (f.properties as any)?.['Elevation Invert In [ft]'] ?? 0
+        const invIn = parseFloat(
+          (f.properties as any)?.['Elevation Invert In [ft]']
         );
-        const invOut = Number(
-          (f.properties as any)?.['Elevation Invert Out [ft]'] ?? 0
+        const invOut = parseFloat(
+          (f.properties as any)?.['Elevation Invert Out [ft]']
         );
-        const diam = Number((f.properties as any)?.['Diameter [in]'] ?? 0) / 12;
+        const diam =
+          parseFloat((f.properties as any)?.['Diameter [in]']) / 12;
+        if (![invIn, invOut, diam].every(isFinite)) return null;
         return {
           start: { x: sx, y: sy, z: invIn },
           end: { x: ex, y: ey, z: invOut },
           diam,
         };
-      });
+      })
+      .filter((p): p is { start: { x: number; y: number; z: number }; end: { x: number; y: number; z: number }; diam: number } => p !== null);
     if (nodes.length === 0 && pipes.length === 0) {
       addLog('No pipe network data to display', 'error');
       return;
