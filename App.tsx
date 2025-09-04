@@ -1254,12 +1254,10 @@ const App: React.FC = () => {
         const [x, y] = projectFn.forward(
           (f.geometry as any).coordinates as [number, number]
         );
-        const invert = Number(
-          (f.properties as any)?.['Inv Out [ft]'] ??
-            (f.properties as any)?.['Elevation Invert In [ft]'] ??
-            0
-        );
-        return { x, y, z: invert };
+        const ground = Number((f.properties as any)?.['Elevation Ground [ft]'] ?? 0);
+        const invert = Number((f.properties as any)?.['Inv Out [ft]'] ?? 0);
+        const depth = ground - invert;
+        return { x, y, z: invert, depth };
       });
     const pipes = pLayer.geojson.features
       .filter(f => f.geometry && f.geometry.type === 'LineString')
@@ -1270,13 +1268,21 @@ const App: React.FC = () => {
           coords[coords.length - 1] as [number, number]
         );
         const invIn = Number(
-          (f.properties as any)?.['Elevation Invert In [ft]'] ?? 0
+          (f.properties as any)?.['Inv In [ft]'] ??
+            (f.properties as any)?.['Elevation Invert In [ft]'] ??
+            0
         );
         const invOut = Number(
-          (f.properties as any)?.['Elevation Invert Out [ft]'] ?? 0
+          (f.properties as any)?.['Inv Out [ft]'] ??
+            (f.properties as any)?.['Elevation Invert Out [ft]'] ??
+            0
         );
         const diam =
-          Number((f.properties as any)?.['Diameter [in]'] ?? 0) / 12;
+          Number(
+            (f.properties as any)?.['diametro'] ??
+              (f.properties as any)?.['Diameter [in]'] ??
+              0
+          ) / 12;
         return {
           start: { x: sx, y: sy, z: invIn },
           end: { x: ex, y: ey, z: invOut },
@@ -1286,29 +1292,36 @@ const App: React.FC = () => {
     const data = { nodes, pipes };
     const html =
       `<!DOCTYPE html><html><head><title>3D Pipe Network</title>` +
-      `<style>html,body{margin:0;height:100%;overflow:hidden}</style></head><body>` +
+      `<style>html,body{margin:0;height:100%;overflow:hidden}` +
+      `#center{position:absolute;top:10px;left:10px;z-index:10}</style></head><body>` +
+      `<button id=\"center\">Center View</button>` +
       `<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>` +
       `<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/examples/js/controls/OrbitControls.min.js"></script>` +
-      `<script>const data=${JSON.stringify(data)};` +
-      `const xs=[],ys=[],zs=[];data.nodes.forEach(n=>{xs.push(n.x);ys.push(n.y);zs.push(n.z)});` +
+      `<script>const data=${JSON.stringify(data)};const xs=[],ys=[],zs=[];` +
+      `data.nodes.forEach(n=>{xs.push(n.x);ys.push(n.y);zs.push(n.z,n.z+n.depth)});` +
       `data.pipes.forEach(p=>{xs.push(p.start.x,p.end.x);ys.push(p.start.y,p.end.y);zs.push(p.start.z,p.end.z)});` +
-      `const cx=(Math.max(...xs)+Math.min(...xs))/2;` +
-      `const cy=(Math.max(...ys)+Math.min(...ys))/2;` +
-      `const cz=(Math.max(...zs)+Math.min(...zs))/2;` +
-      `data.nodes.forEach(n=>{n.x-=cx;n.y-=cy;n.z-=cz});` +
-      `data.pipes.forEach(p=>{p.start.x-=cx;p.start.y-=cy;p.start.z-=cz;p.end.x-=cx;p.end.y-=cy;p.end.z-=cz});` +
+      `const minX=Math.min(...xs),maxX=Math.max(...xs);` +
+      `const minY=Math.min(...ys),maxY=Math.max(...ys);` +
+      `const minZ=Math.min(...zs),maxZ=Math.max(...zs);` +
+      `const cx=(maxX+minX)/2,cy=(maxY+minY)/2,cz=(maxZ+minZ)/2;` +
+      `const maxDim=Math.max(maxX-minX,maxY-minY,maxZ-minZ);` +
+      `const scale=maxDim>0?maxDim/100:1;` +
+      `const nodeR=2/scale;` +
+      `data.nodes.forEach(n=>{n.x=(n.x-cx)/scale;n.y=(n.y-cy)/scale;n.z=(n.z-cz)/scale;n.depth/=scale;});` +
+      `data.pipes.forEach(p=>{p.start.x=(p.start.x-cx)/scale;p.start.y=(p.start.y-cy)/scale;p.start.z=(p.start.z-cz)/scale;` +
+      `p.end.x=(p.end.x-cx)/scale;p.end.y=(p.end.y-cy)/scale;p.end.z=(p.end.z-cz)/scale;p.diam/=scale;});` +
+      `const radius=maxDim/scale/2;` +
       `const scene=new THREE.Scene();` +
       `const camera=new THREE.PerspectiveCamera(60,window.innerWidth/window.innerHeight,0.1,100000);` +
-      `camera.position.set(0,-200,200);` +
-      `const renderer=new THREE.WebGLRenderer({antialias:true});` +
-      `renderer.setSize(window.innerWidth,window.innerHeight);` +
+      `const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setSize(window.innerWidth,window.innerHeight);` +
       `document.body.appendChild(renderer.domElement);` +
       `const controls=new THREE.OrbitControls(camera,renderer.domElement);` +
-      `controls.target.set(0,0,0);controls.update();` +
+      `const reset=()=>{controls.target.set(0,0,0);camera.position.set(0,-radius*2,radius*2);controls.update();};` +
+      `reset();document.getElementById('center').addEventListener('click',reset);` +
       `const light=new THREE.DirectionalLight(0xffffff,1);light.position.set(100,100,100);scene.add(light);` +
-      `data.nodes.forEach(n=>{const g=new THREE.SphereGeometry(1.5,16,16);` +
+      `data.nodes.forEach(n=>{const g=new THREE.CylinderGeometry(nodeR,nodeR,n.depth,16,false);` +
       `const m=new THREE.MeshStandardMaterial({color:0x0000ff});const mesh=new THREE.Mesh(g,m);` +
-      `mesh.position.set(n.x,n.y,n.z);scene.add(mesh);});` +
+      `mesh.rotation.x=Math.PI/2;mesh.position.set(n.x,n.y,n.z+n.depth/2);scene.add(mesh);});` +
       `data.pipes.forEach(p=>{const s=new THREE.Vector3(p.start.x,p.start.y,p.start.z);` +
       `const e=new THREE.Vector3(p.end.x,p.end.y,p.end.z);const dir=new THREE.Vector3().subVectors(e,s);` +
       `const len=dir.length();const g=new THREE.CylinderGeometry(p.diam/2,p.diam/2,len,8,false);` +
@@ -1316,8 +1329,8 @@ const App: React.FC = () => {
       `const axis=new THREE.Vector3(0,1,0);mesh.quaternion.setFromUnitVectors(axis,dir.clone().normalize());` +
       `mesh.position.copy(s.clone().add(dir.multiplyScalar(0.5)));scene.add(mesh);});` +
       `function animate(){requestAnimationFrame(animate);renderer.render(scene,camera);}animate();` +
-      `window.addEventListener('resize',()=>{camera.aspect=window.innerWidth/window.innerHeight;` +
-      `camera.updateProjectionMatrix();renderer.setSize(window.innerWidth,window.innerHeight);});` +
+      `window.addEventListener('resize',()=>{camera.aspect=window.innerWidth/window.innerHeight;camera.updateProjectionMatrix();` +
+      `renderer.setSize(window.innerWidth,window.innerHeight);});` +
       `<\/script></body></html>`;
     const win = window.open('', '_blank');
     if (win) {
