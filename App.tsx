@@ -82,6 +82,14 @@ const App: React.FC = () => {
   const computeEnabled =
     requiredLayers.every(name => layers.some(l => l.name === name)) && lodValid;
 
+  const cbLayer = layers.find(l => l.name === 'Catch Basins / Manholes');
+  const pipeLayer = layers.find(l => l.name === 'Pipes');
+  const open3DEnabled = !!(
+    cbLayer &&
+    pipeLayer &&
+    Number(cbLayer.id.split('-')[0]) < Number(pipeLayer.id.split('-')[0])
+  );
+
   const addLog = useCallback((message: string, type: 'info' | 'error' = 'info') => {
     setLogs(prev => [...prev, { message, type, source: 'frontend' as const }]);
   }, []);
@@ -703,6 +711,72 @@ const App: React.FC = () => {
     runCompute();
   }, [runCompute]);
 
+  const handleOpen3DPipeNetwork = useCallback(() => {
+    if (!cbLayer || !pipeLayer) return;
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8" /><title>3D Pipe Network</title></head>
+<body style="margin:0;overflow:hidden">
+<script type="module">
+import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
+import { OrbitControls } from 'https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js';
+const cbData = ${JSON.stringify(cbLayer?.geojson.features || [])};
+const pipeData = ${JSON.stringify(pipeLayer?.geojson.features || [])};
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 10000);
+camera.position.set(0, -100, 100);
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+scene.add(new THREE.AmbientLight(0x888888));
+const dirLight = new THREE.DirectionalLight(0xffffff,1);
+dirLight.position.set(100,100,100);
+scene.add(dirLight);
+cbData.forEach(f=>{
+  if (f.geometry.type !== 'Point') return;
+  const [x,y] = f.geometry.coordinates;
+  const z = f.properties?.['Elevation Ground [ft]'] || 0;
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(1), new THREE.MeshStandardMaterial({color:0x2196f3}));
+  mesh.position.set(x,y,z);
+  scene.add(mesh);
+});
+pipeData.forEach(f=>{
+  if (f.geometry.type !== 'LineString') return;
+  const coords = f.geometry.coordinates;
+  const invIn = f.properties?.['Elevation Invert In [ft]'] || 0;
+  const invOut = f.properties?.['Elevation Invert Out [ft]'] || 0;
+  const material = new THREE.MeshStandardMaterial({color:0xff5722});
+  for(let i=0;i<coords.length-1;i++){
+    const [x1,y1] = coords[i];
+    const [x2,y2] = coords[i+1];
+    const z1 = invIn;
+    const z2 = invOut;
+    const start = new THREE.Vector3(x1,y1,z1);
+    const end = new THREE.Vector3(x2,y2,z2);
+    const dir = new THREE.Vector3().subVectors(end,start);
+    const len = dir.length();
+    const geom = new THREE.CylinderGeometry(0.3,0.3,len,8);
+    const mesh = new THREE.Mesh(geom, material);
+    mesh.position.copy(start.clone().add(end).multiplyScalar(0.5));
+    mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), dir.clone().normalize());
+    scene.add(mesh);
+  }
+});
+const animate=()=>{requestAnimationFrame(animate);controls.update();renderer.render(scene,camera);};
+animate();
+window.addEventListener('resize',()=>{camera.aspect=window.innerWidth/window.innerHeight;camera.updateProjectionMatrix();renderer.setSize(window.innerWidth,window.innerHeight);});
+<\/script>
+</body>
+</html>`;
+    const w = window.open('', '_blank');
+    if (w) {
+      w.document.write(html);
+      w.document.close();
+    }
+  }, [cbLayer, pipeLayer]);
+
   const handleExportHydroCAD = useCallback(() => {
     const overlayLayer = layers.find(l => l.name === 'Overlay');
     if (!overlayLayer) {
@@ -1246,6 +1320,8 @@ const App: React.FC = () => {
         onCompute={handleCompute}
         exportEnabled={computeSucceeded}
         onExport={() => setExportModalOpen(true)}
+        onOpen3D={handleOpen3DPipeNetwork}
+        open3DEnabled={open3DEnabled}
         projectName={projectName}
         onProjectNameChange={setProjectName}
         projectVersion={projectVersion}
