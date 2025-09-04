@@ -1361,7 +1361,10 @@ const App: React.FC = () => {
       'document.getElementById("center").addEventListener("click",reset);'
     ];
     const script = scriptLines.join('\n');
-    const html = `<!DOCTYPE html>
+    const win = window.open('', '_blank') || window;
+    const doc = win.document;
+    doc.open();
+    doc.write(`<!DOCTYPE html>
 <html>
 <head>
   <title>3D Pipe Network</title>
@@ -1372,14 +1375,27 @@ const App: React.FC = () => {
 </head>
 <body>
   <button id="center">Center View</button>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/examples/js/controls/OrbitControls.min.js"></script>
-  <script>${script}<\/script>
 </body>
-</html>`;
-    const win = window.open('', '_blank') || window;
-    win.document.write(html);
-    win.document.close();
+</html>`);
+    doc.close();
+
+    function loadScript(src: string) {
+      return new Promise<void>((resolve, reject) => {
+        const s = doc.createElement('script');
+        s.src = src;
+        s.onload = () => resolve();
+        s.onerror = () => reject(new Error('Failed to load ' + src));
+        doc.body.appendChild(s);
+      });
+    }
+
+    (async () => {
+      await loadScript('https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js');
+      await loadScript('https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/examples/js/controls/OrbitControls.min.js');
+      const s = doc.createElement('script');
+      s.textContent = script;
+      doc.body.appendChild(s);
+    })();
     addLog('3D Pipe Network viewer opened');
   }, [addLog, layers, projection]);
 
