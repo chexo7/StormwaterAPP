@@ -90,9 +90,14 @@ const App: React.FC = () => {
     !!pipesLayer &&
     pipesLayer.geojson.features.length > 0;
 
-  const addLog = useCallback((message: string, type: 'info' | 'error' = 'info') => {
-    setLogs(prev => [...prev, { message, type, source: 'frontend' as const }]);
-  }, []);
+  const exportEnabled = computeSucceeded || pipe3DEnabled;
+
+  const addLog = useCallback(
+    (message: string, type: 'info' | 'error' | 'warn' = 'info') => {
+      setLogs(prev => [...prev, { message, type, source: 'frontend' as const }]);
+    },
+    []
+  );
 
   useEffect(() => {
     loadLandCoverList().then(list => setLandCoverOptions(list));
@@ -760,8 +765,7 @@ const App: React.FC = () => {
   const handleExportSWMM = useCallback(async () => {
     const daLayer = layers.find(l => l.name === 'Drainage Areas');
     if (!daLayer) {
-      addLog('Drainage Areas layer not found', 'error');
-      return;
+      addLog('Drainage Areas layer not found; proceeding without subcatchments', 'warn');
     }
 
     const template = (
@@ -823,35 +827,34 @@ const App: React.FC = () => {
     const xsectionLines: string[] = [];
     const coordLines: string[] = [];
 
-    const grouped = new Map<
-      string,
-      { area: number; polygons: number[][][] }
-    >();
+    const grouped = new Map<string, { area: number; polygons: number[][][] }>();
 
-    daLayer.geojson.features.forEach((f, i) => {
-      const raw = String((f.properties as any)?.DA_NAME ?? '');
-      const id = sanitizeId(raw, i);
-      const geom = f.geometry;
-      const rings: number[][][] =
-        geom.type === 'Polygon'
-          ? [geom.coordinates[0] as number[][]]
-          : (geom as any).coordinates.map((p: any) => p[0] as number[][]);
-      let outerArea = 0;
-      for (const ring of rings) {
-        outerArea += Math.abs(
-          turfArea({
-            type: 'Feature',
-            geometry: { type: 'Polygon', coordinates: [ring] },
-            properties: {},
-          } as any)
-        );
-      }
-      const a = outerArea * 0.000247105; // acres
-      const entry = grouped.get(id) || { area: 0, polygons: [] };
-      entry.area += a;
-      entry.polygons.push(...rings);
-      grouped.set(id, entry);
-    });
+    if (daLayer) {
+      daLayer.geojson.features.forEach((f, i) => {
+        const raw = String((f.properties as any)?.DA_NAME ?? '');
+        const id = sanitizeId(raw, i);
+        const geom = f.geometry;
+        const rings: number[][][] =
+          geom.type === 'Polygon'
+            ? [geom.coordinates[0] as number[][]]
+            : (geom as any).coordinates.map((p: any) => p[0] as number[][]);
+        let outerArea = 0;
+        for (const ring of rings) {
+          outerArea += Math.abs(
+            turfArea({
+              type: 'Feature',
+              geometry: { type: 'Polygon', coordinates: [ring] },
+              properties: {},
+            } as any)
+          );
+        }
+        const a = outerArea * 0.000247105; // acres
+        const entry = grouped.get(id) || { area: 0, polygons: [] };
+        entry.area += a;
+        entry.polygons.push(...rings);
+        grouped.set(id, entry);
+      });
+    }
 
     const closeRing = (ring: number[][]) => {
       if (ring.length < 3) return ring;
@@ -1547,7 +1550,7 @@ const App: React.FC = () => {
       <Header
         computeEnabled={computeEnabled}
         onCompute={handleCompute}
-        exportEnabled={computeSucceeded}
+        exportEnabled={exportEnabled}
         onExport={() => setExportModalOpen(true)}
         onView3D={handleView3D}
         view3DEnabled={pipe3DEnabled}
@@ -1619,7 +1622,9 @@ const App: React.FC = () => {
           onExportSWMM={handleExportSWMM}
           onExportShapefiles={handleExportShapefiles}
           onClose={() => setExportModalOpen(false)}
-          exportEnabled={computeSucceeded}
+          hydroCADEnabled={computeSucceeded}
+          swmmEnabled={exportEnabled}
+          shapefilesEnabled={computeSucceeded}
           projection={projection}
           onProjectionChange={(epsg) => {
             const proj = STATE_PLANE_OPTIONS.find(p => p.epsg === epsg);
