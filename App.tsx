@@ -1311,10 +1311,28 @@ const App: React.FC = () => {
 <head>
   <meta charset="utf-8" />
   <title>3D Pipe Network</title>
-  <style>html,body{height:100%;margin:0} canvas{display:block;width:100%;height:100%}</style>
+  <style>
+    html,body{height:100%;margin:0;overflow:hidden}
+    canvas{display:block;width:100%;height:100%}
+    #nav{position:absolute;top:10px;right:10px;display:flex;flex-direction:column;align-items:center;gap:8px;font-family:sans-serif}
+    #nav .group{background:rgba(255,255,255,0.8);border-radius:32px;padding:4px}
+    #pegman{width:24px;height:24px;background:orange;border-radius:4px}
+    #zoom{background:rgba(255,255,255,0.8);padding:4px;border-radius:8px;display:flex;flex-direction:column;align-items:center}
+    #zoom input{writing-mode:bt-lr;-webkit-appearance:slider-vertical;height:100px;margin:4px 0}
+    #compass canvas{display:block}
+  </style>
 </head>
 <body>
   <canvas id="c"></canvas>
+  <div id="nav">
+    <div id="compass" class="group"><canvas id="compassCanvas" width="64" height="64"></canvas></div>
+    <div id="pegman"></div>
+    <div id="zoom">
+      <button id="zoomIn">+</button>
+      <input id="zoomSlider" type="range" min="10" max="200" value="100" />
+      <button id="zoomOut">-</button>
+    </div>
+  </div>
 </body>
 </html>`);
     doc.close();
@@ -1340,7 +1358,12 @@ const App: React.FC = () => {
       renderer.setClearColor(0x000000);
 
       const scene = new THREE.Scene();
-      scene.background = new THREE.Color(0x000000);
+      new THREE.TextureLoader().load(
+        'https://upload.wikimedia.org/wikipedia/commons/3/3c/NASA_blue_marble.jpg',
+        (tex: any) => {
+          scene.background = tex;
+        }
+      );
 
       const camera = new THREE.PerspectiveCamera(
         60,
@@ -1348,9 +1371,24 @@ const App: React.FC = () => {
         0.1,
         100000
       );
+      camera.up.set(0, 0, 1);
 
-      const controls = new THREE.OrbitControls(camera, renderer.domElement);
+      const controls = new THREE.MapControls(camera, renderer.domElement);
       controls.enableDamping = true;
+      controls.dampingFactor = 0.2;
+      controls.screenSpacePanning = true;
+      controls.minPolarAngle = 0;
+      controls.maxPolarAngle = Math.PI;
+      controls.mouseButtons = {
+        LEFT: THREE.MOUSE.PAN,
+        RIGHT: THREE.MOUSE.ROTATE,
+        MIDDLE: THREE.MOUSE.DOLLY,
+      } as any;
+      controls.touches = {
+        ONE: THREE.TOUCH.PAN,
+        TWO: THREE.TOUCH.DOLLY_ROTATE,
+      } as any;
+      canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
       const xs: number[] = [], ys: number[] = [], zs: number[] = [];
       data.nodes.forEach((n) => {
@@ -1398,6 +1436,66 @@ const App: React.FC = () => {
       }
       reset();
 
+      const slider = doc.getElementById('zoomSlider') as HTMLInputElement;
+
+      function updateSlider() {
+        const distance = camera.position.distanceTo(controls.target);
+        slider.value = String((distance / size) * 100);
+      }
+
+      const compassRenderer = new THREE.WebGLRenderer({
+        canvas: doc.getElementById('compassCanvas') as HTMLCanvasElement,
+        antialias: true,
+        alpha: true,
+      });
+      compassRenderer.setSize(64, 64);
+      const compassScene = new THREE.Scene();
+      const compassCamera = new THREE.PerspectiveCamera(45, 1, 0.1, 10);
+      compassCamera.position.set(0, 0, 2);
+      const compassGroup = new THREE.Group();
+      compassScene.add(compassGroup);
+      const earthTex = new THREE.TextureLoader().load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg');
+      const globe = new THREE.Mesh(
+        new THREE.SphereGeometry(0.9, 32, 32),
+        new THREE.MeshBasicMaterial({ map: earthTex })
+      );
+      compassGroup.add(globe);
+      const north = new THREE.ArrowHelper(new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 0), 1.2, 0xff0000);
+      compassGroup.add(north);
+
+      function renderCompass() {
+        compassGroup.quaternion.copy(camera.quaternion).invert();
+        compassRenderer.render(compassScene, compassCamera);
+      }
+
+      doc.getElementById('zoomIn')?.addEventListener('click', () => {
+        controls.dollyIn(1.2);
+        controls.update();
+        updateSlider();
+        renderCompass();
+      });
+      doc.getElementById('zoomOut')?.addEventListener('click', () => {
+        controls.dollyOut(1.2);
+        controls.update();
+        updateSlider();
+        renderCompass();
+      });
+      slider?.addEventListener('input', () => {
+        const distance = camera.position.distanceTo(controls.target);
+        const desired = (slider.valueAsNumber / 100) * size;
+        const ratio = distance / desired;
+        if (ratio > 1) controls.dollyIn(ratio);
+        else controls.dollyOut(1 / ratio);
+        controls.update();
+        renderCompass();
+      });
+      controls.addEventListener('change', () => {
+        updateSlider();
+        renderCompass();
+      });
+      updateSlider();
+      renderCompass();
+
       const amb = new THREE.AmbientLight(0xffffff, 0.6);
       scene.add(amb);
       const dir = new THREE.DirectionalLight(0xffffff, 0.8);
@@ -1443,6 +1541,7 @@ const App: React.FC = () => {
       function animate() {
         controls.update();
         renderer.render(scene, camera);
+        renderCompass();
         win.requestAnimationFrame(animate);
       }
       animate();
