@@ -1311,10 +1311,45 @@ const App: React.FC = () => {
 <head>
   <meta charset="utf-8" />
   <title>3D Pipe Network</title>
-  <style>html,body{height:100%;margin:0} canvas{display:block;width:100%;height:100%}</style>
+  <style>
+    html,body{height:100%;margin:0;overflow:hidden}
+    canvas{display:block;width:100%;height:100%}
+    #ge-controls{position:absolute;top:10px;right:10px;display:flex;flex-direction:column;align-items:center;gap:8px;font-family:sans-serif;user-select:none}
+    .circle{position:relative;width:60px;height:60px;border-radius:50%;background:rgba(255,255,255,0.2);border:1px solid #aaa}
+    .circle button{position:absolute;width:20px;height:20px;border:none;background:rgba(0,0,0,0.4);color:#fff;cursor:pointer}
+    .circle button:hover{background:rgba(0,0,0,0.6)}
+    .circle .up{top:2px;left:20px}
+    .circle .down{bottom:2px;left:20px}
+    .circle .left{left:2px;top:20px}
+    .circle .right{right:2px;top:20px}
+    #pegman{background:none;border:none;cursor:pointer;font-size:28px}
+    #zoom{display:flex;flex-direction:column;align-items:center}
+    #zoom input{writing-mode:bt-lr;-webkit-appearance:slider-vertical;width:8px;height:80px;margin:4px 0}
+    #zoom button{width:24px;height:24px;border:none;background:rgba(0,0,0,0.4);color:#fff;cursor:pointer}
+  </style>
 </head>
 <body>
   <canvas id="c"></canvas>
+  <div id="ge-controls">
+    <div id="orient" class="circle">
+      <button class="up" data-act="tilt-up">▲</button>
+      <button class="down" data-act="tilt-down">▼</button>
+      <button class="left" data-act="rotate-left">◀</button>
+      <button class="right" data-act="rotate-right">▶</button>
+    </div>
+    <div id="pan" class="circle">
+      <button class="up" data-act="pan-up">▲</button>
+      <button class="down" data-act="pan-down">▼</button>
+      <button class="left" data-act="pan-left">◀</button>
+      <button class="right" data-act="pan-right">▶</button>
+    </div>
+    <button id="pegman">🕴️</button>
+    <div id="zoom">
+      <button data-act="zoom-in">+</button>
+      <input id="zoom-range" type="range" min="0" max="100" value="50" />
+      <button data-act="zoom-out">-</button>
+    </div>
+  </div>
 </body>
 </html>`);
     doc.close();
@@ -1348,9 +1383,20 @@ const App: React.FC = () => {
         0.1,
         100000
       );
+      camera.up.set(0, 0, 1);
 
       const controls = new THREE.OrbitControls(camera, renderer.domElement);
+      controls.mouseButtons = {
+        LEFT: THREE.MOUSE.PAN,
+        MIDDLE: THREE.MOUSE.DOLLY,
+        RIGHT: THREE.MOUSE.ROTATE,
+      };
       controls.enableDamping = true;
+      controls.screenSpacePanning = false;
+      controls.zoomSpeed = 1.2;
+      controls.rotateSpeed = 0.8;
+      controls.maxPolarAngle = Math.PI;
+      canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
       const xs: number[] = [], ys: number[] = [], zs: number[] = [];
       data.nodes.forEach((n) => {
@@ -1391,12 +1437,80 @@ const App: React.FC = () => {
         p.end.z -= cz;
       });
 
+      controls.minDistance = size * 0.1;
+      controls.maxDistance = size * 10;
+
       function reset() {
         camera.position.set(0, -size, size);
         controls.target.set(0, 0, 0);
         controls.update();
       }
       reset();
+
+      const controlsDiv = doc.getElementById('ge-controls')!;
+      const zoomRange = doc.getElementById('zoom-range') as HTMLInputElement;
+      const panPixels = 50;
+      const rotAngle = THREE.MathUtils.degToRad(15);
+
+      controlsDiv.addEventListener('click', (e) => {
+        const act = (e.target as HTMLElement).dataset.act;
+        if (!act) return;
+        switch (act) {
+          case 'tilt-up':
+            controls.rotateUp(-rotAngle);
+            break;
+          case 'tilt-down':
+            controls.rotateUp(rotAngle);
+            break;
+          case 'rotate-left':
+            controls.rotateLeft(rotAngle);
+            break;
+          case 'rotate-right':
+            controls.rotateLeft(-rotAngle);
+            break;
+          case 'pan-up':
+            controls.pan(0, panPixels);
+            break;
+          case 'pan-down':
+            controls.pan(0, -panPixels);
+            break;
+          case 'pan-left':
+            controls.pan(panPixels, 0);
+            break;
+          case 'pan-right':
+            controls.pan(-panPixels, 0);
+            break;
+          case 'zoom-in':
+            controls.dollyIn(1.2);
+            controls.update();
+            break;
+          case 'zoom-out':
+            controls.dollyOut(1.2);
+            controls.update();
+            break;
+          default:
+            break;
+        }
+      });
+
+      function updateZoomSlider() {
+        const d = camera.position.distanceTo(controls.target);
+        const t = (d - controls.minDistance) / (controls.maxDistance - controls.minDistance);
+        zoomRange.value = String(100 - t * 100);
+      }
+      controls.addEventListener('change', updateZoomSlider);
+      zoomRange.addEventListener('input', () => {
+        const t = 1 - Number(zoomRange.value) / 100;
+        const dist = controls.minDistance + t * (controls.maxDistance - controls.minDistance);
+        const dir = new THREE.Vector3().subVectors(camera.position, controls.target).normalize();
+        camera.position.copy(controls.target).add(dir.multiplyScalar(dist));
+        controls.update();
+      });
+      updateZoomSlider();
+
+      doc.getElementById('pegman')?.addEventListener('click', () =>
+        console.log('Street View not implemented')
+      );
 
       const amb = new THREE.AmbientLight(0xffffff, 0.6);
       scene.add(amb);
