@@ -1311,10 +1311,47 @@ const App: React.FC = () => {
 <head>
   <meta charset="utf-8" />
   <title>3D Pipe Network</title>
-  <style>html,body{height:100%;margin:0} canvas{display:block;width:100%;height:100%}</style>
+  <style>
+    html,body{height:100%;margin:0}
+    canvas{display:block;width:100%;height:100%}
+    #ge-controls{position:absolute;top:10px;right:10px;display:flex;flex-direction:column;align-items:center;z-index:10;font-family:sans-serif;user-select:none}
+    #north{position:relative;width:24px;height:24px;margin-bottom:4px;background:rgba(255,255,255,0.8);border:1px solid #888;border-radius:4px;display:flex;align-items:center;justify-content:center;font-weight:bold;transform-origin:center}
+    .ctrl-circle{position:relative;width:72px;height:72px;margin-bottom:6px}
+    .ctrl-circle button,.zoom button{position:absolute;width:24px;height:24px;background:rgba(255,255,255,0.8);border:1px solid #888;border-radius:4px;cursor:pointer}
+    .ctrl-circle .up{top:0;left:24px}
+    .ctrl-circle .down{top:48px;left:24px}
+    .ctrl-circle .left{top:24px;left:0}
+    .ctrl-circle .right{top:24px;left:48px}
+    .ctrl-circle .center{top:24px;left:24px;width:24px;height:24px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.8);border:1px solid #888;border-radius:4px;font-size:14px}
+    .zoom{display:flex;flex-direction:column;align-items:center}
+    .zoom input{writing-mode:bt-lr;-webkit-appearance:slider-vertical;width:24px;height:100px;margin:4px 0}
+    .zoom button{position:static;width:24px;height:24px;margin:2px 0}
+  </style>
 </head>
 <body>
   <canvas id="c"></canvas>
+  <div id="ge-controls">
+    <div id="north">N</div>
+    <div class="ctrl-circle" id="look">
+      <button class="up" data-look="up">▲</button>
+      <button class="left" data-look="left">◄</button>
+      <div class="center">👁</div>
+      <button class="right" data-look="right">►</button>
+      <button class="down" data-look="down">▼</button>
+    </div>
+    <div class="ctrl-circle" id="pan">
+      <button class="up" data-pan="up">▲</button>
+      <button class="left" data-pan="left">◄</button>
+      <div class="center">✋</div>
+      <button class="right" data-pan="right">►</button>
+      <button class="down" data-pan="down">▼</button>
+    </div>
+    <div class="zoom">
+      <button id="zoom-in">+</button>
+      <input id="zoom-range" type="range" min="1" max="1000" value="100" step="1" />
+      <button id="zoom-out">-</button>
+    </div>
+  </div>
 </body>
 </html>`);
     doc.close();
@@ -1348,9 +1385,20 @@ const App: React.FC = () => {
         0.1,
         100000
       );
+      camera.up.set(0, 0, 1);
 
       const controls = new THREE.OrbitControls(camera, renderer.domElement);
       controls.enableDamping = true;
+      controls.screenSpacePanning = false;
+      controls.mouseButtons = {
+        LEFT: THREE.MOUSE.PAN,
+        RIGHT: THREE.MOUSE.ROTATE,
+      };
+      controls.zoomSpeed = 1.2;
+      controls.rotateSpeed = 0.8;
+      controls.minPolarAngle = 0;
+      controls.maxPolarAngle = Math.PI;
+      canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
       const xs: number[] = [], ys: number[] = [], zs: number[] = [];
       data.nodes.forEach((n) => {
@@ -1376,6 +1424,11 @@ const App: React.FC = () => {
         cy = (maxY + minY) / 2,
         cz = (maxZ + minZ) / 2;
       const size = Math.max(maxX - minX, maxY - minY, maxZ - minZ) || 1;
+      controls.minDistance = size * 0.1;
+      controls.maxDistance = size * 20;
+      const zoomRange = doc.getElementById('zoom-range') as HTMLInputElement;
+      zoomRange.min = String(controls.minDistance);
+      zoomRange.max = String(controls.maxDistance);
       data.nodes.forEach((n) => {
         n.x -= cx;
         n.y -= cy;
@@ -1397,6 +1450,74 @@ const App: React.FC = () => {
         controls.update();
       }
       reset();
+
+      const north = doc.getElementById('north') as HTMLDivElement;
+      const updateUI = () => {
+        zoomRange.value = String(camera.position.distanceTo(controls.target));
+        north.style.transform = `rotate(${-THREE.MathUtils.radToDeg(controls.getAzimuthalAngle())}deg)`;
+      };
+      updateUI();
+      controls.addEventListener('change', updateUI);
+
+      function panByPixels(deltaX: number, deltaY: number) {
+        const element = renderer.domElement;
+        const offset = new THREE.Vector3();
+        const position = camera.position.clone().sub(controls.target);
+        let targetDistance = position.length();
+        targetDistance *= Math.tan((camera.fov / 2) * Math.PI / 180.0);
+        const panX = (2 * deltaX * targetDistance) / element.clientHeight;
+        const panY = (2 * deltaY * targetDistance) / element.clientHeight;
+        const v = new THREE.Vector3();
+        camera.updateMatrix();
+        v.setFromMatrixColumn(camera.matrix, 0).multiplyScalar(-panX);
+        offset.add(v);
+        v.setFromMatrixColumn(camera.matrix, 1).multiplyScalar(panY);
+        offset.add(v);
+        camera.position.add(offset);
+        controls.target.add(offset);
+        controls.update();
+      }
+
+      doc.querySelectorAll('#look button').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const dir = btn.getAttribute('data-look');
+          const angle = THREE.MathUtils.degToRad(15);
+          if (dir === 'up') controls.rotateUp(angle);
+          if (dir === 'down') controls.rotateUp(-angle);
+          if (dir === 'left') controls.rotateLeft(angle);
+          if (dir === 'right') controls.rotateLeft(-angle);
+          controls.update();
+        });
+      });
+
+      doc.querySelectorAll('#pan button').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const dir = btn.getAttribute('data-pan');
+          const step = 50;
+          if (dir === 'up') panByPixels(0, -step);
+          if (dir === 'down') panByPixels(0, step);
+          if (dir === 'left') panByPixels(step, 0);
+          if (dir === 'right') panByPixels(-step, 0);
+        });
+      });
+
+      (doc.getElementById('zoom-in') as HTMLButtonElement).addEventListener('click', () => {
+        controls.dollyIn(1.2);
+        controls.update();
+        updateUI();
+      });
+      (doc.getElementById('zoom-out') as HTMLButtonElement).addEventListener('click', () => {
+        controls.dollyOut(1.2);
+        controls.update();
+        updateUI();
+      });
+      zoomRange.addEventListener('input', () => {
+        const dist = Number(zoomRange.value);
+        const dir = new THREE.Vector3().subVectors(camera.position, controls.target).normalize();
+        camera.position.copy(controls.target).addScaledVector(dir, dist);
+        controls.update();
+        updateUI();
+      });
 
       const amb = new THREE.AmbientLight(0xffffff, 0.6);
       scene.add(amb);
