@@ -1297,89 +1297,160 @@ const App: React.FC = () => {
       return;
     }
     const data = { nodes, pipes };
-    const scriptLines = [
-      `const data=${JSON.stringify(data)};`,
-      'const xs=[],ys=[],zs=[];',
-      'data.nodes.forEach(n=>{',
-      '  xs.push(n.x);ys.push(n.y);zs.push(n.ground,n.invOut);',
-      '});',
-      'data.pipes.forEach(p=>{',
-      '  xs.push(p.start.x,p.end.x);',
-      '  ys.push(p.start.y,p.end.y);',
-      '  zs.push(p.start.z,p.end.z);',
-      '});',
-      'let minX=Math.min(...xs),maxX=Math.max(...xs);',
-      'let minY=Math.min(...ys),maxY=Math.max(...ys);',
-      'let minZ=Math.min(...zs),maxZ=Math.max(...zs);',
-      'if(!isFinite(minX)){minX=maxX=minY=maxY=minZ=maxZ=0;}',
-      'const cx=(maxX+minX)/2,cy=(maxY+minY)/2,cz=(maxZ+minZ)/2;',
-      'const size=Math.max(maxX-minX,maxY-minY,maxZ-minZ)||1;',
-      'data.nodes.forEach(n=>{n.x-=cx;n.y-=cy;n.ground-=cz;n.invOut-=cz;});',
-      'data.pipes.forEach(p=>{p.start.x-=cx;p.start.y-=cy;p.start.z-=cz;p.end.x-=cx;p.end.y-=cy;p.end.z-=cz;});',
-      'const scene=new THREE.Scene();scene.background=new THREE.Color(0x000000);',
-      'const camera=new THREE.PerspectiveCamera(60,window.innerWidth/window.innerHeight,0.1,100000);',
-      'const renderer=new THREE.WebGLRenderer({antialias:true});',
-      'renderer.setSize(window.innerWidth,window.innerHeight);',
-      'renderer.setClearColor(0x000000);',
-      'document.body.appendChild(renderer.domElement);',
-      'const controls=new THREE.OrbitControls(camera,renderer.domElement);',
-      'function reset(){camera.position.set(0,-size,size);controls.target.set(0,0,0);controls.update();}',
-      'reset();',
-      'const amb=new THREE.AmbientLight(0xffffff,0.6);scene.add(amb);',
-      'const dir=new THREE.DirectionalLight(0xffffff,0.8);dir.position.set(100,100,100);scene.add(dir);',
-      'data.nodes.forEach(n=>{',
-      '  const s=new THREE.Vector3(n.x,n.y,n.invOut);',
-      '  const e=new THREE.Vector3(n.x,n.y,n.ground);',
-      '  const dv=new THREE.Vector3().subVectors(e,s);',
-      '  const g=new THREE.CylinderGeometry(n.diam/2,n.diam/2,dv.length(),16,false);',
-      '  const m=new THREE.MeshStandardMaterial({color:0xffffff});',
-      '  const mesh=new THREE.Mesh(g,m);',
-      '  const axis=new THREE.Vector3(0,1,0);',
-      '  mesh.quaternion.setFromUnitVectors(axis,dv.clone().normalize());',
-      '  mesh.position.copy(s.clone().add(dv.multiplyScalar(0.5)));',
-      '  scene.add(mesh);',
-      '});',
-      'data.pipes.forEach(p=>{',
-      '  const s=new THREE.Vector3(p.start.x,p.start.y,p.start.z);',
-      '  const e=new THREE.Vector3(p.end.x,p.end.y,p.end.z);',
-      '  const dv=new THREE.Vector3().subVectors(e,s);',
-      '  const g=new THREE.CylinderGeometry(p.diam/2,p.diam/2,dv.length(),8,false);',
-      '  const m=new THREE.MeshStandardMaterial({color:0xffffff});',
-      '  const mesh=new THREE.Mesh(g,m);',
-      '  const axis=new THREE.Vector3(0,1,0);',
-      '  mesh.quaternion.setFromUnitVectors(axis,dv.clone().normalize());',
-      '  mesh.position.copy(s.clone().add(dv.multiplyScalar(0.5)));',
-      '  scene.add(mesh);',
-      '});',
-      'function animate(){requestAnimationFrame(animate);renderer.render(scene,camera);}',
-      'animate();',
-      'window.addEventListener("resize",()=>{',
-      '  camera.aspect=window.innerWidth/window.innerHeight;',
-      '  camera.updateProjectionMatrix();',
-      '  renderer.setSize(window.innerWidth,window.innerHeight);',
-      '});',
-      'document.getElementById("center").addEventListener("click",reset);'
-    ];
-    const script = scriptLines.join('\n');
-    const html = `<!DOCTYPE html>
+    const win = window.open('', '_blank') || window;
+    const doc = win.document;
+
+    doc.open();
+    doc.write(`<!doctype html>
 <html>
 <head>
+  <meta charset="utf-8" />
   <title>3D Pipe Network</title>
-  <style>
-    html,body{margin:0;height:100%;overflow:hidden;background:#000;color:#fff}
-    #center{position:absolute;top:10px;left:10px;z-index:1}
-  </style>
+  <style>html,body{height:100%;margin:0} canvas{display:block;width:100%;height:100%}</style>
 </head>
 <body>
-  <button id="center">Center View</button>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/examples/js/controls/OrbitControls.min.js"></script>
-  <script>${script}<\/script>
+  <canvas id="c"></canvas>
 </body>
-</html>`;
-    const win = window.open('', '_blank') || window;
-    win.document.write(html);
-    win.document.close();
+</html>`);
+    doc.close();
+
+    function loadScript(src: string) {
+      return new Promise<void>((resolve, reject) => {
+        const s = doc.createElement('script');
+        s.src = src;
+        s.onload = () => resolve();
+        s.onerror = () => reject(new Error('Failed to load ' + src));
+        doc.body.appendChild(s);
+      });
+    }
+
+    (async () => {
+      await loadScript('https://unpkg.com/three@0.134.0/build/three.min.js');
+      await loadScript('https://unpkg.com/three@0.134.0/examples/js/controls/OrbitControls.js');
+
+      const THREE = (win as any).THREE;
+      const canvas = doc.getElementById('c') as HTMLCanvasElement;
+      const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+      renderer.setSize(win.innerWidth, win.innerHeight);
+      renderer.setClearColor(0x000000);
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x000000);
+
+      const camera = new THREE.PerspectiveCamera(
+        60,
+        win.innerWidth / win.innerHeight,
+        0.1,
+        100000
+      );
+
+      const controls = new THREE.OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+
+      const xs: number[] = [], ys: number[] = [], zs: number[] = [];
+      data.nodes.forEach((n) => {
+        xs.push(n.x);
+        ys.push(n.y);
+        zs.push(n.ground, n.invOut);
+      });
+      data.pipes.forEach((p) => {
+        xs.push(p.start.x, p.end.x);
+        ys.push(p.start.y, p.end.y);
+        zs.push(p.start.z, p.end.z);
+      });
+      let minX = Math.min(...xs),
+        maxX = Math.max(...xs);
+      let minY = Math.min(...ys),
+        maxY = Math.max(...ys);
+      let minZ = Math.min(...zs),
+        maxZ = Math.max(...zs);
+      if (!isFinite(minX)) {
+        minX = maxX = minY = maxY = minZ = maxZ = 0;
+      }
+      const cx = (maxX + minX) / 2,
+        cy = (maxY + minY) / 2,
+        cz = (maxZ + minZ) / 2;
+      const size = Math.max(maxX - minX, maxY - minY, maxZ - minZ) || 1;
+      data.nodes.forEach((n) => {
+        n.x -= cx;
+        n.y -= cy;
+        n.ground -= cz;
+        n.invOut -= cz;
+      });
+      data.pipes.forEach((p) => {
+        p.start.x -= cx;
+        p.start.y -= cy;
+        p.start.z -= cz;
+        p.end.x -= cx;
+        p.end.y -= cy;
+        p.end.z -= cz;
+      });
+
+      function reset() {
+        camera.position.set(0, -size, size);
+        controls.target.set(0, 0, 0);
+        controls.update();
+      }
+      reset();
+
+      const amb = new THREE.AmbientLight(0xffffff, 0.6);
+      scene.add(amb);
+      const dir = new THREE.DirectionalLight(0xffffff, 0.8);
+      dir.position.set(100, 100, 100);
+      scene.add(dir);
+
+      data.nodes.forEach((n) => {
+        const s = new THREE.Vector3(n.x, n.y, n.invOut);
+        const e = new THREE.Vector3(n.x, n.y, n.ground);
+        const dv = new THREE.Vector3().subVectors(e, s);
+        const g = new THREE.CylinderGeometry(
+          n.diam / 2,
+          n.diam / 2,
+          dv.length(),
+          16,
+          false
+        );
+        const m = new THREE.MeshStandardMaterial({ color: 0xffffff });
+        const mesh = new THREE.Mesh(g, m);
+        const axis = new THREE.Vector3(0, 1, 0);
+        mesh.quaternion.setFromUnitVectors(axis, dv.clone().normalize());
+        mesh.position.copy(s.clone().add(dv.multiplyScalar(0.5)));
+        scene.add(mesh);
+      });
+
+      data.pipes.forEach((p) => {
+        const s = new THREE.Vector3(p.start.x, p.start.y, p.start.z);
+        const e = new THREE.Vector3(p.end.x, p.end.y, p.end.z);
+        const dv = new THREE.Vector3().subVectors(e, s);
+        const g = new THREE.CylinderGeometry(
+          p.diam / 2,
+          p.diam / 2,
+          dv.length(),
+          8,
+          false
+        );
+        const m = new THREE.MeshStandardMaterial({ color: 0xffffff });
+        const mesh = new THREE.Mesh(g, m);
+        const axis = new THREE.Vector3(0, 1, 0);
+        mesh.quaternion.setFromUnitVectors(axis, dv.clone().normalize());
+        mesh.position.copy(s.clone().add(dv.multiplyScalar(0.5)));
+        scene.add(mesh);
+      });
+
+      function animate() {
+        controls.update();
+        renderer.render(scene, camera);
+        win.requestAnimationFrame(animate);
+      }
+      animate();
+
+      win.addEventListener('resize', () => {
+        camera.aspect = win.innerWidth / win.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(win.innerWidth, win.innerHeight);
+      });
+    })().catch((err) => console.error(err));
+
     addLog('3D Pipe Network viewer opened');
   }, [addLog, layers, projection]);
 
