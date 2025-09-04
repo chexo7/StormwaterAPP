@@ -1260,9 +1260,16 @@ const App: React.FC = () => {
         return { x, y, ground, invOut, diam: 4 };
       });
     const pipes = pLayer.geojson.features
-      .filter(f => f.geometry && f.geometry.type === 'LineString')
+      .filter(
+        f =>
+          f.geometry &&
+          (f.geometry.type === 'LineString' || f.geometry.type === 'MultiLineString')
+      )
       .map(f => {
-        const coords = (f.geometry as any).coordinates as number[][];
+        const coords =
+          f.geometry!.type === 'LineString'
+            ? ((f.geometry as any).coordinates as number[][])
+            : ((f.geometry as any).coordinates[0] as number[][]);
         const [sx, sy] = projectFn.forward(coords[0] as [number, number]);
         const [ex, ey] = projectFn.forward(
           coords[coords.length - 1] as [number, number]
@@ -1281,9 +1288,14 @@ const App: React.FC = () => {
           diam,
         };
       });
+    if (nodes.length === 0 && pipes.length === 0) {
+      addLog('No 3D pipe data found', 'error');
+      return;
+    }
     const data = { nodes, pipes };
-    const html = `<!DOCTYPE html><html><head><title>3D Pipe Network</title>` +
-      `<style>html,body{margin:0;height:100%;overflow:hidden}#center{position:absolute;top:10px;left:10px;z-index:1}</style></head><body>` +
+    const html =
+      `<!DOCTYPE html><html><head><title>3D Pipe Network</title>` +
+      `<style>html,body{margin:0;height:100%;overflow:hidden;background:#000}#center{position:absolute;top:10px;left:10px;z-index:1;color:#fff;background:#000;border:1px solid #fff;padding:4px 8px;}</style></head><body>` +
       `<button id="center">Center View</button>` +
       `<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>` +
       `<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/examples/js/controls/OrbitControls.min.js"></script>` +
@@ -1297,15 +1309,15 @@ const App: React.FC = () => {
       `const size=Math.max(maxX-minX,maxY-minY,maxZ-minZ)||1;` +
       `data.nodes.forEach(n=>{n.x-=cx;n.y-=cy;n.ground-=cz;n.invOut-=cz});` +
       `data.pipes.forEach(p=>{p.start.x-=cx;p.start.y-=cy;p.start.z-=cz;p.end.x-=cx;p.end.y-=cy;p.end.z-=cz});` +
-      `const scene=new THREE.Scene();` +
+      `const scene=new THREE.Scene();scene.background=new THREE.Color(0x000000);` +
       `const camera=new THREE.PerspectiveCamera(60,window.innerWidth/window.innerHeight,0.1,100000);` +
-      `const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setSize(window.innerWidth,window.innerHeight);document.body.appendChild(renderer.domElement);` +
+      `const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setSize(window.innerWidth,window.innerHeight);renderer.setClearColor(0x000000,1);document.body.appendChild(renderer.domElement);` +
       `const controls=new THREE.OrbitControls(camera,renderer.domElement);` +
       `function reset(){camera.position.set(0,-size,size);controls.target.set(0,0,0);controls.update();}` +
       `reset();` +
-      `const light=new THREE.DirectionalLight(0xffffff,1);light.position.set(100,100,100);scene.add(light);` +
-      `data.nodes.forEach(n=>{const s=new THREE.Vector3(n.x,n.y,n.invOut);const e=new THREE.Vector3(n.x,n.y,n.ground);const dir=new THREE.Vector3().subVectors(e,s);const len=dir.length();const g=new THREE.CylinderGeometry(n.diam/2,n.diam/2,len,16,false);const m=new THREE.MeshStandardMaterial({color:0x0000ff});const mesh=new THREE.Mesh(g,m);const axis=new THREE.Vector3(0,1,0);mesh.quaternion.setFromUnitVectors(axis,dir.clone().normalize());mesh.position.copy(s.clone().add(dir.multiplyScalar(0.5)));scene.add(mesh);});` +
-      `data.pipes.forEach(p=>{const s=new THREE.Vector3(p.start.x,p.start.y,p.start.z);const e=new THREE.Vector3(p.end.x,p.end.y,p.end.z);const dir=new THREE.Vector3().subVectors(e,s);const len=dir.length();const g=new THREE.CylinderGeometry(p.diam/2,p.diam/2,len,8,false);const m=new THREE.MeshStandardMaterial({color:0xff0000});const mesh=new THREE.Mesh(g,m);const axis=new THREE.Vector3(0,1,0);mesh.quaternion.setFromUnitVectors(axis,dir.clone().normalize());mesh.position.copy(s.clone().add(dir.multiplyScalar(0.5)));scene.add(mesh);});` +
+      `const light=new THREE.AmbientLight(0xffffff,1);scene.add(light);` +
+      `data.nodes.forEach(n=>{const len=Math.abs(n.ground-n.invOut);const g=new THREE.CylinderGeometry(n.diam/2,n.diam/2,len,16,false);const m=new THREE.MeshBasicMaterial({color:0xffffff});const mesh=new THREE.Mesh(g,m);mesh.position.set(n.x,n.y,n.invOut+len/2);scene.add(mesh);});` +
+      `data.pipes.forEach(p=>{const s=new THREE.Vector3(p.start.x,p.start.y,p.start.z);const e=new THREE.Vector3(p.end.x,p.end.y,p.end.z);const dir=new THREE.Vector3().subVectors(e,s);const len=dir.length();const g=new THREE.CylinderGeometry(p.diam/2,p.diam/2,len,8,false);const m=new THREE.MeshBasicMaterial({color:0xffffff});const mesh=new THREE.Mesh(g,m);const axis=new THREE.Vector3(0,1,0);mesh.quaternion.setFromUnitVectors(axis,dir.clone().normalize());mesh.position.copy(s.clone().add(dir.multiplyScalar(0.5)));scene.add(mesh);});` +
       `function animate(){requestAnimationFrame(animate);renderer.render(scene,camera);}animate();` +
       `window.addEventListener('resize',()=>{camera.aspect=window.innerWidth/window.innerHeight;camera.updateProjectionMatrix();renderer.setSize(window.innerWidth,window.innerHeight);});` +
       `document.getElementById('center').addEventListener('click',reset);` +
