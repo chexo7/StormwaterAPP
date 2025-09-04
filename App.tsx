@@ -1348,9 +1348,14 @@ const App: React.FC = () => {
         0.1,
         100000
       );
+      camera.up.set(0, 0, 1);
 
-      const controls = new THREE.OrbitControls(camera, renderer.domElement);
+      const controls = new THREE.MapControls(camera, renderer.domElement);
       controls.enableDamping = true;
+      controls.screenSpacePanning = false;
+      controls.zoomSpeed = 1.2;
+      controls.rotateSpeed = 0.8;
+      canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
       const xs: number[] = [], ys: number[] = [], zs: number[] = [];
       data.nodes.forEach((n) => {
