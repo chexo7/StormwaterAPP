@@ -82,6 +82,10 @@ const App: React.FC = () => {
   const computeEnabled =
     requiredLayers.every(name => layers.some(l => l.name === name)) && lodValid;
 
+  const cbIndex = layers.findIndex(l => l.name === 'Catch Basins / Manholes');
+  const pipesIndex = layers.findIndex(l => l.name === 'Pipes');
+  const pipe3DEnabled = cbIndex !== -1 && pipesIndex !== -1 && cbIndex < pipesIndex;
+
   const addLog = useCallback((message: string, type: 'info' | 'error' = 'info') => {
     setLogs(prev => [...prev, { message, type, source: 'frontend' as const }]);
   }, []);
@@ -1239,6 +1243,81 @@ const App: React.FC = () => {
     setExportModalOpen(false);
   }, [addLog, layers, projectName, projectVersion, projection]);
 
+  const handleView3D = useCallback(() => {
+    const jLayer = layers.find(l => l.name === 'Catch Basins / Manholes');
+    const pLayer = layers.find(l => l.name === 'Pipes');
+    if (!jLayer || !pLayer) return;
+    const projectFn = proj4('EPSG:4326', projection.proj4);
+    const toXY = ([lon, lat]: [number, number]) => {
+      return Math.abs(lon) <= 180 && Math.abs(lat) <= 90
+        ? projectFn.forward([lon, lat])
+        : [lon, lat];
+    };
+    const nodes = jLayer.geojson.features
+      .filter(f => f.geometry && f.geometry.type === 'Point')
+      .map(f => {
+        const [x, y] = toXY((f.geometry as any).coordinates as [number, number]);
+        const props = f.properties as any;
+        const ground = Number(props?.['Elevation Ground [ft]'] ?? 0);
+        const invOut = Number(props?.['Inv Out [ft]'] ?? 0);
+        return { x, y, ground, invOut, diam: 4 };
+      });
+    const pipes = pLayer.geojson.features
+      .filter(f => f.geometry && f.geometry.type === 'LineString')
+      .map(f => {
+        const coords = (f.geometry as any).coordinates as number[][];
+        const [sx, sy] = toXY(coords[0] as [number, number]);
+        const [ex, ey] = toXY(coords[coords.length - 1] as [number, number]);
+        const invIn = Number(
+          (f.properties as any)?.['Elevation Invert In [ft]'] ?? 0
+        );
+        const invOut = Number(
+          (f.properties as any)?.['Elevation Invert Out [ft]'] ?? 0
+        );
+        const diam =
+          Number((f.properties as any)?.['Diameter [in]'] ?? 0) / 12;
+        return {
+          start: { x: sx, y: sy, z: invIn },
+          end: { x: ex, y: ey, z: invOut },
+          diam,
+        };
+      });
+    const data = { nodes, pipes };
+    const html = `<!DOCTYPE html><html><head><title>3D Pipe Network</title>` +
+      `<style>html,body{margin:0;height:100%;overflow:hidden}#center{position:absolute;top:10px;left:10px;z-index:1}</style></head><body>` +
+      `<button id="center">Center View</button>` +
+      `<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>` +
+      `<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/examples/js/controls/OrbitControls.min.js"></script>` +
+      `<script>const data=${JSON.stringify(data)};` +
+      `const xs=[],ys=[],zs=[];data.nodes.forEach(n=>{xs.push(n.x);ys.push(n.y);zs.push(n.ground,n.invOut)});` +
+      `data.pipes.forEach(p=>{xs.push(p.start.x,p.end.x);ys.push(p.start.y,p.end.y);zs.push(p.start.z,p.end.z)});` +
+      `const minX=Math.min(...xs),maxX=Math.max(...xs);` +
+      `const minY=Math.min(...ys),maxY=Math.max(...ys);` +
+      `const minZ=Math.min(...zs),maxZ=Math.max(...zs);` +
+      `const cx=(maxX+minX)/2;const cy=(maxY+minY)/2;const cz=(maxZ+minZ)/2;` +
+      `const size=Math.max(maxX-minX,maxY-minY,maxZ-minZ)||1;` +
+      `data.nodes.forEach(n=>{n.x-=cx;n.y-=cy;n.ground-=cz;n.invOut-=cz});` +
+      `data.pipes.forEach(p=>{p.start.x-=cx;p.start.y-=cy;p.start.z-=cz;p.end.x-=cx;p.end.y-=cy;p.end.z-=cz});` +
+      `const scene=new THREE.Scene();` +
+      `const camera=new THREE.PerspectiveCamera(60,window.innerWidth/window.innerHeight,0.1,100000);` +
+      `const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setSize(window.innerWidth,window.innerHeight);renderer.setClearColor(0x000000,1);document.body.appendChild(renderer.domElement);` +
+      `const controls=new THREE.OrbitControls(camera,renderer.domElement);` +
+      `function reset(){camera.position.set(0,-size,size);controls.target.set(0,0,0);controls.update();}` +
+      `reset();` +
+      `data.nodes.forEach(n=>{const s=new THREE.Vector3(n.x,n.y,n.invOut);const e=new THREE.Vector3(n.x,n.y,n.ground);const dir=new THREE.Vector3().subVectors(e,s);const len=dir.length();const g=new THREE.CylinderGeometry(n.diam/2,n.diam/2,len,16,false);const m=new THREE.MeshBasicMaterial({color:0xffffff});const mesh=new THREE.Mesh(g,m);const axis=new THREE.Vector3(0,1,0);mesh.quaternion.setFromUnitVectors(axis,dir.clone().normalize());mesh.position.copy(s.clone().add(dir.multiplyScalar(0.5)));scene.add(mesh);});` +
+      `data.pipes.forEach(p=>{const s=new THREE.Vector3(p.start.x,p.start.y,p.start.z);const e=new THREE.Vector3(p.end.x,p.end.y,p.end.z);const dir=new THREE.Vector3().subVectors(e,s);const len=dir.length();const g=new THREE.CylinderGeometry(p.diam/2,p.diam/2,len,8,false);const m=new THREE.MeshBasicMaterial({color:0xffffff});const mesh=new THREE.Mesh(g,m);const axis=new THREE.Vector3(0,1,0);mesh.quaternion.setFromUnitVectors(axis,dir.clone().normalize());mesh.position.copy(s.clone().add(dir.multiplyScalar(0.5)));scene.add(mesh);});` +
+      `function animate(){requestAnimationFrame(animate);renderer.render(scene,camera);}animate();` +
+      `window.addEventListener('resize',()=>{camera.aspect=window.innerWidth/window.innerHeight;camera.updateProjectionMatrix();renderer.setSize(window.innerWidth,window.innerHeight);});` +
+      `document.getElementById('center').addEventListener('click',reset);` +
+      `<\/script></body></html>`;
+    const win = window.open('', '_blank');
+    if (win) {
+      win.document.write(html);
+      win.document.close();
+      addLog('3D Pipe Network viewer opened');
+    }
+  }, [addLog, layers, projection]);
+
   return (
     <div className="flex flex-col h-screen bg-gray-900 text-gray-100 font-sans">
       <Header
@@ -1246,6 +1325,8 @@ const App: React.FC = () => {
         onCompute={handleCompute}
         exportEnabled={computeSucceeded}
         onExport={() => setExportModalOpen(true)}
+        onView3D={handleView3D}
+        view3DEnabled={pipe3DEnabled}
         projectName={projectName}
         onProjectNameChange={setProjectName}
         projectVersion={projectVersion}
