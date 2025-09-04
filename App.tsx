@@ -1412,8 +1412,7 @@ const App: React.FC = () => {
           n.diam / 2,
           n.diam / 2,
           dv.length(),
-          16,
-          false
+          16
         );
         const m = new THREE.MeshStandardMaterial({ color: 0xffffff });
         const mesh = new THREE.Mesh(g, m);
@@ -1431,8 +1430,7 @@ const App: React.FC = () => {
           p.diam / 2,
           p.diam / 2,
           dv.length(),
-          8,
-          false
+          8
         );
         const m = new THREE.MeshStandardMaterial({ color: 0xffffff });
         const mesh = new THREE.Mesh(g, m);
