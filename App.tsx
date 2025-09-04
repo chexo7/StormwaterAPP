@@ -1311,10 +1311,38 @@ const App: React.FC = () => {
 <head>
   <meta charset="utf-8" />
   <title>3D Pipe Network</title>
-  <style>html,body{height:100%;margin:0} canvas{display:block;width:100%;height:100%}</style>
+  <style>
+    html,body{height:100%;margin:0;overflow:hidden}
+    canvas{display:block;width:100%;height:100%}
+    #nav{position:absolute;top:10px;right:10px;display:flex;flex-direction:column;align-items:center;gap:8px;font-family:sans-serif}
+    #nav .group{background:rgba(255,255,255,0.8);border-radius:32px;padding:4px}
+    #nav .group div{display:flex;justify-content:center}
+    #nav .group button{margin:2px;width:24px;height:24px;border:none;border-radius:4px;cursor:pointer}
+    #pegman{width:24px;height:24px;background:orange;border-radius:4px}
+    #zoom{background:rgba(255,255,255,0.8);padding:4px;border-radius:8px;display:flex;flex-direction:column;align-items:center}
+    #zoom input{writing-mode:bt-lr;-webkit-appearance:slider-vertical;height:100px;margin:4px 0}
+  </style>
 </head>
 <body>
   <canvas id="c"></canvas>
+  <div id="nav">
+    <div id="look" class="group">
+      <div><button id="lookUp">▲</button></div>
+      <div><button id="lookLeft">◀</button><button id="lookRight">▶</button></div>
+      <div><button id="lookDown">▼</button></div>
+    </div>
+    <div id="move" class="group">
+      <div><button id="moveUp">▲</button></div>
+      <div><button id="moveLeft">◀</button><button id="moveRight">▶</button></div>
+      <div><button id="moveDown">▼</button></div>
+    </div>
+    <div id="pegman"></div>
+    <div id="zoom">
+      <button id="zoomIn">+</button>
+      <input id="zoomSlider" type="range" min="10" max="200" value="100" />
+      <button id="zoomOut">-</button>
+    </div>
+  </div>
 </body>
 </html>`);
     doc.close();
@@ -1348,9 +1376,19 @@ const App: React.FC = () => {
         0.1,
         100000
       );
+      camera.up.set(0, 0, 1);
 
       const controls = new THREE.OrbitControls(camera, renderer.domElement);
       controls.enableDamping = true;
+      controls.screenSpacePanning = false;
+      controls.minPolarAngle = 0;
+      controls.maxPolarAngle = Math.PI;
+      controls.mouseButtons.LEFT = THREE.MOUSE.PAN;
+      controls.mouseButtons.RIGHT = THREE.MOUSE.ROTATE;
+      controls.mouseButtons.MIDDLE = THREE.MOUSE.DOLLY;
+      controls.touches.ONE = THREE.TOUCH.PAN;
+      controls.touches.TWO = THREE.TOUCH.DOLLY_ROTATE;
+      canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
       const xs: number[] = [], ys: number[] = [], zs: number[] = [];
       data.nodes.forEach((n) => {
@@ -1397,6 +1435,65 @@ const App: React.FC = () => {
         controls.update();
       }
       reset();
+
+      const rad = THREE.MathUtils.degToRad;
+      const moveStep = size * 0.05;
+      const slider = doc.getElementById('zoomSlider') as HTMLInputElement;
+
+      function pan(dx: number, dy: number) {
+        const v = new THREE.Vector3(dx, dy, 0);
+        camera.position.add(v);
+        controls.target.add(v);
+        controls.update();
+      }
+
+      function updateSlider() {
+        const distance = camera.position.distanceTo(controls.target);
+        slider.value = String((distance / size) * 100);
+      }
+
+      doc.getElementById('lookUp')?.addEventListener('click', () => {
+        controls.rotateUp(rad(15));
+        controls.update();
+      });
+      doc.getElementById('lookDown')?.addEventListener('click', () => {
+        controls.rotateUp(rad(-15));
+        controls.update();
+      });
+      doc.getElementById('lookLeft')?.addEventListener('click', () => {
+        controls.rotateLeft(rad(15));
+        controls.update();
+      });
+      doc.getElementById('lookRight')?.addEventListener('click', () => {
+        controls.rotateLeft(rad(-15));
+        controls.update();
+      });
+
+      doc.getElementById('moveUp')?.addEventListener('click', () => pan(0, moveStep));
+      doc.getElementById('moveDown')?.addEventListener('click', () => pan(0, -moveStep));
+      doc.getElementById('moveLeft')?.addEventListener('click', () => pan(moveStep, 0));
+      doc.getElementById('moveRight')?.addEventListener('click', () => pan(-moveStep, 0));
+
+      doc.getElementById('zoomIn')?.addEventListener('click', () => {
+        controls.dollyIn(1.2);
+        controls.update();
+        updateSlider();
+      });
+      doc.getElementById('zoomOut')?.addEventListener('click', () => {
+        controls.dollyOut(1.2);
+        controls.update();
+        updateSlider();
+      });
+      slider?.addEventListener('input', () => {
+        const distance = camera.position.distanceTo(controls.target);
+        const desired = (slider.valueAsNumber / 100) * size;
+        const ratio = distance / desired;
+        if (ratio > 1) controls.dollyIn(ratio);
+        else controls.dollyOut(1 / ratio);
+        controls.update();
+      });
+      controls.addEventListener('change', updateSlider);
+      updateSlider();
 
       const amb = new THREE.AmbientLight(0xffffff, 0.6);
       scene.add(amb);
