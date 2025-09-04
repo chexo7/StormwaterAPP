@@ -7,6 +7,8 @@ interface HeaderProps {
   computeEnabled?: boolean;
   onExport?: () => void;
   exportEnabled?: boolean;
+  onView3d?: () => void;
+  view3dEnabled?: boolean;
   projectName: string;
   onProjectNameChange: (name: string) => void;
   projectVersion: string;
@@ -17,6 +19,8 @@ const Header: React.FC<HeaderProps> = ({
   computeEnabled,
   onExport,
   exportEnabled,
+  onView3d,
+  view3dEnabled,
   projectName,
   onProjectNameChange,
   projectVersion,
@@ -53,6 +57,18 @@ const Header: React.FC<HeaderProps> = ({
           }
         >
           Export
+        </button>
+        <button
+          onClick={onView3d}
+          disabled={!view3dEnabled}
+          className={
+            'font-semibold px-4 py-1 rounded ' +
+            (view3dEnabled
+              ? 'bg-cyan-600 hover:bg-cyan-700 text-white cursor-pointer'
+              : 'bg-gray-600 text-gray-300 cursor-not-allowed')
+          }
+        >
+          3D Pipe Network
         </button>
       </div>
       <div className="absolute right-4 flex items-center space-x-2">
