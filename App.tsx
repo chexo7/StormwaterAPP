@@ -82,9 +82,13 @@ const App: React.FC = () => {
   const computeEnabled =
     requiredLayers.every(name => layers.some(l => l.name === name)) && lodValid;
 
-  const cbIndex = layers.findIndex(l => l.name === 'Catch Basins / Manholes');
-  const pipesIndex = layers.findIndex(l => l.name === 'Pipes');
-  const pipe3DEnabled = cbIndex !== -1 && pipesIndex !== -1 && cbIndex < pipesIndex;
+  const cbLayer = layers.find(l => l.name === 'Catch Basins / Manholes');
+  const pipesLayer = layers.find(l => l.name === 'Pipes');
+  const pipe3DEnabled =
+    !!cbLayer &&
+    cbLayer.geojson.features.length > 0 &&
+    !!pipesLayer &&
+    pipesLayer.geojson.features.length > 0;
 
   const addLog = useCallback((message: string, type: 'info' | 'error' = 'info') => {
     setLogs(prev => [...prev, { message, type, source: 'frontend' as const }]);
@@ -1357,20 +1361,26 @@ const App: React.FC = () => {
       'document.getElementById("center").addEventListener("click",reset);'
     ];
     const script = scriptLines.join('\n');
-    const html =
-      `<!DOCTYPE html><html><head><title>3D Pipe Network</title>` +
-      `<style>html,body{margin:0;height:100%;overflow:hidden;background:#000;color:#fff}` +
-      `#center{position:absolute;top:10px;left:10px;z-index:1}</style></head><body>` +
-      `<button id="center">Center View</button>` +
-      `<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>` +
-      `<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/examples/js/controls/OrbitControls.min.js"></script>` +
-      `<script>${script}<\/script></body></html>`;
-    const win = window.open('', '_blank');
-    if (win) {
-      win.document.write(html);
-      win.document.close();
-      addLog('3D Pipe Network viewer opened');
-    }
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+  <title>3D Pipe Network</title>
+  <style>
+    html,body{margin:0;height:100%;overflow:hidden;background:#000;color:#fff}
+    #center{position:absolute;top:10px;left:10px;z-index:1}
+  </style>
+</head>
+<body>
+  <button id="center">Center View</button>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/examples/js/controls/OrbitControls.min.js"></script>
+  <script>${script}<\/script>
+</body>
+</html>`;
+    const win = window.open('', '_blank') || window;
+    win.document.write(html);
+    win.document.close();
+    addLog('3D Pipe Network viewer opened');
   }, [addLog, layers, projection]);
 
   return (
