@@ -63,6 +63,7 @@ const App: React.FC = () => {
   const [projectVersion, setProjectVersion] = useState<string>('V1');
   const [exportModalOpen, setExportModalOpen] = useState<boolean>(false);
   const [projection, setProjection] = useState<ProjectionOption>(STATE_PLANE_OPTIONS[0]);
+  const [projectionConfirmed, setProjectionConfirmed] = useState<boolean>(false);
 
   const requiredLayers = [
     'Drainage Areas',
@@ -91,10 +92,12 @@ const App: React.FC = () => {
     pipesLayer.geojson.features.length > 0;
 
   const exportHydroCADEnabled = computeSucceeded;
-  const exportShapefilesEnabled = computeSucceeded;
-  const exportSWMMEnabled = computeSucceeded || pipe3DEnabled;
+  const exportShapefilesPossible = computeSucceeded;
+  const exportSWMMPossible = computeSucceeded || pipe3DEnabled;
+  const exportShapefilesEnabled = exportShapefilesPossible && projectionConfirmed;
+  const exportSWMMEnabled = exportSWMMPossible && projectionConfirmed;
   const exportEnabled =
-    exportHydroCADEnabled || exportShapefilesEnabled || exportSWMMEnabled;
+    exportHydroCADEnabled || exportShapefilesPossible || exportSWMMPossible;
 
   const addLog = useCallback((message: string, type: 'info' | 'error' = 'info') => {
     setLogs(prev => [...prev, { message, type, source: 'frontend' as const }]);
@@ -1572,7 +1575,10 @@ const App: React.FC = () => {
         computeEnabled={computeEnabled}
         onCompute={handleCompute}
         exportEnabled={exportEnabled}
-        onExport={() => setExportModalOpen(true)}
+        onExport={() => {
+          setProjectionConfirmed(false);
+          setExportModalOpen(true);
+        }}
         onView3D={handleView3D}
         view3DEnabled={pipe3DEnabled}
         projectName={projectName}
@@ -1650,7 +1656,10 @@ const App: React.FC = () => {
           onProjectionChange={(epsg) => {
             const proj = STATE_PLANE_OPTIONS.find(p => p.epsg === epsg);
             if (proj) setProjection(proj);
+            setProjectionConfirmed(false);
           }}
+          projectionConfirmed={projectionConfirmed}
+          onProjectionConfirm={() => setProjectionConfirmed(true)}
         />
       )}
       {mappingLayer && (

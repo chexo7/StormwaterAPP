@@ -12,9 +12,23 @@ interface ExportModalProps {
   exportShapefilesEnabled?: boolean;
   projection: ProjectionOption;
   onProjectionChange: (epsg: string) => void;
+  projectionConfirmed: boolean;
+  onProjectionConfirm: () => void;
 }
 
-const ExportModal: React.FC<ExportModalProps> = ({ onExportHydroCAD, onExportSWMM, onExportShapefiles, onClose, exportHydroCADEnabled, exportSWMMEnabled, exportShapefilesEnabled, projection, onProjectionChange }) => {
+const ExportModal: React.FC<ExportModalProps> = ({
+  onExportHydroCAD,
+  onExportSWMM,
+  onExportShapefiles,
+  onClose,
+  exportHydroCADEnabled,
+  exportSWMMEnabled,
+  exportShapefilesEnabled,
+  projection,
+  onProjectionChange,
+  projectionConfirmed,
+  onProjectionConfirm,
+}) => {
   const [filter, setFilter] = useState('');
 
   const filteredOptions = useMemo(
@@ -29,7 +43,7 @@ const ExportModal: React.FC<ExportModalProps> = ({ onExportHydroCAD, onExportSWM
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[2000]">
-      <div className="bg-gray-800 p-6 rounded-lg border border-gray-600 w-96 space-y-4">
+      <div className="bg-gray-800 p-6 rounded-lg border border-gray-600 w-[32rem] space-y-5">
         <div className="flex justify-between items-center">
           <h2 className="text-lg font-semibold text-white">Export</h2>
           <button className="text-gray-400 hover:text-white" onClick={onClose}>✕</button>
@@ -44,7 +58,7 @@ const ExportModal: React.FC<ExportModalProps> = ({ onExportHydroCAD, onExportSWM
             onChange={(e) => setFilter(e.target.value)}
           />
           <select
-            size={8}
+            size={12}
             className="w-full bg-gray-700 text-white p-2 rounded overflow-y-auto"
             value={projection.epsg}
             onChange={(e) => onProjectionChange(e.target.value)}
@@ -55,6 +69,18 @@ const ExportModal: React.FC<ExportModalProps> = ({ onExportHydroCAD, onExportSWM
               </option>
             ))}
           </select>
+          <button
+            onClick={onProjectionConfirm}
+            disabled={projectionConfirmed}
+            className={
+              'w-full mt-2 font-semibold px-4 py-2 rounded ' +
+              (projectionConfirmed
+                ? 'bg-green-600 text-white cursor-default'
+                : 'bg-cyan-600 hover:bg-cyan-700 text-white')
+            }
+          >
+            {projectionConfirmed ? 'Projection confirmed' : 'Confirm projection'}
+          </button>
         </div>
         <button
           onClick={onExportHydroCAD}
