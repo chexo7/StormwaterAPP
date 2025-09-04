@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { STATE_PLANE_OPTIONS } from '../utils/projections';
 import type { ProjectionOption } from '../types';
 
@@ -7,13 +7,20 @@ interface ExportModalProps {
   onExportSWMM: () => void;
   onExportShapefiles: () => void;
   onClose: () => void;
-  exportEnabled?: boolean;
+  exportHydroCADEnabled?: boolean;
+  exportSWMMEnabled?: boolean;
+  exportShapefilesEnabled?: boolean;
   projection: ProjectionOption;
   onProjectionChange: (epsg: string) => void;
 }
 
-const ExportModal: React.FC<ExportModalProps> = ({ onExportHydroCAD, onExportSWMM, onExportShapefiles, onClose, exportEnabled, projection, onProjectionChange }) => {
+const ExportModal: React.FC<ExportModalProps> = ({ onExportHydroCAD, onExportSWMM, onExportShapefiles, onClose, exportHydroCADEnabled, exportSWMMEnabled, exportShapefilesEnabled, projection, onProjectionChange }) => {
   const [filter, setFilter] = useState('');
+  const [projectionConfirmed, setProjectionConfirmed] = useState(false);
+
+  useEffect(() => {
+    setProjectionConfirmed(false);
+  }, [projection.epsg]);
 
   const filteredOptions = useMemo(
     () =>
@@ -27,7 +34,7 @@ const ExportModal: React.FC<ExportModalProps> = ({ onExportHydroCAD, onExportSWM
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[2000]">
-      <div className="bg-gray-800 p-6 rounded-lg border border-gray-600 w-96 space-y-4">
+      <div className="bg-gray-800 p-6 rounded-lg border border-gray-600 w-[30rem] space-y-4">
         <div className="flex justify-between items-center">
           <h2 className="text-lg font-semibold text-white">Export</h2>
           <button className="text-gray-400 hover:text-white" onClick={onClose}>✕</button>
@@ -42,7 +49,7 @@ const ExportModal: React.FC<ExportModalProps> = ({ onExportHydroCAD, onExportSWM
             onChange={(e) => setFilter(e.target.value)}
           />
           <select
-            size={8}
+            size={12}
             className="w-full bg-gray-700 text-white p-2 rounded overflow-y-auto"
             value={projection.epsg}
             onChange={(e) => onProjectionChange(e.target.value)}
@@ -55,31 +62,49 @@ const ExportModal: React.FC<ExportModalProps> = ({ onExportHydroCAD, onExportSWM
           </select>
         </div>
         <button
-          onClick={onExportHydroCAD}
-          disabled={!exportEnabled}
+          onClick={() => setProjectionConfirmed(true)}
+          disabled={projectionConfirmed}
           className={
             'w-full font-semibold px-4 py-2 rounded ' +
-            (exportEnabled ? 'bg-cyan-600 hover:bg-cyan-700 text-white' : 'bg-gray-600 text-gray-300 cursor-not-allowed')
+            (projectionConfirmed
+              ? 'bg-green-700 text-white cursor-not-allowed'
+              : 'bg-cyan-600 hover:bg-cyan-700 text-white')
+          }
+        >
+          {projectionConfirmed ? 'Projection confirmed' : 'Confirm projection'}
+        </button>
+        <button
+          onClick={onExportHydroCAD}
+          disabled={!exportHydroCADEnabled}
+          className={
+            'w-full font-semibold px-4 py-2 rounded ' +
+            (exportHydroCADEnabled
+              ? 'bg-cyan-600 hover:bg-cyan-700 text-white'
+              : 'bg-gray-600 text-gray-300 cursor-not-allowed')
           }
         >
           Export to HydroCAD
         </button>
         <button
           onClick={onExportSWMM}
-          disabled={!exportEnabled}
+          disabled={!projectionConfirmed || !exportSWMMEnabled}
           className={
             'w-full font-semibold px-4 py-2 rounded ' +
-            (exportEnabled ? 'bg-cyan-600 hover:bg-cyan-700 text-white' : 'bg-gray-600 text-gray-300 cursor-not-allowed')
+            (projectionConfirmed && exportSWMMEnabled
+              ? 'bg-cyan-600 hover:bg-cyan-700 text-white'
+              : 'bg-gray-600 text-gray-300 cursor-not-allowed')
           }
         >
           Export to SWMM
         </button>
         <button
           onClick={onExportShapefiles}
-          disabled={!exportEnabled}
+          disabled={!projectionConfirmed || !exportShapefilesEnabled}
           className={
             'w-full font-semibold px-4 py-2 rounded ' +
-            (exportEnabled ? 'bg-cyan-600 hover:bg-cyan-700 text-white' : 'bg-gray-600 text-gray-300 cursor-not-allowed')
+            (projectionConfirmed && exportShapefilesEnabled
+              ? 'bg-cyan-600 hover:bg-cyan-700 text-white'
+              : 'bg-gray-600 text-gray-300 cursor-not-allowed')
           }
         >
           Export processed shapefiles
