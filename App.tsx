@@ -82,9 +82,9 @@ const App: React.FC = () => {
   const computeEnabled =
     requiredLayers.every(name => layers.some(l => l.name === name)) && lodValid;
 
-  const cbIndex = layers.findIndex(l => l.name === 'Catch Basins / Manholes');
-  const pipesIndex = layers.findIndex(l => l.name === 'Pipes');
-  const pipe3DEnabled = cbIndex !== -1 && pipesIndex !== -1 && cbIndex < pipesIndex;
+  const hasCatchBasins = layers.some(l => l.name === 'Catch Basins / Manholes');
+  const hasPipes = layers.some(l => l.name === 'Pipes');
+  const pipe3DEnabled = hasCatchBasins && hasPipes;
 
   const addLog = useCallback((message: string, type: 'info' | 'error' = 'info') => {
     setLogs(prev => [...prev, { message, type, source: 'frontend' as const }]);
@@ -1365,12 +1365,10 @@ const App: React.FC = () => {
       `<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>` +
       `<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/examples/js/controls/OrbitControls.min.js"></script>` +
       `<script>${script}<\/script></body></html>`;
-    const win = window.open('', '_blank');
-    if (win) {
-      win.document.write(html);
-      win.document.close();
-      addLog('3D Pipe Network viewer opened');
-    }
+    const win = window.open('', '_blank') || window; // open in same tab if the pop-up was blocked
+    win.document.write(html);
+    win.document.close();
+    addLog('3D Pipe Network viewer opened');
   }, [addLog, layers, projection]);
 
   return (
