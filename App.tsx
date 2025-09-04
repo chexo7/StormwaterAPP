@@ -1262,7 +1262,14 @@ const App: React.FC = () => {
         const ground = Number(props?.['Elevation Ground [ft]'] ?? 0);
         const invOut = Number(props?.['Inv Out [ft]'] ?? 0);
         return { x, y, ground, invOut, diam: 4 };
-      });
+      })
+      .filter(
+        (n) =>
+          isFinite(n.x) &&
+          isFinite(n.y) &&
+          isFinite(n.ground) &&
+          isFinite(n.invOut)
+      );
     const pipes = pLayer.geojson.features
       .filter(
         (f) =>
@@ -1291,9 +1298,19 @@ const App: React.FC = () => {
           end: { x: ex, y: ey, z: invOut },
           diam,
         };
-      });
+      })
+      .filter(
+        (p) =>
+          isFinite(p.start.x) &&
+          isFinite(p.start.y) &&
+          isFinite(p.start.z) &&
+          isFinite(p.end.x) &&
+          isFinite(p.end.y) &&
+          isFinite(p.end.z) &&
+          isFinite(p.diam)
+      );
     if (nodes.length === 0 && pipes.length === 0) {
-      addLog('No pipe network data to display', 'error');
+      addLog('No valid pipe network data to display', 'error');
       return;
     }
     const data = { nodes, pipes };
