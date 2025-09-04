@@ -1311,10 +1311,27 @@ const App: React.FC = () => {
 <head>
   <meta charset="utf-8" />
   <title>3D Pipe Network</title>
-  <style>html,body{height:100%;margin:0} canvas{display:block;width:100%;height:100%}</style>
+  <style>
+    html,body{height:100%;margin:0;overflow:hidden}
+    canvas{display:block;width:100%;height:100%}
+    #nav{position:absolute;top:10px;right:10px;display:flex;flex-direction:column;align-items:center;gap:8px;font-family:sans-serif}
+    #compass{width:64px;height:64px;background:rgba(255,255,255,0.8);border-radius:50%}
+    #pegman{width:24px;height:24px;background:orange;border-radius:4px}
+    #zoom{background:rgba(255,255,255,0.8);padding:4px;border-radius:8px;display:flex;flex-direction:column;align-items:center}
+    #zoom input{writing-mode:bt-lr;-webkit-appearance:slider-vertical;height:100px;margin:4px 0}
+  </style>
 </head>
 <body>
   <canvas id="c"></canvas>
+  <div id="nav">
+    <canvas id="compass" width="64" height="64"></canvas>
+    <div id="pegman"></div>
+    <div id="zoom">
+      <button id="zoomIn">+</button>
+      <input id="zoomSlider" type="range" min="10" max="200" value="100" />
+      <button id="zoomOut">-</button>
+    </div>
+  </div>
 </body>
 </html>`);
     doc.close();
@@ -1348,9 +1365,19 @@ const App: React.FC = () => {
         0.1,
         100000
       );
+      camera.up.set(0, 0, 1);
 
       const controls = new THREE.OrbitControls(camera, renderer.domElement);
       controls.enableDamping = true;
+      controls.screenSpacePanning = false;
+      controls.minPolarAngle = 0;
+      controls.maxPolarAngle = Math.PI;
+      controls.mouseButtons.LEFT = THREE.MOUSE.PAN;
+      controls.mouseButtons.RIGHT = THREE.MOUSE.ROTATE;
+      controls.mouseButtons.MIDDLE = THREE.MOUSE.DOLLY;
+      controls.touches.ONE = THREE.TOUCH.PAN;
+      controls.touches.TWO = THREE.TOUCH.DOLLY_ROTATE;
+      canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
       const xs: number[] = [], ys: number[] = [], zs: number[] = [];
       data.nodes.forEach((n) => {
@@ -1398,6 +1425,60 @@ const App: React.FC = () => {
       }
       reset();
 
+      const texLoader = new THREE.TextureLoader();
+      texLoader.crossOrigin = 'anonymous';
+      try {
+        const tex = await texLoader.loadAsync(
+          `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${minX},${minY},${maxX},${maxY}&bboxSR=4326&size=1024,1024&format=png32&f=image`
+        );
+        const planeGeo = new THREE.PlaneGeometry(maxX - minX, maxY - minY);
+        const planeMat = new THREE.MeshBasicMaterial({ map: tex });
+        const plane = new THREE.Mesh(planeGeo, planeMat);
+        plane.rotation.x = -Math.PI / 2;
+        plane.position.set(0, 0, minZ - cz - 1);
+        scene.add(plane);
+      } catch (err) {
+        console.warn('Failed to load imagery', err);
+      }
+
+      const slider = doc.getElementById('zoomSlider') as HTMLInputElement;
+
+      function updateSlider() {
+        const distance = camera.position.distanceTo(controls.target);
+        slider.value = String((distance / size) * 100);
+      }
+
+      doc.getElementById('zoomIn')?.addEventListener('click', () => {
+        controls.dollyIn(1.2);
+        controls.update();
+        updateSlider();
+      });
+      doc.getElementById('zoomOut')?.addEventListener('click', () => {
+        controls.dollyOut(1.2);
+        controls.update();
+        updateSlider();
+      });
+      slider?.addEventListener('input', () => {
+        const distance = camera.position.distanceTo(controls.target);
+        const desired = (slider.valueAsNumber / 100) * size;
+        const ratio = distance / desired;
+        if (ratio > 1) controls.dollyIn(ratio);
+        else controls.dollyOut(1 / ratio);
+        controls.update();
+      });
+      controls.addEventListener('change', updateSlider);
+      updateSlider();
+
+      const compassCanvas = doc.getElementById('compass') as HTMLCanvasElement;
+      const compassRenderer = new THREE.WebGLRenderer({ canvas: compassCanvas, antialias: true, alpha: true });
+      compassRenderer.setSize(64, 64);
+      const compassScene = new THREE.Scene();
+      const compassCamera = new THREE.PerspectiveCamera(45, 1, 0.1, 1000);
+      compassCamera.up.set(0, 0, 1);
+      compassCamera.position.set(0, 0, 10);
+      const compassAxes = new THREE.AxesHelper(5);
+      compassScene.add(compassAxes);
+
       const amb = new THREE.AmbientLight(0xffffff, 0.6);
       scene.add(amb);
       const dir = new THREE.DirectionalLight(0xffffff, 0.8);
@@ -1443,6 +1524,8 @@ const App: React.FC = () => {
       function animate() {
         controls.update();
         renderer.render(scene, camera);
+        compassScene.quaternion.copy(camera.quaternion).invert();
+        compassRenderer.render(compassScene, compassCamera);
         win.requestAnimationFrame(animate);
       }
       animate();
