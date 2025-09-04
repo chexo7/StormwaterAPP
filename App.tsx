@@ -1311,10 +1311,45 @@ const App: React.FC = () => {
 <head>
   <meta charset="utf-8" />
   <title>3D Pipe Network</title>
-  <style>html,body{height:100%;margin:0} canvas{display:block;width:100%;height:100%}</style>
+  <style>
+    html,body{height:100%;margin:0}
+    canvas{display:block;width:100%;height:100%}
+    #nav{position:absolute;top:8px;right:8px;display:flex;flex-direction:column;align-items:center;z-index:10;font-family:sans-serif}
+    #nav button{margin:2px;padding:4px;border:none;background:rgba(255,255,255,0.7);cursor:pointer}
+    #nav button:hover{background:#fff}
+    #nav .group{display:flex;flex-direction:column;align-items:center;margin-bottom:6px}
+    #nav .row{display:flex}
+    #zoomSlider{writing-mode:bt-lr;-webkit-appearance:slider-vertical;height:100px}
+  </style>
 </head>
 <body>
   <canvas id="c"></canvas>
+  <div id="nav">
+    <div class="group" id="orient">
+      <button id="tiltUp">▲</button>
+      <div class="row">
+        <button id="rotateLeft">◄</button>
+        <button id="resetNorth">N</button>
+        <button id="rotateRight">►</button>
+      </div>
+      <button id="tiltDown">▼</button>
+    </div>
+    <div class="group" id="panGroup">
+      <button id="panUp">▲</button>
+      <div class="row">
+        <button id="panLeft">◄</button>
+        <button id="panCenter">🖐</button>
+        <button id="panRight">►</button>
+      </div>
+      <button id="panDown">▼</button>
+    </div>
+    <button id="pegman">🕴</button>
+    <div class="group" id="zoomGroup">
+      <button id="zoomIn">+</button>
+      <input type="range" id="zoomSlider" min="0" max="100" value="50" />
+      <button id="zoomOut">-</button>
+    </div>
+  </div>
 </body>
 </html>`);
     doc.close();
@@ -1348,9 +1383,20 @@ const App: React.FC = () => {
         0.1,
         100000
       );
+      camera.up.set(0, 0, 1);
 
-      const controls = new THREE.OrbitControls(camera, renderer.domElement);
+      const controls = new THREE.MapControls(camera, renderer.domElement);
       controls.enableDamping = true;
+      controls.screenSpacePanning = true;
+      controls.zoomSpeed = 1.2;
+      controls.rotateSpeed = 0.8;
+      controls.maxPolarAngle = Math.PI;
+      controls.mouseButtons = {
+        LEFT: THREE.MOUSE.PAN,
+        MIDDLE: THREE.MOUSE.DOLLY,
+        RIGHT: THREE.MOUSE.ROTATE,
+      };
+      canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
       const xs: number[] = [], ys: number[] = [], zs: number[] = [];
       data.nodes.forEach((n) => {
@@ -1397,6 +1443,33 @@ const App: React.FC = () => {
         controls.update();
       }
       reset();
+
+      const rotateStep = THREE.MathUtils.degToRad(15);
+      const tiltStep = THREE.MathUtils.degToRad(10);
+      const panStep = 100;
+      const zoomScale = 1.2;
+      doc.getElementById('tiltUp')?.addEventListener('click', () => controls.rotateUp(tiltStep));
+      doc.getElementById('tiltDown')?.addEventListener('click', () => controls.rotateUp(-tiltStep));
+      doc.getElementById('rotateLeft')?.addEventListener('click', () => controls.rotateLeft(rotateStep));
+      doc.getElementById('rotateRight')?.addEventListener('click', () => controls.rotateLeft(-rotateStep));
+      doc.getElementById('resetNorth')?.addEventListener('click', () => reset());
+      doc.getElementById('panUp')?.addEventListener('click', () => controls.pan(0, panStep));
+      doc.getElementById('panDown')?.addEventListener('click', () => controls.pan(0, -panStep));
+      doc.getElementById('panLeft')?.addEventListener('click', () => controls.pan(panStep, 0));
+      doc.getElementById('panRight')?.addEventListener('click', () => controls.pan(-panStep, 0));
+      doc.getElementById('panCenter')?.addEventListener('click', () => reset());
+      doc.getElementById('zoomIn')?.addEventListener('click', () => { controls.dollyIn(zoomScale); controls.update(); });
+      doc.getElementById('zoomOut')?.addEventListener('click', () => { controls.dollyOut(zoomScale); controls.update(); });
+      const zoomSlider = doc.getElementById('zoomSlider') as HTMLInputElement;
+      let lastZoom = parseFloat(zoomSlider.value);
+      zoomSlider.addEventListener('input', () => {
+        const val = parseFloat(zoomSlider.value);
+        const diff = val - lastZoom;
+        if (diff > 0) controls.dollyOut(Math.pow(zoomScale, diff / 5));
+        if (diff < 0) controls.dollyIn(Math.pow(zoomScale, -diff / 5));
+        lastZoom = val;
+        controls.update();
+      });
 
       const amb = new THREE.AmbientLight(0xffffff, 0.6);
       scene.add(amb);
