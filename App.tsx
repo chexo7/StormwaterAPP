@@ -1315,7 +1315,9 @@ const App: React.FC = () => {
     html,body{height:100%;margin:0;overflow:hidden}
     canvas{display:block;width:100%;height:100%}
     #nav{position:absolute;top:10px;right:10px;display:flex;flex-direction:column;align-items:center;gap:8px;font-family:sans-serif}
+    #compassWrap{position:relative}
     #compass{background:rgba(255,255,255,0.8);border-radius:50%}
+    #northLabel{position:absolute;top:2px;left:50%;transform:translateX(-50%);font-size:12px;font-weight:bold;color:#000}
     #pegman{width:24px;height:24px;background:orange;border-radius:4px}
     #zoom{background:rgba(255,255,255,0.8);padding:4px;border-radius:8px;display:flex;flex-direction:column;align-items:center}
     #zoom input{writing-mode:bt-lr;-webkit-appearance:slider-vertical;height:100px;margin:4px 0}
@@ -1324,7 +1326,10 @@ const App: React.FC = () => {
 <body>
   <canvas id="c"></canvas>
   <div id="nav">
-    <canvas id="compass" width="80" height="80"></canvas>
+    <div id="compassWrap">
+      <canvas id="compass" width="80" height="80"></canvas>
+      <div id="northLabel">N</div>
+    </div>
     <div id="pegman"></div>
     <div id="zoom">
       <button id="zoomIn">+</button>
@@ -1438,14 +1443,6 @@ const App: React.FC = () => {
         p.end.y -= cy;
         p.end.z -= cz;
       });
-
-      const earthTexture = new THREE.TextureLoader().load(
-        'https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/land_ocean_ice_cloud_2048.jpg'
-      );
-      const skyGeo = new THREE.SphereGeometry(size * 100, 64, 64);
-      const skyMat = new THREE.MeshBasicMaterial({ map: earthTexture, side: THREE.BackSide });
-      const sky = new THREE.Mesh(skyGeo, skyMat);
-      scene.add(sky);
 
       function reset() {
         camera.position.set(0, -size, size);
