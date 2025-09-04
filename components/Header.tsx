@@ -68,7 +68,7 @@ const Header: React.FC<HeaderProps> = ({
               : 'bg-gray-600 text-gray-300 cursor-not-allowed')
           }
         >
-          3D PIPE NETWORK
+          3D Pipe Network
         </button>
       </div>
       <div className="absolute right-4 flex items-center space-x-2">

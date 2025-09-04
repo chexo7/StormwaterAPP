@@ -7,12 +7,14 @@ interface ExportModalProps {
   onExportSWMM: () => void;
   onExportShapefiles: () => void;
   onClose: () => void;
-  exportEnabled?: boolean;
+  hydroCADEnabled?: boolean;
+  swmmEnabled?: boolean;
+  shapefilesEnabled?: boolean;
   projection: ProjectionOption;
   onProjectionChange: (epsg: string) => void;
 }
 
-const ExportModal: React.FC<ExportModalProps> = ({ onExportHydroCAD, onExportSWMM, onExportShapefiles, onClose, exportEnabled, projection, onProjectionChange }) => {
+const ExportModal: React.FC<ExportModalProps> = ({ onExportHydroCAD, onExportSWMM, onExportShapefiles, onClose, hydroCADEnabled, swmmEnabled, shapefilesEnabled, projection, onProjectionChange }) => {
   const [filter, setFilter] = useState('');
 
   const filteredOptions = useMemo(
@@ -56,30 +58,30 @@ const ExportModal: React.FC<ExportModalProps> = ({ onExportHydroCAD, onExportSWM
         </div>
         <button
           onClick={onExportHydroCAD}
-          disabled={!exportEnabled}
+          disabled={!hydroCADEnabled}
           className={
             'w-full font-semibold px-4 py-2 rounded ' +
-            (exportEnabled ? 'bg-cyan-600 hover:bg-cyan-700 text-white' : 'bg-gray-600 text-gray-300 cursor-not-allowed')
+            (hydroCADEnabled ? 'bg-cyan-600 hover:bg-cyan-700 text-white' : 'bg-gray-600 text-gray-300 cursor-not-allowed')
           }
         >
           Export to HydroCAD
         </button>
         <button
           onClick={onExportSWMM}
-          disabled={!exportEnabled}
+          disabled={!swmmEnabled}
           className={
             'w-full font-semibold px-4 py-2 rounded ' +
-            (exportEnabled ? 'bg-cyan-600 hover:bg-cyan-700 text-white' : 'bg-gray-600 text-gray-300 cursor-not-allowed')
+            (swmmEnabled ? 'bg-cyan-600 hover:bg-cyan-700 text-white' : 'bg-gray-600 text-gray-300 cursor-not-allowed')
           }
         >
           Export to SWMM
         </button>
         <button
           onClick={onExportShapefiles}
-          disabled={!exportEnabled}
+          disabled={!shapefilesEnabled}
           className={
             'w-full font-semibold px-4 py-2 rounded ' +
-            (exportEnabled ? 'bg-cyan-600 hover:bg-cyan-700 text-white' : 'bg-gray-600 text-gray-300 cursor-not-allowed')
+            (shapefilesEnabled ? 'bg-cyan-600 hover:bg-cyan-700 text-white' : 'bg-gray-600 text-gray-300 cursor-not-allowed')
           }
         >
           Export processed shapefiles
