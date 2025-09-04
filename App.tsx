@@ -63,6 +63,8 @@ const App: React.FC = () => {
   const [projectVersion, setProjectVersion] = useState<string>('V1');
   const [exportModalOpen, setExportModalOpen] = useState<boolean>(false);
   const [projection, setProjection] = useState<ProjectionOption>(STATE_PLANE_OPTIONS[0]);
+  const [cbLayerAddedAt, setCbLayerAddedAt] = useState<number | null>(null);
+  const [pipesLayerAddedAt, setPipesLayerAddedAt] = useState<number | null>(null);
 
   const requiredLayers = [
     'Drainage Areas',
@@ -81,6 +83,16 @@ const App: React.FC = () => {
 
   const computeEnabled =
     requiredLayers.every(name => layers.some(l => l.name === name)) && lodValid;
+
+  const cbLayer = layers.find(l => l.name === 'Catch Basins / Manholes');
+  const pipesLayer = layers.find(l => l.name === 'Pipes');
+  const pipe3dEnabled = !!(
+    cbLayer &&
+    pipesLayer &&
+    cbLayerAddedAt &&
+    pipesLayerAddedAt &&
+    cbLayerAddedAt < pipesLayerAddedAt
+  );
 
   const addLog = useCallback((message: string, type: 'info' | 'error' = 'info') => {
     setLogs(prev => [...prev, { message, type, source: 'frontend' as const }]);
@@ -166,6 +178,13 @@ const App: React.FC = () => {
           properties: { ...(f.properties || {}), HSG: f.properties?.HSG ?? '' }
         }))
       } as FeatureCollection;
+    }
+
+    if (name === 'Catch Basins / Manholes') {
+      setCbLayerAddedAt(Date.now());
+    }
+    if (name === 'Pipes') {
+      setPipesLayerAddedAt(Date.now());
     }
 
     if (name === 'Pipes' && fieldMap) {
@@ -702,6 +721,17 @@ const App: React.FC = () => {
   const handleCompute = useCallback(() => {
     runCompute();
   }, [runCompute]);
+
+  const handleShow3D = useCallback(() => {
+    if (!cbLayer || !pipesLayer) return;
+    const data = { cbLayer: cbLayer.geojson, pipesLayer: pipesLayer.geojson };
+    try {
+      localStorage.setItem('pipe-network-data', JSON.stringify(data));
+      window.open('/3d', '_blank');
+    } catch (err) {
+      addLog('Failed to open 3D viewer', 'error');
+    }
+  }, [cbLayer, pipesLayer, addLog]);
 
   const handleExportHydroCAD = useCallback(() => {
     const overlayLayer = layers.find(l => l.name === 'Overlay');
@@ -1246,6 +1276,8 @@ const App: React.FC = () => {
         onCompute={handleCompute}
         exportEnabled={computeSucceeded}
         onExport={() => setExportModalOpen(true)}
+        show3DEnabled={pipe3dEnabled}
+        onShow3D={handleShow3D}
         projectName={projectName}
         onProjectNameChange={setProjectName}
         projectVersion={projectVersion}
