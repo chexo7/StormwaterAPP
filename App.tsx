@@ -82,6 +82,10 @@ const App: React.FC = () => {
   const computeEnabled =
     requiredLayers.every(name => layers.some(l => l.name === name)) && lodValid;
 
+  const cbIndex = layers.findIndex(l => l.name === 'Catch Basins / Manholes');
+  const pipesIndex = layers.findIndex(l => l.name === 'Pipes');
+  const pipe3DEnabled = cbIndex !== -1 && pipesIndex !== -1 && cbIndex < pipesIndex;
+
   const addLog = useCallback((message: string, type: 'info' | 'error' = 'info') => {
     setLogs(prev => [...prev, { message, type, source: 'frontend' as const }]);
   }, []);
@@ -1239,6 +1243,121 @@ const App: React.FC = () => {
     setExportModalOpen(false);
   }, [addLog, layers, projectName, projectVersion, projection]);
 
+  const handleView3D = useCallback(() => {
+    const jLayer = layers.find(l => l.name === 'Catch Basins / Manholes');
+    const pLayer = layers.find(l => l.name === 'Pipes');
+    if (!jLayer || !pLayer) return;
+    const projectFn = proj4('EPSG:4326', projection.proj4);
+    const nodes = jLayer.geojson.features
+      .filter(f => f.geometry && f.geometry.type === 'Point')
+      .map(f => {
+        const [x, y] = projectFn.forward(
+          (f.geometry as any).coordinates as [number, number]
+        );
+        const ground = Number(
+          (f.properties as any)?.['Elevation Ground [ft]'] ?? 0
+        );
+        const invert = Number(
+          (f.properties as any)?.['Inv Out [ft]'] ??
+            (f.properties as any)?.['Elevation Invert In [ft]'] ??
+            0
+        );
+        const depth = ground - invert;
+        return { x, y, invert, depth, diam: 4 };
+      });
+    const pipes = pLayer.geojson.features
+      .filter(f => f.geometry && f.geometry.type === 'LineString')
+      .map(f => {
+        const coords = (f.geometry as any).coordinates as number[][];
+        const [sx, sy] = projectFn.forward(coords[0] as [number, number]);
+        const [ex, ey] = projectFn.forward(
+          coords[coords.length - 1] as [number, number]
+        );
+        const invIn = Number(
+          (f.properties as any)?.['Elevation Invert In [ft]'] ?? 0
+        );
+        const invOut = Number(
+          (f.properties as any)?.['Elevation Invert Out [ft]'] ?? 0
+        );
+        const diam =
+          Number((f.properties as any)?.['Diameter [in]'] ?? 0) / 12;
+        return {
+          start: { x: sx, y: sy, z: invIn },
+          end: { x: ex, y: ey, z: invOut },
+          diam,
+        };
+      });
+    const xs: number[] = [];
+    const ys: number[] = [];
+    const zs: number[] = [];
+    nodes.forEach(n => {
+      xs.push(n.x);
+      ys.push(n.y);
+      zs.push(n.invert, n.invert + n.depth);
+    });
+    pipes.forEach(p => {
+      xs.push(p.start.x, p.end.x);
+      ys.push(p.start.y, p.end.y);
+      zs.push(p.start.z, p.end.z);
+    });
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+    const minZ = Math.min(...zs);
+    const maxZ = Math.max(...zs);
+    const cx = (maxX + minX) / 2;
+    const cy = (maxY + minY) / 2;
+    const cz = (maxZ + minZ) / 2;
+    const maxRange = Math.max(maxX - minX, maxY - minY, maxZ - minZ);
+    const scale = maxRange ? 100 / maxRange : 1;
+    nodes.forEach(n => {
+      n.x = (n.x - cx) * scale;
+      n.y = (n.y - cy) * scale;
+      n.invert = (n.invert - cz) * scale;
+      n.depth *= scale;
+      n.diam *= scale;
+    });
+    pipes.forEach(p => {
+      p.start.x = (p.start.x - cx) * scale;
+      p.start.y = (p.start.y - cy) * scale;
+      p.start.z = (p.start.z - cz) * scale;
+      p.end.x = (p.end.x - cx) * scale;
+      p.end.y = (p.end.y - cy) * scale;
+      p.end.z = (p.end.z - cz) * scale;
+      p.diam *= scale;
+    });
+    const viewDist = maxRange * scale * 1.5;
+    const data = { nodes, pipes };
+    const html =
+      `<!DOCTYPE html><html><head><title>3D Pipe Network</title>` +
+      `<style>html,body{margin:0;height:100%;overflow:hidden}#centerBtn{position:absolute;top:10px;left:10px;z-index:10;padding:6px 12px;background:#fff;border:1px solid #ccc;border-radius:4px;cursor:pointer}</style></head><body>` +
+      `<button id="centerBtn">Center</button>` +
+      `<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>` +
+      `<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/examples/js/controls/OrbitControls.min.js"></script>` +
+      `<script>const data=${JSON.stringify(data)};const viewDist=${viewDist};` +
+      `const scene=new THREE.Scene();` +
+      `const camera=new THREE.PerspectiveCamera(60,window.innerWidth/window.innerHeight,0.1,100000);` +
+      `camera.position.set(0,-viewDist,viewDist);` +
+      `const renderer=new THREE.WebGLRenderer({antialias:true});` +
+      `renderer.setSize(window.innerWidth,window.innerHeight);document.body.appendChild(renderer.domElement);` +
+      `const controls=new THREE.OrbitControls(camera,renderer.domElement);controls.target.set(0,0,0);controls.update();` +
+      `const initPos=camera.position.clone();const initTarget=controls.target.clone();document.getElementById('centerBtn').addEventListener('click',()=>{controls.target.copy(initTarget);camera.position.copy(initPos);controls.update();});` +
+      `const light=new THREE.DirectionalLight(0xffffff,1);light.position.set(100,100,100);scene.add(light);` +
+      `const amb=new THREE.AmbientLight(0x404040);scene.add(amb);` +
+      `data.nodes.forEach(n=>{const g=new THREE.CylinderGeometry(n.diam/2,n.diam/2,n.depth,16);const m=new THREE.MeshStandardMaterial({color:0x0000ff});const mesh=new THREE.Mesh(g,m);mesh.rotation.x=Math.PI/2;mesh.position.set(n.x,n.y,n.invert+n.depth/2);scene.add(mesh);});` +
+      `data.pipes.forEach(p=>{const s=new THREE.Vector3(p.start.x,p.start.y,p.start.z);const e=new THREE.Vector3(p.end.x,p.end.y,p.end.z);const dir=new THREE.Vector3().subVectors(e,s);const len=dir.length();const g=new THREE.CylinderGeometry(p.diam/2,p.diam/2,len,8,false);const m=new THREE.MeshStandardMaterial({color:0xff0000});const mesh=new THREE.Mesh(g,m);const axis=new THREE.Vector3(0,1,0);mesh.quaternion.setFromUnitVectors(axis,dir.clone().normalize());mesh.position.copy(s.clone().add(dir.multiplyScalar(0.5)));scene.add(mesh);});` +
+      `function animate(){requestAnimationFrame(animate);renderer.render(scene,camera);}animate();` +
+      `window.addEventListener('resize',()=>{camera.aspect=window.innerWidth/window.innerHeight;camera.updateProjectionMatrix();renderer.setSize(window.innerWidth,window.innerHeight);});` +
+      `<\/script></body></html>`;
+    const win = window.open('', '_blank');
+    if (win) {
+      win.document.write(html);
+      win.document.close();
+      addLog('3D Pipe Network viewer opened');
+    }
+  }, [addLog, layers, projection]);
+
   return (
     <div className="flex flex-col h-screen bg-gray-900 text-gray-100 font-sans">
       <Header
@@ -1246,6 +1365,8 @@ const App: React.FC = () => {
         onCompute={handleCompute}
         exportEnabled={computeSucceeded}
         onExport={() => setExportModalOpen(true)}
+        onView3D={handleView3D}
+        view3DEnabled={pipe3DEnabled}
         projectName={projectName}
         onProjectNameChange={setProjectName}
         projectVersion={projectVersion}
