@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import type { FeatureCollection } from 'geojson';
+import type { FeatureCollection, Feature, LineString, Point } from 'geojson';
 import type { LayerData, LogEntry } from './types';
 import Header from './components/Header';
 import FileUpload from './components/FileUpload';
@@ -97,6 +97,42 @@ const App: React.FC = () => {
   const exportShapefilesEnabled = computeSucceeded && projectionConfirmed;
   const exportSWMMEnabled = (computeSucceeded || pipe3DEnabled) && projectionConfirmed;
   const exportEnabled = computeSucceeded || pipe3DEnabled;
+
+  const splitPipesAtNodes = (
+    pipes: Feature<LineString>[],
+    nodes: Feature<Point>[]
+  ): Feature<LineString>[] => {
+    const nodeSet = new Set(
+      nodes
+        .filter(n => n.geometry && n.geometry.type === 'Point')
+        .map(n => (n.geometry as Point).coordinates.join(','))
+    );
+    const out: Feature<LineString>[] = [];
+    pipes.forEach(p => {
+      if (!p.geometry || p.geometry.type !== 'LineString') return;
+      const coords = (p.geometry as LineString).coordinates;
+      const splitIdxs: number[] = [];
+      for (let i = 1; i < coords.length - 1; i++) {
+        if (nodeSet.has(coords[i].join(','))) splitIdxs.push(i);
+      }
+      if (splitIdxs.length === 0) {
+        out.push(p);
+        return;
+      }
+      let prev = 0;
+      const idxs = [...splitIdxs, coords.length - 1];
+      idxs.forEach((idx, seg) => {
+        const segCoords = coords.slice(prev, idx + 1);
+        out.push({
+          type: 'Feature',
+          geometry: { type: 'LineString', coordinates: segCoords },
+          properties: { ...(p.properties || {}), _segment: seg + 1 },
+        });
+        prev = idx;
+      });
+    });
+    return out;
+  };
 
   const addLog = useCallback((message: string, type: 'info' | 'error' = 'info') => {
     setLogs(prev => [...prev, { message, type, source: 'frontend' as const }]);
@@ -1094,24 +1130,35 @@ const App: React.FC = () => {
       return len;
     };
 
-    if (pLayer && nodes.length) {
+    if (pLayer && nodes.length && jLayer) {
       const pMap = pLayer.fieldMap;
-      pLayer.geojson.features.forEach((f, i) => {
-        if (!f.geometry || f.geometry.type !== 'LineString') return;
-        const raw = String(getMapped(f.properties, pMap, 'label', ['Label']) ?? '');
+      const nodeFeatures = jLayer.geojson.features.filter(
+        f => f.geometry && f.geometry.type === 'Point'
+      ) as Feature<Point>[];
+      const rawPipeFeatures = pLayer.geojson.features.filter(
+        f => f.geometry && f.geometry.type === 'LineString'
+      ) as Feature<LineString>[];
+      const pipeFeatures = splitPipesAtNodes(rawPipeFeatures, nodeFeatures);
+      pipeFeatures.forEach((f, i) => {
+        const seg = (f.properties as any)?._segment;
+        let raw = String(
+          getMapped(f.properties, pMap, 'label', ['Label']) ?? ''
+        );
+        if (seg) raw = `${raw}-${seg}`;
         const id = sanitizeId(raw, i);
-        const coords = f.geometry.coordinates as number[][];
-        const dirStr = String(
+        const coords = (f.geometry as LineString).coordinates;
+        let dirStr = String(
           getMapped(f.properties, pMap, 'direction', ['Directions']) ?? ''
         );
+        if (seg) dirStr = '';
         let from: typeof nodes[number] | undefined;
         let to: typeof nodes[number] | undefined;
         if (dirStr.includes(' to ')) {
           const [a, b] = dirStr.split(/\s+to\s+/);
           const fromId = sanitizeId(a, 0);
           const toId = sanitizeId(b, 0);
-          from = nodes.find((n) => n.id === fromId);
-          to = nodes.find((n) => n.id === toId);
+          from = nodes.find(n => n.id === fromId);
+          to = nodes.find(n => n.id === toId);
         }
         if (!from || !to) {
           const start = project.forward(coords[0] as [number, number]);
@@ -1310,8 +1357,10 @@ const App: React.FC = () => {
     const pLayer = layers.find((l) => l.name === 'Pipes');
     if (!jLayer || !pLayer) return;
     const projectFn = proj4('EPSG:4326', projection.proj4);
-    const nodes = jLayer.geojson.features
-      .filter((f) => f.geometry && f.geometry.type === 'Point')
+    const nodeFeatures = jLayer.geojson.features.filter(
+      (f) => f.geometry && f.geometry.type === 'Point'
+    ) as Feature<Point>[];
+    const nodes = nodeFeatures
       .map((f) => {
         const [x, y] = projectFn.forward(
           (f.geometry as any).coordinates as [number, number]
@@ -1324,19 +1373,29 @@ const App: React.FC = () => {
         if (!isFinite(ground) || !isFinite(invOut)) return null;
         return { x, y, ground, invOut, diam: 4 };
       })
-      .filter((n): n is { x: number; y: number; ground: number; invOut: number; diam: number } => n !== null);
-    const pipes = pLayer.geojson.features
       .filter(
-        (f) =>
-          f.geometry &&
-          (f.geometry.type === 'LineString' ||
-            f.geometry.type === 'MultiLineString')
-      )
+        (n): n is { x: number; y: number; ground: number; invOut: number; diam: number } =>
+          n !== null
+      );
+    const rawPipeFeatures: Feature<LineString>[] = [];
+    pLayer.geojson.features.forEach((f) => {
+      if (!f.geometry) return;
+      if (f.geometry.type === 'LineString') {
+        rawPipeFeatures.push(f as Feature<LineString>);
+      } else if (f.geometry.type === 'MultiLineString') {
+        (f.geometry.coordinates as number[][][]).forEach((coords) => {
+          rawPipeFeatures.push({
+            type: 'Feature',
+            geometry: { type: 'LineString', coordinates: coords },
+            properties: f.properties || {},
+          });
+        });
+      }
+    });
+    const pipeFeatures = splitPipesAtNodes(rawPipeFeatures, nodeFeatures);
+    const pipes = pipeFeatures
       .map((f) => {
-        const coords =
-          f.geometry.type === 'LineString'
-            ? ((f.geometry as any).coordinates as number[][])
-            : ((f.geometry as any).coordinates[0] as number[][]);
+        const coords = (f.geometry as LineString).coordinates;
         const [sx, sy] = projectFn.forward(coords[0] as [number, number]);
         const [ex, ey] = projectFn.forward(
           coords[coords.length - 1] as [number, number]
@@ -1356,7 +1415,10 @@ const App: React.FC = () => {
           diam,
         };
       })
-      .filter((p): p is { start: { x: number; y: number; z: number }; end: { x: number; y: number; z: number }; diam: number } => p !== null);
+      .filter(
+        (p): p is { start: { x: number; y: number; z: number }; end: { x: number; y: number; z: number }; diam: number } =>
+          p !== null
+      );
     if (nodes.length === 0 && pipes.length === 0) {
       addLog('No pipe network data to display', 'error');
       return;
