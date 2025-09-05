@@ -12,6 +12,8 @@ import ComputeModal, { ComputeTask } from './components/ComputeModal';
 import ExportModal from './components/ExportModal';
 import FieldMapModal from './components/FieldMapModal';
 import { loadLandCoverList, loadCnValues, CnRecord } from './utils/landcover';
+import { getDir } from './utils/direction';
+type Dir8 = 'N' | 'NE' | 'E' | 'SE' | 'S' | 'SW' | 'W' | 'NW';
 import { prepareForShapefile } from './utils/shp';
 import proj4 from 'proj4';
 import { STATE_PLANE_OPTIONS } from './utils/projections';
@@ -203,13 +205,7 @@ const App: React.FC = () => {
         });
         return best;
       };
-      const getDir = (a: [number, number], b: [number, number]) => {
-        const dx = b[0] - a[0];
-        const dy = b[1] - a[1];
-        if (Math.abs(dx) > Math.abs(dy)) return dx >= 0 ? 'E' : 'W';
-        return dy >= 0 ? 'N' : 'S';
-      };
-      const invFromCb = (cb: any, dir: 'N' | 'S' | 'E' | 'W') => {
+      const invFromCb = (cb: any, dir: Dir8) => {
         if (!cb) return null;
         const p = cb.properties || {};
         const keyMap: Record<string, string> = {
@@ -217,16 +213,39 @@ const App: React.FC = () => {
           S: 'Invert S [ft]',
           E: 'Invert E [ft]',
           W: 'Invert W [ft]',
+          NE: 'Invert NE [ft]',
+          SE: 'Invert SE [ft]',
+          SW: 'Invert SW [ft]',
+          NW: 'Invert NW [ft]'
         };
         const val = Number(p[keyMap[dir]]);
         if (val && !isNaN(val)) return val;
         const outVal = Number(p['Inv Out [ft]']);
-        return outVal && !isNaN(outVal) ? outVal : null;
+        if (outVal && !isNaN(outVal)) return outVal;
+        const nodeVal = Number(p['Elevation Invert[ft]']);
+        return nodeVal && !isNaN(nodeVal) ? nodeVal : null;
       };
       const invOutFromCb = (cb: any) => {
         if (!cb) return null;
-        const val = Number(cb.properties?.['Inv Out [ft]']);
-        return val && !isNaN(val) ? val : null;
+        const p = cb.properties || {};
+        const val = Number(p['Elevation Invert[ft]']);
+        if (val && !isNaN(val)) return val;
+        const outVal = Number(p['Inv Out [ft]']);
+        if (outVal && !isNaN(outVal)) return outVal;
+        const dirs = [
+          'Invert N [ft]',
+          'Invert S [ft]',
+          'Invert E [ft]',
+          'Invert W [ft]',
+          'Invert NE [ft]',
+          'Invert SE [ft]',
+          'Invert SW [ft]',
+          'Invert NW [ft]',
+        ];
+        const nums = dirs
+          .map((k) => Number(p[k]))
+          .filter((n) => !isNaN(n));
+        return nums.length ? Math.min(...nums) : null;
       };
       geojson = {
         ...geojson,
@@ -325,13 +344,22 @@ const App: React.FC = () => {
           const invS = getInv('inv_s');
           const invE = getInv('inv_e');
           const invW = getInv('inv_w');
+          const invNE = getInv('inv_ne');
+          const invSE = getInv('inv_se');
+          const invSW = getInv('inv_sw');
+          const invNW = getInv('inv_nw');
           let invOut = fieldMap.inv_out && props[fieldMap.inv_out] !== undefined
             ? Number((props as any)[fieldMap.inv_out])
             : null;
+          const invCandidates = [invN, invS, invE, invW, invNE, invSE, invSW, invNW].filter(
+            (v): v is number => v !== null
+          );
           if (invOut === null || isNaN(invOut)) {
-            const invs = [invN, invS, invE, invW].filter((v): v is number => v !== null);
-            invOut = invs.length ? Math.min(...invs) : null;
+            invOut = invCandidates.length ? Math.min(...invCandidates) : null;
           }
+          const nodeInv = invOut !== null && !isNaN(invOut)
+            ? invOut
+            : invCandidates.length ? Math.min(...invCandidates) : null;
           const ground =
             fieldMap.ground && props[fieldMap.ground] !== undefined
               ? Number((props as any)[fieldMap.ground]) || null
@@ -345,7 +373,12 @@ const App: React.FC = () => {
               'Invert S [ft]': invS,
               'Invert E [ft]': invE,
               'Invert W [ft]': invW,
+              'Invert NE [ft]': invNE,
+              'Invert SE [ft]': invSE,
+              'Invert SW [ft]': invSW,
+              'Invert NW [ft]': invNW,
               'Inv Out [ft]': invOut,
+              'Elevation Invert[ft]': nodeInv,
             },
           };
         }),
@@ -1017,7 +1050,8 @@ const App: React.FC = () => {
         const invert = Number(
           getMapped(f.properties, jMap, 'inv_out', [
             'Inv Out [ft]',
-            'Inv Out [ft]:'
+            'Inv Out [ft]:',
+            'Elevation Invert[ft]'
           ]) ?? 0
         );
         const maxDepth = ground - invert;
@@ -1284,7 +1318,9 @@ const App: React.FC = () => {
         );
         const props = f.properties as any;
         const ground = parseFloat(props?.['Elevation Ground [ft]']);
-        const invOut = parseFloat(props?.['Inv Out [ft]']);
+        const invOut = parseFloat(
+          props?.['Inv Out [ft]'] ?? props?.['Elevation Invert[ft]']
+        );
         if (!isFinite(ground) || !isFinite(invOut)) return null;
         return { x, y, ground, invOut, diam: 4 };
       })
