@@ -1351,8 +1351,8 @@ const App: React.FC = () => {
           parseFloat((f.properties as any)?.['Diameter [in]']) / 12;
         if (![invIn, invOut, diam].every(isFinite)) return null;
         return {
-          start: { x: sx, y: sy, z: invIn },
-          end: { x: ex, y: ey, z: invOut },
+          start: { x: sx, y: sy, z: invIn + diam / 2 },
+          end: { x: ex, y: ey, z: invOut + diam / 2 },
           diam,
         };
       })
@@ -1474,7 +1474,12 @@ const App: React.FC = () => {
       data.pipes.forEach((p) => {
         xs.push(p.start.x, p.end.x);
         ys.push(p.start.y, p.end.y);
-        zs.push(p.start.z, p.end.z);
+        zs.push(
+          p.start.z - p.diam / 2,
+          p.start.z + p.diam / 2,
+          p.end.z - p.diam / 2,
+          p.end.z + p.diam / 2
+        );
       });
       let minX = Math.min(...xs),
         maxX = Math.max(...xs);
