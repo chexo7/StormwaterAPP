@@ -13,7 +13,7 @@ const FieldMapModal: React.FC<FieldMapModalProps> = ({ layerName, properties, on
     if (layerName === 'Catch Basins / Manholes') {
       const lowerMap = Object.fromEntries(fields.map(f => [f.toLowerCase(), f]));
       const init: Record<string, string> = {};
-      ['inv_n', 'inv_s', 'inv_e', 'inv_w'].forEach(k => {
+      ['inv_n', 'inv_s', 'inv_e', 'inv_w', 'inv_ne', 'inv_se', 'inv_sw', 'inv_nw'].forEach(k => {
         if (lowerMap[k]) init[k] = lowerMap[k];
       });
       return init;
@@ -38,6 +38,10 @@ const FieldMapModal: React.FC<FieldMapModalProps> = ({ layerName, properties, on
       { key: 'inv_s', label: 'Invert S [ft]' },
       { key: 'inv_e', label: 'Invert E [ft]' },
       { key: 'inv_w', label: 'Invert W [ft]' },
+      { key: 'inv_ne', label: 'Invert NE [ft]' },
+      { key: 'inv_se', label: 'Invert SE [ft]' },
+      { key: 'inv_sw', label: 'Invert SW [ft]' },
+      { key: 'inv_nw', label: 'Invert NW [ft]' },
     ];
   } else {
     required = [
