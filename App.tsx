@@ -1084,14 +1084,46 @@ const App: React.FC = () => {
       return best;
     };
 
-    const lineLength = (coords: number[][]) => {
+    const lineLengthProjected = (pts: [number, number][]) => {
       let len = 0;
-      for (let i = 1; i < coords.length; i++) {
-        const [x1, y1] = project.forward(coords[i - 1] as [number, number]);
-        const [x2, y2] = project.forward(coords[i] as [number, number]);
+      for (let i = 1; i < pts.length; i++) {
+        const [x1, y1] = pts[i - 1];
+        const [x2, y2] = pts[i];
         len += Math.hypot(x2 - x1, y2 - y1);
       }
       return len;
+    };
+
+    const distanceAlongPolyline = (
+      pt: [number, number],
+      line: [number, number][]
+    ): number | null => {
+      const TOL = 1; // feet
+      let accum = 0;
+      for (let i = 1; i < line.length; i++) {
+        const a = line[i - 1];
+        const b = line[i];
+        const dx = b[0] - a[0];
+        const dy = b[1] - a[1];
+        const l2 = dx * dx + dy * dy;
+        if (l2 === 0) continue;
+        let t = ((pt[0] - a[0]) * dx + (pt[1] - a[1]) * dy) / l2;
+        if (t > 1) {
+          accum += Math.sqrt(l2);
+          continue;
+        }
+        if (t < 0) {
+          continue;
+        }
+        const projx = a[0] + t * dx;
+        const projy = a[1] + t * dy;
+        const dist = Math.hypot(pt[0] - projx, pt[1] - projy);
+        if (dist < TOL) {
+          return accum + Math.sqrt(l2) * t;
+        }
+        accum += Math.sqrt(l2);
+      }
+      return null;
     };
 
     if (pLayer && nodes.length) {
@@ -1099,7 +1131,7 @@ const App: React.FC = () => {
       pLayer.geojson.features.forEach((f, i) => {
         if (!f.geometry || f.geometry.type !== 'LineString') return;
         const raw = String(getMapped(f.properties, pMap, 'label', ['Label']) ?? '');
-        const id = sanitizeId(raw, i);
+        const baseId = sanitizeId(raw, i);
         const coords = f.geometry.coordinates as number[][];
         const dirStr = String(
           getMapped(f.properties, pMap, 'direction', ['Directions']) ?? ''
@@ -1119,26 +1151,39 @@ const App: React.FC = () => {
           from = findNearestNode(start);
           to = findNearestNode(end);
         }
-        const len = lineLength(coords);
+        const projCoords = coords.map((c) => project.forward(c as [number, number]));
+        const totalLen = lineLengthProjected(projCoords);
+        const internal = nodes
+          .filter((n) => n.id !== from?.id && n.id !== to?.id)
+          .map((n) => ({ n, d: distanceAlongPolyline(n.coord, projCoords) }))
+          .filter((v) => v.d !== null && v.d > 0 && v.d < totalLen)
+          .sort((a, b) => (a.d as number) - (b.d as number));
+        const seq = [
+          { n: from!, d: 0 },
+          ...internal.map((v) => ({ n: v.n, d: v.d as number })),
+          { n: to!, d: totalLen },
+        ];
         const rough = Number(
           getMapped(f.properties, pMap, 'roughness', ['Rougness', 'Roughness']) ?? 0
         );
         const diamIn = Number(
           getMapped(f.properties, pMap, 'diameter', ['Diameter [in]']) ?? 0
         );
-        const invIn = Number(
-          getMapped(f.properties, pMap, 'inv_in', ['Elevation Invert In [ft]']) ?? 0
-        );
-        const invOut = Number(
-          getMapped(f.properties, pMap, 'inv_out', ['Elevation Invert Out [ft]']) ?? 0
-        );
         const diamFt = diamIn / 12;
-        const inOffset = from ? invIn - from.invert : 0;
-        const outOffset = to ? invOut - to.invert : 0;
-        conduitLines.push(
-          `${id}\t${from?.id ?? ''}\t${to?.id ?? ''}\t${len.toFixed(3)}\t${rough}\t${inOffset.toFixed(3)}\t${outOffset.toFixed(3)}\t0\t0`
-        );
-        xsectionLines.push(`${id}\tCIRCULAR\t${diamFt}\t0\t0\t0\t1`);
+        seq.forEach((seg, idx) => {
+          if (idx >= seq.length - 1) return;
+          const next = seq[idx + 1];
+          const len = next.d - seg.d;
+          const segId = seq.length > 2 ? `${baseId}_${idx + 1}` : baseId;
+          const invIn = seg.n.invert;
+          const invOut = next.n.invert;
+          const inOffset = 0;
+          const outOffset = 0;
+          conduitLines.push(
+            `${segId}\t${seg.n.id}\t${next.n.id}\t${len.toFixed(3)}\t${rough}\t${inOffset.toFixed(3)}\t${outOffset.toFixed(3)}\t0\t0`
+          );
+          xsectionLines.push(`${segId}\tCIRCULAR\t${diamFt}\t0\t0\t0\t1`);
+        });
       });
     }
 
