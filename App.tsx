@@ -19,6 +19,7 @@ import proj4 from 'proj4';
 import { STATE_PLANE_OPTIONS } from './utils/projections';
 import type { ProjectionOption } from './types';
 import { reprojectFeatureCollection } from './utils/reproject';
+import { nearestPointOnLine } from '@turf/turf';
 
 const DEFAULT_COLORS: Record<string, string> = {
   'Drainage Areas': '#67e8f9',
@@ -247,9 +248,65 @@ const App: React.FC = () => {
           .filter((n) => !isNaN(n));
         return nums.length ? Math.min(...nums) : null;
       };
+      let pipeFeatures = geojson.features;
+      if (cbFeatures.length) {
+        const tol = 1e-6;
+        const splitFeatures: any[] = [];
+        pipeFeatures.forEach(f => {
+          if (f.geometry && f.geometry.type === 'LineString') {
+            const coords = [...(f.geometry.coordinates as number[][])];
+            const splits = cbFeatures
+              .map(cb => {
+                const snapped: any = nearestPointOnLine(f as any, cb as any);
+                const pt = snapped.geometry.coordinates as [number, number];
+                const first = coords[0];
+                const last = coords[coords.length - 1];
+                if (
+                  snapped.properties.dist <= tol &&
+                  !(pt[0] === first[0] && pt[1] === first[1]) &&
+                  !(pt[0] === last[0] && pt[1] === last[1])
+                ) {
+                  return {
+                    coord: pt,
+                    location: snapped.properties.location,
+                    index: snapped.properties.index,
+                  };
+                }
+                return null;
+              })
+              .filter((s): s is { coord: [number, number]; location: number; index: number } => s !== null)
+              .sort((a, b) => a.location - b.location);
+            if (splits.length) {
+              const splitIdxs: number[] = [];
+              splits.forEach((s, j) => {
+                const insertIdx = s.index + 1 + j;
+                coords.splice(insertIdx, 0, s.coord);
+                splitIdxs.push(insertIdx);
+              });
+              let prev = 0;
+              splitIdxs.forEach(idx => {
+                const seg = coords.slice(prev, idx + 1);
+                if (seg.length >= 2) {
+                  splitFeatures.push({ ...f, geometry: { type: 'LineString', coordinates: seg } });
+                }
+                prev = idx;
+              });
+              const lastSeg = coords.slice(prev);
+              if (lastSeg.length >= 2) {
+                splitFeatures.push({ ...f, geometry: { type: 'LineString', coordinates: lastSeg } });
+              }
+            } else {
+              splitFeatures.push(f);
+            }
+          } else {
+            splitFeatures.push(f);
+          }
+        });
+        pipeFeatures = splitFeatures;
+      }
       geojson = {
         ...geojson,
-        features: geojson.features.map((f, i) => {
+        features: pipeFeatures.map((f, i) => {
           const props = f.properties || {};
           const lblSrc = fieldMap.label && props[fieldMap.label] != null ? props[fieldMap.label] : null;
           const label = lblSrc && String(lblSrc).trim() !== '' ? String(lblSrc) : `Pipe-${i + 1}`;
