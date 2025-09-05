@@ -859,12 +859,53 @@ const App: React.FC = () => {
 
     const project = proj4('EPSG:4326', projection.proj4);
 
+    const MAX_ID = 31;
+
     const sanitizeId = (s: string, i: number) =>
       (s || `S${i + 1}`)
         .trim()
         .replace(/[^\w\-]/g, '_')
         .replace(/_+/g, '_')
-        .slice(0, 31);
+        .slice(0, MAX_ID);
+
+    const trimToMax = (id: string) =>
+      id.length <= MAX_ID ? id : id.slice(0, MAX_ID);
+
+    const makeUniqueId = (baseRaw: string, used: Set<string>) => {
+      let base = trimToMax(baseRaw);
+      let id = base;
+      let k = 1;
+      while (used.has(trimToMax(id))) {
+        const suffix = `_${++k}`;
+        id = base;
+        const room = MAX_ID - suffix.length;
+        if (room < 1) {
+          id = suffix.slice(-MAX_ID);
+        } else {
+          id = base.slice(0, room) + suffix;
+        }
+      }
+      id = trimToMax(id);
+      used.add(id);
+      return id;
+    };
+
+    const assertUniqueStrict = (name: string, ids: string[]) => {
+      const seen = new Set<string>();
+      const dups: string[] = [];
+      for (const id of ids) {
+        const trimmed = id.slice(0, MAX_ID);
+        if (seen.has(trimmed)) dups.push(trimmed);
+        else seen.add(trimmed);
+      }
+      if (dups.length) {
+        throw new Error(
+          `[${name}] IDs duplicados considerando límite 31 chars: ${[
+            ...new Set(dups),
+          ].join(', ')}`
+        );
+      }
+    };
 
     const isFinitePair = (p: number[]) =>
       Number.isFinite(p[0]) && Number.isFinite(p[1]);
@@ -903,6 +944,8 @@ const App: React.FC = () => {
     const conduitLines: string[] = [];
     const xsectionLines: string[] = [];
     const coordLines: string[] = [];
+    const usedNodeIds = new Set<string>();
+    const usedLinkIds = new Set<string>();
     if (daLayer) {
       const grouped = new Map<
         string,
@@ -1082,27 +1125,32 @@ const App: React.FC = () => {
       const jMap = jLayer.fieldMap;
       jLayer.geojson.features.forEach((f, i) => {
         if (!f.geometry || f.geometry.type !== 'Point') return;
-        const raw = String(
+        const rawLabel = String(
           getMapped(f.properties, jMap, 'label', ['Label']) ?? ''
-        );
-        const id = sanitizeId(raw, i);
-        const ground = Number(
-          getMapped(f.properties, jMap, 'ground', [
-            'Elevation Ground [ft]',
-            'Elevation Ground [ft]:'
-          ]) ?? 0
-        );
-        const invert = Number(
-          getMapped(f.properties, jMap, 'inv_out', [
-            'Inv Out [ft]',
-            'Inv Out [ft]:',
-            'Elevation Invert[ft]'
-          ]) ?? 0
-        );
+        ).trim();
+        const id = sanitizeId(rawLabel, i);
+        const gRaw = getMapped(f.properties, jMap, 'ground', [
+          'Elevation Ground [ft]',
+          'Elevation Ground [ft]:'
+        ]);
+        const iRaw = getMapped(f.properties, jMap, 'inv_out', [
+          'Inv Out [ft]',
+          'Inv Out [ft]:',
+          'Elevation Invert[ft]'
+        ]);
+        const ground = Number(gRaw);
+        const invert = Number(iRaw);
+        if (!Number.isFinite(ground) || !Number.isFinite(invert)) {
+          addLog(
+            `[SWMM] Node "${rawLabel || id}": missing Ground/Invert → skipped`,
+            'error'
+          );
+          return;
+        }
         const coord = project.forward(
           (f.geometry as any).coordinates as [number, number]
         );
-        const isOutfall = raw.toUpperCase().startsWith('OF');
+        const isOutfall = rawLabel.toUpperCase().startsWith('OF');
         rawNodes.push({
           origId: id,
           id,
@@ -1113,7 +1161,7 @@ const App: React.FC = () => {
         });
       });
 
-      const feetTol = 0.3;
+      const feetTol = projection.units === 'feet' ? 0.3 : 0.09144;
       const byId = new Map<string, NodeRec[]>();
       for (const n of rawNodes) {
         const arr = byId.get(n.origId);
@@ -1136,30 +1184,11 @@ const App: React.FC = () => {
             if (n.ground > same.ground) same.ground = n.ground;
             continue;
           }
-          let uniqueId = n.id;
-          let k = 1;
-          while (
-            finalNodes.some((x) => x.id === uniqueId) ||
-            chosen.some((x) => x.id === uniqueId)
-          ) {
-            uniqueId = `${n.id}_${++k}`;
-          }
+          const uniqueId = makeUniqueId(n.id, usedNodeIds);
           chosen.push({ ...n, id: uniqueId });
         }
         finalNodes.push(...chosen);
       }
-
-      const assertUnique = (name: string, ids: string[]) => {
-        const seen = new Set<string>();
-        const dups = new Set<string>();
-        for (const id of ids) {
-          if (seen.has(id)) dups.add(id);
-          else seen.add(id);
-        }
-        if (dups.size) {
-          throw new Error(`[${name}] IDs duplicados: ${[...dups].join(', ')}`);
-        }
-      };
 
       for (const n of finalNodes) {
         const maxDepth = Math.max(0, n.ground - n.invert);
@@ -1173,7 +1202,7 @@ const App: React.FC = () => {
         coordLines.push(`${n.id}\t${n.coord[0]}\t${n.coord[1]}`);
       }
 
-      assertUnique('JUNCTIONS/OUTFALLS', finalNodes.map((n) => n.id));
+      assertUniqueStrict('JUNCTIONS/OUTFALLS', finalNodes.map((n) => n.id));
       nodes = finalNodes;
     }
 
@@ -1234,14 +1263,17 @@ const App: React.FC = () => {
         }
         if (!from || !to) {
           const start = project.forward(coords[0] as [number, number]);
-          const end = project.forward(coords[coords.length - 1] as [number, number]);
+          const end = project.forward(
+            coords[coords.length - 1] as [number, number]
+          );
           from = findNearestNode(start);
           to = findNearestNode(end);
         }
         const len = lineLength(coords);
-        const rough = Number(
-          getMapped(f.properties, pMap, 'roughness', ['Rougness', 'Roughness']) ?? 0
-        );
+        const rough =
+          Number(
+            getMapped(f.properties, pMap, 'roughness', ['Rougness', 'Roughness'])
+          ) || 0.013;
         const diamIn = Number(
           getMapped(f.properties, pMap, 'diameter', ['Diameter [in]']) ?? 0
         );
@@ -1252,15 +1284,23 @@ const App: React.FC = () => {
           getMapped(f.properties, pMap, 'inv_out', ['Elevation Invert Out [ft]'])
         );
         const diamFt = diamIn / 12;
+        if (!Number.isFinite(invIn))
+          addLog(`[SWMM] Pipe ${id}: missing Invert In → offset in=0`, 'error');
+        if (!Number.isFinite(invOut))
+          addLog(`[SWMM] Pipe ${id}: missing Invert Out → offset out=0`, 'error');
         const inOffset =
           from && Number.isFinite(invIn) ? invIn - from.invert : 0;
         const outOffset =
           to && Number.isFinite(invOut) ? invOut - to.invert : 0;
+        const uniqueLinkId = makeUniqueId(id, usedLinkIds);
         conduitLines.push(
-          `${id}\t${from?.id ?? ''}\t${to?.id ?? ''}\t${len.toFixed(3)}\t${rough}\t${inOffset.toFixed(3)}\t${outOffset.toFixed(3)}\t0\t0`
+          `${uniqueLinkId}\t${from?.id ?? ''}\t${to?.id ?? ''}\t${len.toFixed(3)}\t${rough}\t${inOffset.toFixed(3)}\t${outOffset.toFixed(3)}\t0\t0`
         );
-        xsectionLines.push(`${id}\tCIRCULAR\t${diamFt}\t0\t0\t0\t1`);
+        xsectionLines.push(
+          `${uniqueLinkId}\tCIRCULAR\t${diamFt}\t0\t0\t0\t1`
+        );
       });
+      assertUniqueStrict('CONDUITS', conduitLines.map(l => l.split(/\s+/)[0]));
     }
 
     const replaceSection = (content: string, section: string, lines: string) => {
