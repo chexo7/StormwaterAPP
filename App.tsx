@@ -19,6 +19,7 @@ import proj4 from 'proj4';
 import { STATE_PLANE_OPTIONS } from './utils/projections';
 import type { ProjectionOption } from './types';
 import { reprojectFeatureCollection } from './utils/reproject';
+import { nearestPointOnLine } from '@turf/turf';
 
 const DEFAULT_COLORS: Record<string, string> = {
   'Drainage Areas': '#67e8f9',
@@ -190,6 +191,54 @@ const App: React.FC = () => {
         cbLayer?.geojson.features.filter(
           f => f.geometry && f.geometry.type === 'Point'
         ) || [];
+      if (cbFeatures.length) {
+        const splitFeatures: any[] = [];
+        geojson.features.forEach((f) => {
+          if (!f.geometry || f.geometry.type !== 'LineString') {
+            splitFeatures.push(f);
+            return;
+          }
+          const coords = (f.geometry as any).coordinates as number[][];
+          const splitPts = cbFeatures
+            .map((cb) => {
+              const np = nearestPointOnLine(f as any, cb as any);
+              const dist = np.properties?.dist ?? Infinity;
+              const pt = np.geometry.coordinates as [number, number];
+              const isEndpoint =
+                (pt[0] === coords[0][0] && pt[1] === coords[0][1]) ||
+                (pt[0] === coords[coords.length - 1][0] &&
+                  pt[1] === coords[coords.length - 1][1]);
+              if (dist > 1e-6 || isEndpoint) return null;
+              return {
+                index: np.properties?.index as number,
+                t: np.properties?.t as number,
+                coord: pt,
+              };
+            })
+            .filter((s): s is { index: number; t: number; coord: [number, number] } => s !== null)
+            .sort((a, b) => a.index + a.t - (b.index + b.t));
+          if (splitPts.length === 0) {
+            splitFeatures.push(f);
+            return;
+          }
+          let startIndex = 0;
+          let current: number[][] = [coords[0]];
+          splitPts.forEach((sp) => {
+            for (let i = startIndex + 1; i <= sp.index; i++) {
+              current.push(coords[i]);
+            }
+            current[current.length - 1] = sp.coord;
+            splitFeatures.push({ ...f, geometry: { type: 'LineString', coordinates: current } });
+            current = [sp.coord];
+            startIndex = sp.index;
+          });
+          for (let i = startIndex + 1; i < coords.length; i++) {
+            current.push(coords[i]);
+          }
+          splitFeatures.push({ ...f, geometry: { type: 'LineString', coordinates: current } });
+        });
+        geojson = { ...geojson, features: splitFeatures } as FeatureCollection;
+      }
       const nearestCb = (pt: [number, number]) => {
         let best: any = null;
         let bestDist = Infinity;
