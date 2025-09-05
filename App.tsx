@@ -1038,18 +1038,15 @@ const App: React.FC = () => {
       validIds.has(l.split(/\s+/)[0])
     );
 
-    const getProp = (props: any, candidates: string[]) => {
+    const getPropStrict = (props: any, candidates: string[]) => {
       if (!props) return undefined;
       const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
-      const keys = Object.keys(props);
+      const map = new Map<string, string>(
+        Object.keys(props).map((k) => [norm(k), k])
+      );
       for (const cand of candidates) {
-        const target = norm(cand);
-        for (const key of keys) {
-          const nk = norm(key);
-          if (nk === target || nk.includes(target) || target.includes(nk)) {
-            return (props as any)[key];
-          }
-        }
+        const hit = map.get(norm(cand));
+        if (hit !== undefined) return (props as any)[hit];
       }
       return undefined;
     };
@@ -1060,19 +1057,28 @@ const App: React.FC = () => {
       key: string,
       candidates: string[]
     ) => {
-      if (map && map[key] && props && (props as any)[map[key]] !== undefined) {
+      if (map && map[key] && props?.[map[key]] !== undefined) {
         return (props as any)[map[key]];
       }
-      return getProp(props, candidates);
+      return getPropStrict(props, candidates);
     };
 
     const jLayer = layers.find((l) => l.name === 'Catch Basins / Manholes');
     const pLayer = layers.find((l) => l.name === 'Pipes');
 
-    const nodes: { id: string; coord: [number, number]; invert: number }[] = [];
+    type NodeRec = {
+      origId: string;
+      id: string;
+      coord: [number, number];
+      invert: number;
+      ground: number;
+      isOutfall: boolean;
+    };
+    let nodes: NodeRec[] = [];
 
     if (jLayer) {
       const jMap = jLayer.fieldMap;
+      const rawNodes: NodeRec[] = [];
       jLayer.geojson.features.forEach((f, i) => {
         if (!f.geometry || f.geometry.type !== 'Point') return;
         const raw = String(getMapped(f.properties, jMap, 'label', ['Label']) ?? '');
@@ -1090,19 +1096,75 @@ const App: React.FC = () => {
             'Elevation Invert[ft]'
           ]) ?? 0
         );
-        const maxDepth = ground - invert;
         const coord = project.forward(
           (f.geometry as any).coordinates as [number, number]
         );
         const isOutfall = raw.toUpperCase().startsWith('OF');
-        if (isOutfall) {
-          outfallLines.push(`${id}\t${invert}\tFREE`);
-        } else {
-          junctionLines.push(`${id}\t${invert}\t${maxDepth}\t0\t0\t0`);
-        }
-        coordLines.push(`${id}\t${coord[0]}\t${coord[1]}`);
-        nodes.push({ id, coord, invert });
+        rawNodes.push({
+          origId: id,
+          id,
+          coord,
+          invert,
+          ground,
+          isOutfall,
+        });
       });
+
+      const feetTol = 0.3;
+      const byId = new Map<string, NodeRec[]>();
+      for (const n of rawNodes) {
+        byId.set(n.origId, [...(byId.get(n.origId) || []), n]);
+      }
+      const finalNodes: NodeRec[] = [];
+      for (const [, group] of byId) {
+        const chosen: NodeRec[] = [];
+        for (const n of group) {
+          const same = chosen.find(
+            (m) => Math.hypot(m.coord[0] - n.coord[0], m.coord[1] - n.coord[1]) <= feetTol
+          );
+          if (same) {
+            if (n.invert > 0 && (same.invert === 0 || n.invert < same.invert))
+              same.invert = n.invert;
+            if (n.ground > same.ground) same.ground = n.ground;
+            if (n.isOutfall) same.isOutfall = true;
+            continue;
+          }
+          let uniqueId = n.id;
+          let k = 1;
+          while (
+            finalNodes.some((x) => x.id === uniqueId) ||
+            chosen.some((x) => x.id === uniqueId)
+          ) {
+            uniqueId = `${n.id}_${++k}`;
+          }
+          chosen.push({ ...n, id: uniqueId });
+        }
+        finalNodes.push(...chosen);
+      }
+
+      const assertUnique = (name: string, ids: string[]) => {
+        const seen = new Set<string>();
+        const dups = new Set<string>();
+        ids.forEach((id) => {
+          if (seen.has(id)) dups.add(id);
+          else seen.add(id);
+        });
+        if (dups.size) throw new Error(`[${name}] IDs duplicados: ${Array.from(dups).join(', ')}`);
+      };
+
+      assertUnique('JUNCTIONS/OUTFALLS', finalNodes.map((n) => n.id));
+
+      finalNodes.forEach((n) => {
+        const maxDepth = Math.max(0, n.ground - n.invert);
+        if (n.isOutfall) {
+          outfallLines.push(`${n.id}\t${n.invert}\tFREE`);
+        } else {
+          junctionLines.push(`${n.id}\t${n.invert}\t${maxDepth}\t0\t0\t0`);
+        }
+        coordLines.push(`${n.id}\t${n.coord[0]}\t${n.coord[1]}`);
+      });
+
+      nodes = finalNodes;
     }
 
     const findNearestNode = (pt: [number, number]) => {
