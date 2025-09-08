@@ -19,6 +19,7 @@ import proj4 from 'proj4';
 import { STATE_PLANE_OPTIONS } from './utils/projections';
 import type { ProjectionOption } from './types';
 import { reprojectFeatureCollection } from './utils/reproject';
+import { buildPipeNetwork } from './utils/pipe-network';
 
 const DEFAULT_COLORS: Record<string, string> = {
   'Drainage Areas': '#67e8f9',
@@ -1374,12 +1375,24 @@ const App: React.FC = () => {
     }, [addLog, layers, projectName, projectVersion, projection]);
 
   const handleExportShapefiles = useCallback(async () => {
-    const processedLayers = layers.filter(
-      l =>
-        l.category === 'Process' ||
-        l.name === 'Pipes' ||
-        l.name === 'Catch Basins / Manholes'
-    );
+    const processedLayers: { name: string; geojson: FeatureCollection }[] = layers
+      .filter(
+        l =>
+          l.category === 'Process' ||
+          l.name === 'Pipes' ||
+          l.name === 'Catch Basins / Manholes'
+      )
+      .map(l => ({ name: l.name, geojson: l.geojson }));
+
+    const jLayer = layers.find(l => l.name === 'Catch Basins / Manholes');
+    const pLayer = layers.find(l => l.name === 'Pipes');
+    if (jLayer && pLayer) {
+      const network = buildPipeNetwork(jLayer, pLayer, projection.proj4);
+      if (network.features.length) {
+        processedLayers.push({ name: 'Pipe Network', geojson: network });
+      }
+    }
+
     if (processedLayers.length === 0) {
       addLog('No processed layers to export', 'error');
       return;
