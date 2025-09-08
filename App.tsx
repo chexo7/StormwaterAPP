@@ -14,12 +14,7 @@ import FieldMapModal from './components/FieldMapModal';
 import { loadLandCoverList, loadCnValues, CnRecord } from './utils/landcover';
 import { getDir } from './utils/direction';
 type Dir8 = 'N' | 'NE' | 'E' | 'SE' | 'S' | 'SW' | 'W' | 'NW';
-import { prepareForShapefile } from './utils/shp';
 import proj4 from 'proj4';
-import { STATE_PLANE_OPTIONS } from './utils/projections';
-import type { ProjectionOption } from './types';
-import { reprojectFeatureCollection } from './utils/reproject';
-import { resolvePrj } from './utils/prj';
 
 const DEFAULT_COLORS: Record<string, string> = {
   'Drainage Areas': '#67e8f9',
@@ -65,8 +60,6 @@ const App: React.FC = () => {
   const [projectName, setProjectName] = useState<string>('');
   const [projectVersion, setProjectVersion] = useState<string>('V1');
   const [exportModalOpen, setExportModalOpen] = useState<boolean>(false);
-  const [projection, setProjection] = useState<ProjectionOption>(STATE_PLANE_OPTIONS[0]);
-  const [projectionConfirmed, setProjectionConfirmed] = useState<boolean>(false);
 
   const requiredLayers = [
     'Drainage Areas',
@@ -95,9 +88,8 @@ const App: React.FC = () => {
     pipesLayer.geojson.features.length > 0;
 
   const exportHydroCADEnabled = computeSucceeded;
-  const exportShapefilesEnabled =
-    (computeSucceeded || pipe3DEnabled) && projectionConfirmed;
-  const exportSWMMEnabled = (computeSucceeded || pipe3DEnabled) && projectionConfirmed;
+  const exportSWMMEnabled = computeSucceeded || pipe3DEnabled;
+  const exportGpkgEnabled = computeSucceeded || pipe3DEnabled;
   const exportEnabled = computeSucceeded || pipe3DEnabled;
 
   const splitPipesAtNodes = (
@@ -842,7 +834,7 @@ const App: React.FC = () => {
       addLog('HydroCAD file exported');
       setExportModalOpen(false);
     });
-  }, [addLog, layers, projectName, projectVersion, projection]);
+  }, [addLog, layers, projectName, projectVersion]);
 
   const handleExportSWMM = useCallback(async () => {
     const daLayer = layers.find(l => l.name === 'Drainage Areas');
@@ -859,7 +851,7 @@ const App: React.FC = () => {
       kinks,
     } = await import('@turf/turf');
 
-    const project = proj4('EPSG:4326', projection.proj4);
+    const project = proj4('EPSG:4326', 'EPSG:4326');
 
     const sanitizeId = (s: string, i: number) =>
       (s || `S${i + 1}`)
@@ -1354,9 +1346,7 @@ const App: React.FC = () => {
       const dy = (maxY - minY) * 0.01;
       const mapBlock = `[MAP]\nDIMENSIONS       ${minX - dx} ${minY - dy}  ${
         maxX + dx
-      } ${maxY + dy}\nUNITS            ${
-        projection.units === 'feet' ? 'Feet' : 'Meters'
-      }\n`;
+      } ${maxY + dy}\nUNITS            Meters\n`;
       content = content.replace(
         /\[MAP\][\s\S]*?(?=\r?\n\[|$)/,
         mapBlock
@@ -1373,282 +1363,31 @@ const App: React.FC = () => {
     URL.revokeObjectURL(url);
     addLog('SWMM file exported');
     setExportModalOpen(false);
-    }, [addLog, layers, projectName, projectVersion, projection]);
+    }, [addLog, layers, projectName, projectVersion]);
 
-  const handleExportShapefiles = useCallback(async () => {
-    const processedLayers = layers.filter(
-      l =>
-        l.category === 'Process' ||
-        l.name === 'Catch Basins / Manholes'
-    );
-
-    const jLayer = layers.find((l) => l.name === 'Catch Basins / Manholes');
-    const pLayer = layers.find((l) => l.name === 'Pipes');
-
-    if (jLayer && pLayer) {
-      const project = proj4('EPSG:4326', projection.proj4);
-
-      const getPropStrict = (props: any, candidates: string[]) => {
-        if (!props) return undefined;
-        const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
-        const map = new Map(Object.keys(props).map((k) => [norm(k), k]));
-        for (const cand of candidates) {
-          const hit = map.get(norm(cand));
-          if (hit !== undefined) return (props as any)[hit];
-        }
-        return undefined;
-      };
-
-      const getMapped = (
-        props: any,
-        map: Record<string, string> | undefined,
-        key: string,
-        candidates: string[]
-      ) => {
-        if (map && map[key] && props?.[map[key]] !== undefined) {
-          return (props as any)[map[key]];
-        }
-        return getPropStrict(props, candidates);
-      };
-
-      const sanitizeId = (s: string, i: number) =>
-        (s || `S${i + 1}`)
-          .trim()
-          .replace(/[^\w\-]/g, '_')
-          .replace(/_+/g, '_')
-          .slice(0, 31);
-
-      type NodeRec = { id: string; coord: [number, number]; invert: number };
-      const jMap = jLayer.fieldMap;
-      const nodeFeatures = jLayer.geojson.features.filter(
-        (f) => f.geometry && f.geometry.type === 'Point'
-      ) as Feature<Point>[];
-      const nodes: NodeRec[] = [];
-      const goodNodeFeatures: Feature<Point>[] = [];
-      nodeFeatures.forEach((f, i) => {
-        const props = f.properties;
-        const id = sanitizeId(
-          String(getMapped(props, jMap, 'label', ['Label']) ?? ''),
-          i
-        );
-        const invert = Number(
-          getMapped(props, jMap, 'inv_out', [
-            'Inv Out [ft]',
-            'Inv Out [ft]:',
-            'Elevation Invert[ft]'
-          ])
-        );
-        const ground = Number(
-          getMapped(props, jMap, 'ground', ['Elevation Ground [ft]'])
-        );
-        if (!Number.isFinite(invert) || !Number.isFinite(ground)) return;
-        const coord = project.forward(
-          (f.geometry as any).coordinates as [number, number]
-        );
-        nodes.push({ id, coord, invert });
-        goodNodeFeatures.push(f);
-      });
-
-      const cbIdx = processedLayers.findIndex(
-        (l) => l.name === 'Catch Basins / Manholes'
-      );
-      if (cbIdx >= 0) {
-        processedLayers[cbIdx] = {
-          ...processedLayers[cbIdx],
-          geojson: {
-            type: 'FeatureCollection',
-            features: goodNodeFeatures,
-          },
-        };
-      }
-
-      const findNearestNode = (pt: [number, number]) => {
-        let best: NodeRec | undefined;
-        let bestDist = Infinity;
-        for (const n of nodes) {
-          const dx = pt[0] - n.coord[0];
-          const dy = pt[1] - n.coord[1];
-          const d = Math.hypot(dx, dy);
-          if (d < bestDist) {
-            bestDist = d;
-            best = n;
-          }
-        }
-        return best;
-      };
-
-      const lineLength = (coords: number[][]) => {
-        let len = 0;
-        for (let i = 1; i < coords.length; i++) {
-          const [x1, y1] = project.forward(coords[i - 1] as [number, number]);
-          const [x2, y2] = project.forward(coords[i] as [number, number]);
-          len += Math.hypot(x2 - x1, y2 - y1);
-        }
-        return len;
-      };
-
-      const rawPipeFeatures: Feature<LineString>[] = [];
-      pLayer.geojson.features.forEach((f) => {
-        if (!f.geometry) return;
-        if (f.geometry.type === 'LineString') {
-          rawPipeFeatures.push(f as Feature<LineString>);
-        } else if (f.geometry.type === 'MultiLineString') {
-          (f.geometry.coordinates as number[][][]).forEach((coords) => {
-            rawPipeFeatures.push({
-              type: 'Feature',
-              geometry: { type: 'LineString', coordinates: coords },
-              properties: f.properties || {},
-            });
-          });
-        }
-      });
-      const pipeFeatures = splitPipesAtNodes(rawPipeFeatures, nodeFeatures);
-      const pMap = pLayer.fieldMap;
-      const pipeOut: Feature<LineString>[] = [];
-      pipeFeatures.forEach((f, i) => {
-        const seg = (f.properties as any)?._segment;
-        let raw = String(
-          getMapped(f.properties, pMap, 'label', ['Label']) ?? ''
-        );
-        if (seg) raw = `${raw}-${seg}`;
-        const id = sanitizeId(raw, i);
-        const coords = (f.geometry as LineString).coordinates;
-        const diamIn = Number(
-          getMapped(f.properties, pMap, 'diameter', ['Diameter [in]'])
-        );
-        const invIn = Number(
-          getMapped(f.properties, pMap, 'inv_in', ['Elevation Invert In [ft]'])
-        );
-        const invOut = Number(
-          getMapped(f.properties, pMap, 'inv_out', ['Elevation Invert Out [ft]'])
-        );
-        if (![diamIn, invIn, invOut].every(Number.isFinite)) return;
-
-        let dirStr = String(
-          getMapped(f.properties, pMap, 'direction', ['Directions']) ?? ''
-        );
-        if (seg) dirStr = '';
-        let from: NodeRec | undefined;
-        let to: NodeRec | undefined;
-        if (dirStr.includes(' to ')) {
-          const [a, b] = dirStr.split(/\s+to\s+/);
-          const fromId = sanitizeId(a, 0);
-          const toId = sanitizeId(b, 0);
-          from = nodes.find((n) => n.id === fromId);
-          to = nodes.find((n) => n.id === toId);
-        }
-        if (!from || !to) {
-          const start = project.forward(coords[0] as [number, number]);
-          const end = project.forward(
-            coords[coords.length - 1] as [number, number]
-          );
-          from = findNearestNode(start);
-          to = findNearestNode(end);
-        }
-        if (!from || !to) return;
-
-        const len = lineLength(coords);
-        const rough = Number(
-          getMapped(f.properties, pMap, 'roughness', ['Rougness', 'Roughness']) ??
-            0
-        );
-        const slope = len > 0 ? (invIn - invOut) / len : 0;
-        const inOffset = invIn - from.invert;
-        const outOffset = invOut - to.invert;
-        pipeOut.push({
-          type: 'Feature',
-          geometry: f.geometry,
-          properties: {
-            ID: id,
-            FROM_ID: from.id,
-            TO_ID: to.id,
-            LEN_FT: Number(len.toFixed(3)),
-            DIAM_IN: Number(diamIn.toFixed(3)),
-            INV_IN: Number(invIn.toFixed(3)),
-            INV_OUT: Number(invOut.toFixed(3)),
-            ROUGH: rough,
-            SLOPE: Number(slope.toFixed(6)),
-            IN_OFF: Number(inOffset.toFixed(3)),
-            OUT_OFF: Number(outOffset.toFixed(3)),
-          },
-        });
-      });
-      if (pipeOut.length > 0) {
-        processedLayers.push({
-          id: `${Date.now()}-PipeNetwork`,
-          name: 'Pipe Network',
-          geojson: {
-            type: 'FeatureCollection',
-            features: pipeOut,
-          } as FeatureCollection,
-          editable: false,
-          visible: false,
-          fillColor: getDefaultColor('Overlay'),
-          fillOpacity: DEFAULT_OPACITY,
-          category: 'Process',
-        });
-      }
+  const handleExportGpkg = useCallback(async () => {
+    try {
+      const res = await fetch('/api/export/gpkg');
+      if (!res.ok) throw new Error('Failed to export GeoPackage');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'network.gpkg';
+      a.click();
+      URL.revokeObjectURL(url);
+      addLog('Network GeoPackage exported');
+      setExportModalOpen(false);
+    } catch (err) {
+      addLog('Failed to export GeoPackage', 'error');
     }
-
-    if (processedLayers.length === 0) {
-      addLog('No processed layers to export', 'error');
-      return;
-    }
-    const JSZip = (await import('jszip')).default;
-    const shpwrite = (await import('@mapbox/shp-write')).default as any;
-    const zip = new JSZip();
-
-    const prj = await resolvePrj(projection.epsg);
-    if (!prj) {
-      const proceed = window.confirm(
-        `No se pudo resolver el archivo .prj para EPSG:${projection.epsg}. ` +
-          'El shapefile se etiquetar\u00e1 como WGS84. \u00bfDeseas continuar?'
-      );
-      if (!proceed) {
-        addLog('Export canceled: missing projection definition', 'error');
-        return;
-      }
-    }
-
-    for (const layer of processedLayers) {
-      const prepared = prepareForShapefile(layer.geojson, layer.name);
-      const projected = reprojectFeatureCollection(prepared, projection.proj4);
-      addLog(`Exporting "${layer.name}": ${projected.features.length} features`);
-      const layerZipBuffer = await shpwrite.zip(projected, { outputType: 'arraybuffer', prj });
-      const layerZip = await JSZip.loadAsync(layerZipBuffer);
-      const folderName = layer.name.replace(/[^a-z0-9_\-]/gi, '_');
-      const folder = zip.folder(folderName);
-      if (!folder) continue;
-      await Promise.all(
-        Object.keys(layerZip.files).map(async filename => {
-          const content = await layerZip.files[filename].async('arraybuffer');
-          folder.file(filename, content);
-        })
-      );
-      const dbf = Object.keys(layerZip.files).find(f => f.toLowerCase().endsWith('.dbf'));
-      if (dbf) {
-      const base = dbf.replace(/\.dbf$/i, '');
-      folder.file(`${base}.cpg`, 'UTF-8');
-      }
-    }
-
-    const blob = await zip.generateAsync({ type: 'blob' });
-    const filename = `${(projectName || 'project')}_${projectVersion}_shapefiles.zip`;
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
-    addLog('Processed shapefiles exported');
-    setExportModalOpen(false);
-  }, [addLog, layers, projectName, projectVersion, projection]);
+  }, [addLog]);
 
   const handleView3D = useCallback(() => {
     const jLayer = layers.find((l) => l.name === 'Catch Basins / Manholes');
     const pLayer = layers.find((l) => l.name === 'Pipes');
     if (!jLayer || !pLayer) return;
-    const projectFn = proj4('EPSG:4326', projection.proj4);
+    const projectFn = proj4('EPSG:4326', 'EPSG:4326');
     const nodeFeatures = jLayer.geojson.features.filter(
       (f) => f.geometry && f.geometry.type === 'Point'
     ) as Feature<Point>[];
@@ -1959,7 +1698,7 @@ const App: React.FC = () => {
     })().catch((err) => console.error(err));
 
     addLog('3D Pipe Network viewer opened');
-  }, [addLog, layers, projection]);
+  }, [addLog, layers]);
 
   return (
     <div className="flex flex-col h-screen bg-gray-900 text-gray-100 font-sans">
@@ -2036,21 +1775,11 @@ const App: React.FC = () => {
         <ExportModal
           onExportHydroCAD={handleExportHydroCAD}
           onExportSWMM={handleExportSWMM}
-          onExportShapefiles={handleExportShapefiles}
+          onExportGpkg={handleExportGpkg}
           onClose={() => setExportModalOpen(false)}
           exportHydroCADEnabled={exportHydroCADEnabled}
           exportSWMMEnabled={exportSWMMEnabled}
-          exportShapefilesEnabled={exportShapefilesEnabled}
-          projection={projection}
-          onProjectionChange={(epsg) => {
-            const proj = STATE_PLANE_OPTIONS.find(p => p.epsg === epsg);
-            if (proj) {
-              setProjection(proj);
-              setProjectionConfirmed(false);
-            }
-          }}
-          onProjectionConfirm={() => setProjectionConfirmed(true)}
-          projectionConfirmed={projectionConfirmed}
+          exportGpkgEnabled={exportGpkgEnabled}
         />
       )}
       {mappingLayer && (
