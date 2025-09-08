@@ -19,6 +19,7 @@ import proj4 from 'proj4';
 import { STATE_PLANE_OPTIONS } from './utils/projections';
 import type { ProjectionOption } from './types';
 import { reprojectFeatureCollection } from './utils/reproject';
+import { resolvePrj } from './utils/prj';
 
 const DEFAULT_COLORS: Record<string, string> = {
   'Drainage Areas': '#67e8f9',
@@ -66,6 +67,7 @@ const App: React.FC = () => {
   const [exportModalOpen, setExportModalOpen] = useState<boolean>(false);
   const [projection, setProjection] = useState<ProjectionOption>(STATE_PLANE_OPTIONS[0]);
   const [projectionConfirmed, setProjectionConfirmed] = useState<boolean>(false);
+  const [projectionPrj, setProjectionPrj] = useState<string | undefined | null>(null);
 
   const requiredLayers = [
     'Drainage Areas',
@@ -95,7 +97,7 @@ const App: React.FC = () => {
 
   const exportHydroCADEnabled = computeSucceeded;
   const exportShapefilesEnabled =
-    (computeSucceeded || pipe3DEnabled) && projectionConfirmed;
+    (computeSucceeded || pipe3DEnabled) && projectionConfirmed && projectionPrj !== null;
   const exportSWMMEnabled = (computeSucceeded || pipe3DEnabled) && projectionConfirmed;
   const exportEnabled = computeSucceeded || pipe3DEnabled;
 
@@ -1374,6 +1376,17 @@ const App: React.FC = () => {
     setExportModalOpen(false);
     }, [addLog, layers, projectName, projectVersion, projection]);
 
+  const handleProjectionConfirm = useCallback(() => {
+    setProjectionConfirmed(true);
+    setProjectionPrj(null);
+    resolvePrj(projection.epsg).then((prj) => {
+      if (!prj) {
+        addLog('PRJ definition not found; shapefiles will default to WGS84', 'warning');
+      }
+      setProjectionPrj(prj);
+    });
+  }, [projection.epsg, addLog]);
+
   const handleExportShapefiles = useCallback(async () => {
     const processedLayers = layers.filter(
       l =>
@@ -1601,10 +1614,16 @@ const App: React.FC = () => {
       const prepared = prepareForShapefile(layer.geojson, layer.name);
       const projected = reprojectFeatureCollection(prepared, projection.proj4);
       addLog(`Exporting "${layer.name}": ${projected.features.length} features`);
-      let prj: string | undefined;
-      try {
-        prj = await fetch(`https://epsg.io/${projection.epsg}.prj`).then(r => r.text());
-      } catch {}
+      let prj = projectionPrj ?? undefined;
+      if (!prj) {
+        const proceed = window.confirm(
+          'Projection metadata (.prj) could not be resolved. Export will assume WGS84. Continue?'
+        );
+        if (!proceed) {
+          addLog('Shapefile export cancelled', 'error');
+          return;
+        }
+      }
       const layerZipBuffer = await shpwrite.zip(projected, { outputType: 'arraybuffer', prj });
       const layerZip = await JSZip.loadAsync(layerZipBuffer);
       const folderName = layer.name.replace(/[^a-z0-9_\-]/gi, '_');
@@ -1633,7 +1652,7 @@ const App: React.FC = () => {
     URL.revokeObjectURL(url);
     addLog('Processed shapefiles exported');
     setExportModalOpen(false);
-  }, [addLog, layers, projectName, projectVersion, projection]);
+  }, [addLog, layers, projectName, projectVersion, projection, projectionPrj]);
 
   const handleView3D = useCallback(() => {
     const jLayer = layers.find((l) => l.name === 'Catch Basins / Manholes');
@@ -2038,9 +2057,10 @@ const App: React.FC = () => {
             if (proj) {
               setProjection(proj);
               setProjectionConfirmed(false);
+              setProjectionPrj(null);
             }
           }}
-          onProjectionConfirm={() => setProjectionConfirmed(true)}
+          onProjectionConfirm={handleProjectionConfirm}
           projectionConfirmed={projectionConfirmed}
         />
       )}
