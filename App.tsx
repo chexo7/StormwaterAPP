@@ -19,6 +19,7 @@ import proj4 from 'proj4';
 import { STATE_PLANE_OPTIONS } from './utils/projections';
 import type { ProjectionOption } from './types';
 import { reprojectFeatureCollection } from './utils/reproject';
+import { resolvePrj } from './utils/prj';
 
 const DEFAULT_COLORS: Record<string, string> = {
   'Drainage Areas': '#67e8f9',
@@ -1596,15 +1597,26 @@ const App: React.FC = () => {
     const JSZip = (await import('jszip')).default;
     const shpwrite = (await import('@mapbox/shp-write')).default as any;
     const zip = new JSZip();
+    const prj = await resolvePrj(projection.epsg);
+    if (!prj) {
+      addLog(
+        `Failed to resolve PRJ for EPSG:${projection.epsg}; shapefiles will default to WGS84`,
+        'error'
+      );
+      if (
+        typeof window !== 'undefined' &&
+        !window.confirm(
+          'Projection definition not found; shapefiles will default to WGS84. Continue?'
+        )
+      ) {
+        return;
+      }
+    }
 
     for (const layer of processedLayers) {
       const prepared = prepareForShapefile(layer.geojson, layer.name);
       const projected = reprojectFeatureCollection(prepared, projection.proj4);
       addLog(`Exporting "${layer.name}": ${projected.features.length} features`);
-      let prj: string | undefined;
-      try {
-        prj = await fetch(`https://epsg.io/${projection.epsg}.prj`).then(r => r.text());
-      } catch {}
       const layerZipBuffer = await shpwrite.zip(projected, { outputType: 'arraybuffer', prj });
       const layerZip = await JSZip.loadAsync(layerZipBuffer);
       const folderName = layer.name.replace(/[^a-z0-9_\-]/gi, '_');
