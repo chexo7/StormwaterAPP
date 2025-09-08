@@ -1373,25 +1373,168 @@ const App: React.FC = () => {
     setExportModalOpen(false);
     }, [addLog, layers, projectName, projectVersion, projection]);
 
-  const handleExportShapefiles = useCallback(async () => {
+    const handleExportShapefiles = useCallback(async () => {
+    const getPropStrict = (props: any, candidates: string[]) => {
+      if (!props) return undefined;
+      const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const map = new Map(Object.keys(props).map(k => [norm(k), k]));
+      for (const cand of candidates) {
+        const hit = map.get(norm(cand));
+        if (hit !== undefined) return (props as any)[hit];
+      }
+      return undefined;
+    };
+    const getMapped = (
+      props: any,
+      map: Record<string, string> | undefined,
+      key: string,
+      candidates: string[]
+    ) => {
+      if (map && map[key] && props?.[map[key]] !== undefined) {
+        return (props as any)[map[key]];
+      }
+      return getPropStrict(props, candidates);
+    };
+    const projectFn = proj4('EPSG:4326', projection.proj4);
+    const sanitizeId = (s: string, i: number) =>
+      (s || `S${i + 1}`)
+        .trim()
+        .replace(/[^\w\-]/g, '_')
+        .replace(/_+/g, '_')
+        .slice(0, 31);
+    const lineLength = (coords: number[][]) => {
+      let len = 0;
+      for (let i = 1; i < coords.length; i++) {
+        const [x1, y1] = projectFn.forward(coords[i - 1] as [number, number]);
+        const [x2, y2] = projectFn.forward(coords[i] as [number, number]);
+        len += Math.hypot(x2 - x1, y2 - y1);
+      }
+      return len;
+    };
+    const generatePipeNetwork = (): FeatureCollection | null => {
+      const jLayer = layers.find(l => l.name === 'Catch Basins / Manholes');
+      const pLayer = layers.find(l => l.name === 'Pipes');
+      if (!jLayer || !pLayer) return null;
+      const nodeFeatures = jLayer.geojson.features.filter(
+        f => f.geometry && f.geometry.type === 'Point'
+      ) as Feature<Point>[];
+      const jMap = jLayer.fieldMap;
+      const nodes = nodeFeatures.map((f, i) => {
+        const raw = String(getMapped(f.properties, jMap, 'label', ['Label']) ?? '');
+        const id = sanitizeId(raw, i);
+        const invert = Number(
+          getMapped(f.properties, jMap, 'inv_out', ['Inv Out [ft]', 'Inv Out [ft]:', 'Elevation Invert[ft]']) ?? 0
+        );
+        const coord = projectFn.forward((f.geometry as any).coordinates as [number, number]);
+        return { id, invert, coord };
+      });
+      const findNearestNode = (p: [number, number]) => {
+        let best: typeof nodes[number] | undefined;
+        let bestDist = Infinity;
+        nodes.forEach(n => {
+          const d = Math.hypot(n.coord[0] - p[0], n.coord[1] - p[1]);
+          if (d < bestDist) {
+            bestDist = d;
+            best = n;
+          }
+        });
+        return best;
+      };
+      const rawPipeFeatures: Feature<LineString>[] = [];
+      pLayer.geojson.features.forEach(f => {
+        if (!f.geometry) return;
+        if (f.geometry.type === 'LineString') {
+          rawPipeFeatures.push(f as Feature<LineString>);
+        } else if (f.geometry.type === 'MultiLineString') {
+          (f.geometry.coordinates as number[][][]).forEach(coords => {
+            rawPipeFeatures.push({
+              type: 'Feature',
+              geometry: { type: 'LineString', coordinates: coords },
+              properties: f.properties || {},
+            });
+          });
+        }
+      });
+      const pipeFeatures = splitPipesAtNodes(rawPipeFeatures, nodeFeatures);
+      const pMap = pLayer.fieldMap;
+      const features: Feature<LineString>[] = [];
+      pipeFeatures.forEach((f, i) => {
+        const seg = (f.properties as any)?._segment;
+        let raw = String(getMapped(f.properties, pMap, 'label', ['Label']) ?? '');
+        if (seg) raw = `${raw}-${seg}`;
+        const id = sanitizeId(raw, i);
+        const coords = (f.geometry as LineString).coordinates;
+        let dirStr = String(getMapped(f.properties, pMap, 'direction', ['Directions']) ?? '');
+        if (seg) dirStr = '';
+        let from = undefined;
+        let to = undefined;
+        if (dirStr.includes(' to ')) {
+          const [a, b] = dirStr.split(/\s+to\s+/);
+          const fromId = sanitizeId(a, 0);
+          const toId = sanitizeId(b, 0);
+          from = nodes.find(n => n.id === fromId);
+          to = nodes.find(n => n.id === toId);
+        }
+        if (!from || !to) {
+          const start = projectFn.forward(coords[0] as [number, number]);
+          const end = projectFn.forward(coords[coords.length - 1] as [number, number]);
+          from = findNearestNode(start);
+          to = findNearestNode(end);
+        }
+        const len = lineLength(coords);
+        const rough = Number(
+          getMapped(f.properties, pMap, 'roughness', ['Rougness', 'Roughness']) ?? 0
+        );
+        const diamIn = Number(
+          getMapped(f.properties, pMap, 'diameter', ['Diameter [in]']) ?? 0
+        );
+        const invIn = Number(
+          getMapped(f.properties, pMap, 'inv_in', ['Elevation Invert In [ft]'])
+        );
+        const invOut = Number(
+          getMapped(f.properties, pMap, 'inv_out', ['Elevation Invert Out [ft]'])
+        );
+        const inOffset = from && Number.isFinite(invIn) ? invIn - from.invert : 0;
+        const outOffset = to && Number.isFinite(invOut) ? invOut - to.invert : 0;
+        features.push({
+          type: 'Feature',
+          geometry: f.geometry,
+          properties: {
+            LABEL: id,
+            FROM: from?.id ?? '',
+            TO: to?.id ?? '',
+            LEN_FT: Number(len.toFixed(3)),
+            DIAM_IN: diamIn,
+            ROUGH: rough,
+            IN_OFF: Number(inOffset.toFixed(3)),
+            OUT_OFF: Number(outOffset.toFixed(3)),
+            INV_IN: invIn,
+            INV_OUT: invOut,
+          },
+        });
+      });
+      return { type: 'FeatureCollection', features };
+    };
     const processedLayers = layers.filter(
       l =>
         l.category === 'Process' ||
         l.name === 'Pipes' ||
         l.name === 'Catch Basins / Manholes'
     );
-    if (processedLayers.length === 0) {
+    const exportLayers = processedLayers.map(l => ({ name: l.name, geojson: l.geojson }));
+    const pipeNet = generatePipeNetwork();
+    if (pipeNet) exportLayers.push({ name: 'Pipe Network', geojson: pipeNet });
+    if (exportLayers.length === 0) {
       addLog('No processed layers to export', 'error');
       return;
     }
     const JSZip = (await import('jszip')).default;
     const shpwrite = (await import('@mapbox/shp-write')).default as any;
     const zip = new JSZip();
-
-    for (const layer of processedLayers) {
+    for (const layer of exportLayers) {
       const prepared = prepareForShapefile(layer.geojson, layer.name);
       const projected = reprojectFeatureCollection(prepared, projection.proj4);
-      addLog(`Exporting "${layer.name}": ${projected.features.length} features`);
+      addLog(`Exporting \"${layer.name}\": ${projected.features.length} features`);
       let prj: string | undefined;
       try {
         prj = await fetch(`https://epsg.io/${projection.epsg}.prj`).then(r => r.text());
@@ -1409,11 +1552,10 @@ const App: React.FC = () => {
       );
       const dbf = Object.keys(layerZip.files).find(f => f.toLowerCase().endsWith('.dbf'));
       if (dbf) {
-      const base = dbf.replace(/\.dbf$/i, '');
-      folder.file(`${base}.cpg`, 'UTF-8');
+        const base = dbf.replace(/\.dbf$/i, '');
+        folder.file(`${base}.cpg`, 'UTF-8');
       }
     }
-
     const blob = await zip.generateAsync({ type: 'blob' });
     const filename = `${(projectName || 'project')}_${projectVersion}_shapefiles.zip`;
     const url = URL.createObjectURL(blob);
