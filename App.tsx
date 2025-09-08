@@ -94,7 +94,8 @@ const App: React.FC = () => {
     pipesLayer.geojson.features.length > 0;
 
   const exportHydroCADEnabled = computeSucceeded;
-  const exportShapefilesEnabled = computeSucceeded && projectionConfirmed;
+  const exportShapefilesEnabled =
+    (computeSucceeded || pipe3DEnabled) && projectionConfirmed;
   const exportSWMMEnabled = (computeSucceeded || pipe3DEnabled) && projectionConfirmed;
   const exportEnabled = computeSucceeded || pipe3DEnabled;
 
@@ -1377,9 +1378,201 @@ const App: React.FC = () => {
     const processedLayers = layers.filter(
       l =>
         l.category === 'Process' ||
-        l.name === 'Pipes' ||
         l.name === 'Catch Basins / Manholes'
     );
+
+    const jLayer = layers.find((l) => l.name === 'Catch Basins / Manholes');
+    const pLayer = layers.find((l) => l.name === 'Pipes');
+
+    if (jLayer && pLayer) {
+      const project = proj4('EPSG:4326', projection.proj4);
+
+      const getPropStrict = (props: any, candidates: string[]) => {
+        if (!props) return undefined;
+        const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const map = new Map(Object.keys(props).map((k) => [norm(k), k]));
+        for (const cand of candidates) {
+          const hit = map.get(norm(cand));
+          if (hit !== undefined) return (props as any)[hit];
+        }
+        return undefined;
+      };
+
+      const getMapped = (
+        props: any,
+        map: Record<string, string> | undefined,
+        key: string,
+        candidates: string[]
+      ) => {
+        if (map && map[key] && props?.[map[key]] !== undefined) {
+          return (props as any)[map[key]];
+        }
+        return getPropStrict(props, candidates);
+      };
+
+      const sanitizeId = (s: string, i: number) =>
+        (s || `S${i + 1}`)
+          .trim()
+          .replace(/[^\w\-]/g, '_')
+          .replace(/_+/g, '_')
+          .slice(0, 31);
+
+      type NodeRec = { id: string; coord: [number, number]; invert: number };
+      const rawNodes: NodeRec[] = [];
+      const jMap = jLayer.fieldMap;
+      jLayer.geojson.features.forEach((f, i) => {
+        if (!f.geometry || f.geometry.type !== 'Point') return;
+        const id = sanitizeId(
+          String(getMapped(f.properties, jMap, 'label', ['Label']) ?? ''),
+          i
+        );
+        const ground = Number(
+          getMapped(f.properties, jMap, 'ground', ['Elevation Ground [ft]'])
+        );
+        const invert = Number(
+          getMapped(f.properties, jMap, 'inv_out', [
+            'Inv Out [ft]',
+            'Inv Out [ft]:',
+            'Elevation Invert[ft]',
+          ])
+        );
+        if (!Number.isFinite(ground) || !Number.isFinite(invert)) return;
+        const coord = project.forward(
+          (f.geometry as any).coordinates as [number, number]
+        );
+        rawNodes.push({ id, coord, invert });
+      });
+      const nodes = rawNodes;
+
+      const findNearestNode = (pt: [number, number]) => {
+        let best = nodes[0];
+        let bestDist = Infinity;
+        for (const n of nodes) {
+          const dx = pt[0] - n.coord[0];
+          const dy = pt[1] - n.coord[1];
+          const d = Math.hypot(dx, dy);
+          if (d < bestDist) {
+            bestDist = d;
+            best = n;
+          }
+        }
+        return best;
+      };
+
+      const lineLength = (coords: number[][]) => {
+        let len = 0;
+        for (let i = 1; i < coords.length; i++) {
+          const [x1, y1] = project.forward(coords[i - 1] as [number, number]);
+          const [x2, y2] = project.forward(coords[i] as [number, number]);
+          len += Math.hypot(x2 - x1, y2 - y1);
+        }
+        return len;
+      };
+
+      const nodeFeatures = jLayer.geojson.features.filter(
+        (f) => f.geometry && f.geometry.type === 'Point'
+      ) as Feature<Point>[];
+      const rawPipeFeatures: Feature<LineString>[] = [];
+      pLayer.geojson.features.forEach((f) => {
+        if (!f.geometry) return;
+        if (f.geometry.type === 'LineString') {
+          rawPipeFeatures.push(f as Feature<LineString>);
+        } else if (f.geometry.type === 'MultiLineString') {
+          (f.geometry.coordinates as number[][][]).forEach((coords) => {
+            rawPipeFeatures.push({
+              type: 'Feature',
+              geometry: { type: 'LineString', coordinates: coords },
+              properties: f.properties || {},
+            });
+          });
+        }
+      });
+      const pipeFeatures = splitPipesAtNodes(rawPipeFeatures, nodeFeatures);
+      const pMap = pLayer.fieldMap;
+      const pipeOut: Feature<LineString>[] = [];
+      pipeFeatures.forEach((f, i) => {
+        const seg = (f.properties as any)?._segment;
+        let raw = String(
+          getMapped(f.properties, pMap, 'label', ['Label']) ?? ''
+        );
+        if (seg) raw = `${raw}-${seg}`;
+        const id = sanitizeId(raw, i);
+        const coords = (f.geometry as LineString).coordinates;
+        let dirStr = String(
+          getMapped(f.properties, pMap, 'direction', ['Directions']) ?? ''
+        );
+        if (seg) dirStr = '';
+        let from: NodeRec | undefined;
+        let to: NodeRec | undefined;
+        if (dirStr.includes(' to ')) {
+          const [a, b] = dirStr.split(/\s+to\s+/);
+          const fromId = sanitizeId(a, 0);
+          const toId = sanitizeId(b, 0);
+          from = nodes.find((n) => n.id === fromId);
+          to = nodes.find((n) => n.id === toId);
+        }
+        if (!from || !to) {
+          const start = project.forward(coords[0] as [number, number]);
+          const end = project.forward(
+            coords[coords.length - 1] as [number, number]
+          );
+          from = findNearestNode(start);
+          to = findNearestNode(end);
+        }
+        if (!from || !to) return;
+        const len = lineLength(coords);
+        const rough = Number(
+          getMapped(f.properties, pMap, 'roughness', ['Rougness', 'Roughness']) ??
+            0
+        );
+        const diamIn = Number(
+          getMapped(f.properties, pMap, 'diameter', ['Diameter [in]'])
+        );
+        const invIn = Number(
+          getMapped(f.properties, pMap, 'inv_in', ['Elevation Invert In [ft]'])
+        );
+        const invOut = Number(
+          getMapped(f.properties, pMap, 'inv_out', ['Elevation Invert Out [ft]'])
+        );
+        if (![diamIn, invIn, invOut].every(Number.isFinite) || len <= 0) return;
+        const slope = (invIn - invOut) / len;
+        const inOffset = invIn - from.invert;
+        const outOffset = invOut - to.invert;
+        pipeOut.push({
+          type: 'Feature',
+          geometry: f.geometry,
+          properties: {
+            ID: id,
+            FROM_ID: from.id,
+            TO_ID: to.id,
+            LEN_FT: Number(len.toFixed(3)),
+            DIAM_IN: Number(diamIn.toFixed(3)),
+            INV_IN: Number(invIn.toFixed(3)),
+            INV_OUT: Number(invOut.toFixed(3)),
+            ROUGH: rough,
+            SLOPE: Number(slope.toFixed(6)),
+            IN_OFF: Number(inOffset.toFixed(3)),
+            OUT_OFF: Number(outOffset.toFixed(3)),
+          },
+        });
+      });
+      if (pipeOut.length > 0) {
+        processedLayers.push({
+          id: `${Date.now()}-PipeNetwork`,
+          name: 'Pipe Network',
+          geojson: {
+            type: 'FeatureCollection',
+            features: pipeOut,
+          } as FeatureCollection,
+          editable: false,
+          visible: false,
+          fillColor: getDefaultColor('Overlay'),
+          fillOpacity: DEFAULT_OPACITY,
+          category: 'Process',
+        });
+      }
+    }
+
     if (processedLayers.length === 0) {
       addLog('No processed layers to export', 'error');
       return;
