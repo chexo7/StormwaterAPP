@@ -1091,15 +1091,16 @@ const App: React.FC = () => {
           getMapped(f.properties, jMap, 'ground', [
             'Elevation Ground [ft]',
             'Elevation Ground [ft]:'
-          ]) ?? 0
+          ]) ?? NaN
         );
         const invert = Number(
           getMapped(f.properties, jMap, 'inv_out', [
             'Inv Out [ft]',
             'Inv Out [ft]:',
             'Elevation Invert[ft]'
-          ]) ?? 0
+          ]) ?? NaN
         );
+        if (!Number.isFinite(ground) || !Number.isFinite(invert)) return;
         const coord = project.forward(
           (f.geometry as any).coordinates as [number, number]
         );
@@ -1422,16 +1423,23 @@ const App: React.FC = () => {
       const jMap = jLayer.fieldMap;
       jLayer.geojson.features.forEach((f, i) => {
         if (!f.geometry || f.geometry.type !== 'Point') return;
-        const id = sanitizeId(
-          String(getMapped(f.properties, jMap, 'label', ['Label']) ?? ''),
-          i
+        const ground = Number(
+          getMapped(f.properties, jMap, 'ground', [
+            'Elevation Ground [ft]',
+            'Elevation Ground [ft]:'
+          ]) ?? NaN
         );
         const invert = Number(
           getMapped(f.properties, jMap, 'inv_out', [
             'Inv Out [ft]',
             'Inv Out [ft]:',
-            'Elevation Invert[ft]',
-          ]) ?? 0
+            'Elevation Invert[ft]'
+          ]) ?? NaN
+        );
+        if (!Number.isFinite(ground) || !Number.isFinite(invert)) return;
+        const id = sanitizeId(
+          String(getMapped(f.properties, jMap, 'label', ['Label']) ?? ''),
+          i
         );
         const coord = project.forward(
           (f.geometry as any).coordinates as [number, number]
@@ -1465,9 +1473,23 @@ const App: React.FC = () => {
         return len;
       };
 
-      const nodeFeatures = jLayer.geojson.features.filter(
-        (f) => f.geometry && f.geometry.type === 'Point'
-      ) as Feature<Point>[];
+      const nodeFeatures = jLayer.geojson.features.filter((f) => {
+        if (!f.geometry || f.geometry.type !== 'Point') return false;
+        const ground = Number(
+          getMapped(f.properties, jMap, 'ground', [
+            'Elevation Ground [ft]',
+            'Elevation Ground [ft]:'
+          ]) ?? NaN
+        );
+        const invert = Number(
+          getMapped(f.properties, jMap, 'inv_out', [
+            'Inv Out [ft]',
+            'Inv Out [ft]:',
+            'Elevation Invert[ft]'
+          ]) ?? NaN
+        );
+        return Number.isFinite(ground) && Number.isFinite(invert);
+      }) as Feature<Point>[];
       const rawPipeFeatures: Feature<LineString>[] = [];
       pLayer.geojson.features.forEach((f) => {
         if (!f.geometry) return;
@@ -1521,20 +1543,27 @@ const App: React.FC = () => {
             0
         );
         const diamIn = Number(
-          getMapped(f.properties, pMap, 'diameter', ['Diameter [in]']) ?? 0
+          getMapped(f.properties, pMap, 'diameter', ['Diameter [in]']) ?? NaN
         );
         const invIn = Number(
           getMapped(f.properties, pMap, 'inv_in', ['Elevation Invert In [ft]']) ??
-            0
+            NaN
         );
         const invOut = Number(
           getMapped(f.properties, pMap, 'inv_out', ['Elevation Invert Out [ft]']) ??
-            0
+            NaN
         );
-        const slope =
-          Number.isFinite(invIn) && Number.isFinite(invOut) && len > 0
-            ? (invIn - invOut) / len
-            : 0;
+        if (
+          ![
+            diamIn,
+            invIn,
+            invOut,
+            from?.invert,
+            to?.invert
+          ].every((v) => Number.isFinite(v as number))
+        )
+          return;
+        const slope = len > 0 ? (invIn - invOut) / len : 0;
         const inOffset = from ? invIn - from.invert : 0;
         const outOffset = to ? invOut - to.invert : 0;
         pipeOut.push({
@@ -1542,8 +1571,8 @@ const App: React.FC = () => {
           geometry: f.geometry,
           properties: {
             ID: id,
-            FROM_ID: from?.id ?? '',
-            TO_ID: to?.id ?? '',
+            FROM_ID: from.id,
+            TO_ID: to.id,
             LEN_FT: Number(len.toFixed(3)),
             DIAM_IN: Number(diamIn.toFixed(3)),
             INV_IN: Number(invIn.toFixed(3)),
