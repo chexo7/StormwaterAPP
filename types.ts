@@ -21,10 +21,3 @@ export interface LogEntry {
   source?: 'frontend' | 'backend';
   timestamp?: number;
 }
-
-export interface ProjectionOption {
-  name: string;
-  epsg: string;
-  proj4: string;
-  units: 'feet' | 'meters';
-}

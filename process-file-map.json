@@ -7,7 +7,7 @@
     "requires": ["drainageArea", "lod", "landCover", "wss", "catchBasinManhole", "pipes"],
     "excludes": []
   },
-  "exportShapefiles": {
+  "exportGpkg": {
     "requires": ["drainageArea", "lod", "landCover", "wss", "catchBasinManhole", "pipes"],
     "excludes": []
   }
