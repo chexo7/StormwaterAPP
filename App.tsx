@@ -1597,16 +1597,12 @@ const App: React.FC = () => {
     const shpwrite = (await import('@mapbox/shp-write')).default as any;
     const zip = new JSZip();
 
-    const prj = await resolvePrj(projection.epsg);
-    if (!prj) {
-      const proceed = window.confirm(
-        `No se pudo resolver el archivo .prj para EPSG:${projection.epsg}. ` +
-          'El shapefile se etiquetar\u00e1 como WGS84. \u00bfDeseas continuar?'
-      );
-      if (!proceed) {
-        addLog('Export canceled: missing projection definition', 'error');
-        return;
-      }
+    let prj: string;
+    try {
+      prj = await resolvePrj(projection.epsg);
+    } catch {
+      addLog(`Export canceled: missing PRJ for EPSG:${projection.epsg}`, 'error');
+      return;
     }
 
     for (const layer of processedLayers) {
