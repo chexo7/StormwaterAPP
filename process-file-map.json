@@ -7,6 +7,10 @@
     "requires": ["drainageArea", "lod", "landCover", "wss", "catchBasinManhole", "pipes"],
     "excludes": []
   },
+  "exportLandXML": {
+    "requires": ["catchBasinManhole", "pipes"],
+    "excludes": []
+  },
   "exportShapefiles": {
     "requires": ["drainageArea", "lod", "landCover", "wss", "catchBasinManhole", "pipes"],
     "excludes": []
