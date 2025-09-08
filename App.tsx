@@ -19,6 +19,7 @@ import proj4 from 'proj4';
 import { STATE_PLANE_OPTIONS } from './utils/projections';
 import type { ProjectionOption } from './types';
 import { reprojectFeatureCollection } from './utils/reproject';
+import { buildPipeNetwork } from './utils/pipeNetwork';
 
 const DEFAULT_COLORS: Record<string, string> = {
   'Drainage Areas': '#67e8f9',
@@ -1374,13 +1375,18 @@ const App: React.FC = () => {
     }, [addLog, layers, projectName, projectVersion, projection]);
 
   const handleExportShapefiles = useCallback(async () => {
-    const processedLayers = layers.filter(
+    const baseLayers = layers.filter(
       l =>
         l.category === 'Process' ||
         l.name === 'Pipes' ||
         l.name === 'Catch Basins / Manholes'
     );
-    if (processedLayers.length === 0) {
+    const layersToExport = baseLayers.map(l => ({ name: l.name, geojson: l.geojson }));
+    const pipeNetwork = buildPipeNetwork(layers, projection);
+    if (pipeNetwork) {
+      layersToExport.push({ name: 'Pipe Network', geojson: pipeNetwork });
+    }
+    if (layersToExport.length === 0) {
       addLog('No processed layers to export', 'error');
       return;
     }
@@ -1388,7 +1394,7 @@ const App: React.FC = () => {
     const shpwrite = (await import('@mapbox/shp-write')).default as any;
     const zip = new JSZip();
 
-    for (const layer of processedLayers) {
+    for (const layer of layersToExport) {
       const prepared = prepareForShapefile(layer.geojson, layer.name);
       const projected = reprojectFeatureCollection(prepared, projection.proj4);
       addLog(`Exporting "${layer.name}": ${projected.features.length} features`);
@@ -1409,8 +1415,8 @@ const App: React.FC = () => {
       );
       const dbf = Object.keys(layerZip.files).find(f => f.toLowerCase().endsWith('.dbf'));
       if (dbf) {
-      const base = dbf.replace(/\.dbf$/i, '');
-      folder.file(`${base}.cpg`, 'UTF-8');
+        const base = dbf.replace(/\.dbf$/i, '');
+        folder.file(`${base}.cpg`, 'UTF-8');
       }
     }
 
