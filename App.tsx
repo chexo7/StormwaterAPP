@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import type { FeatureCollection, Feature, LineString, Point } from 'geojson';
 import type { LayerData, LogEntry } from './types';
 import Header from './components/Header';
@@ -67,6 +67,8 @@ const App: React.FC = () => {
   const [exportModalOpen, setExportModalOpen] = useState<boolean>(false);
   const [projection, setProjection] = useState<ProjectionOption>(STATE_PLANE_OPTIONS[0]);
   const [projectionConfirmed, setProjectionConfirmed] = useState<boolean>(false);
+
+  const project = useMemo(() => proj4('EPSG:4326', projection.proj4), [projection]);
 
   const requiredLayers = [
     'Drainage Areas',
@@ -859,8 +861,6 @@ const App: React.FC = () => {
       kinks,
     } = await import('@turf/turf');
 
-    const project = proj4('EPSG:4326', projection.proj4);
-
     const sanitizeId = (s: string, i: number) =>
       (s || `S${i + 1}`)
         .trim()
@@ -1386,7 +1386,6 @@ const App: React.FC = () => {
     const pLayer = layers.find((l) => l.name === 'Pipes');
 
     if (jLayer && pLayer) {
-      const project = proj4('EPSG:4326', projection.proj4);
 
       const getPropStrict = (props: any, candidates: string[]) => {
         if (!props) return undefined;
@@ -1648,13 +1647,12 @@ const App: React.FC = () => {
     const jLayer = layers.find((l) => l.name === 'Catch Basins / Manholes');
     const pLayer = layers.find((l) => l.name === 'Pipes');
     if (!jLayer || !pLayer) return;
-    const projectFn = proj4('EPSG:4326', projection.proj4);
     const nodeFeatures = jLayer.geojson.features.filter(
       (f) => f.geometry && f.geometry.type === 'Point'
     ) as Feature<Point>[];
     const nodes = nodeFeatures
       .map((f) => {
-        const [x, y] = projectFn.forward(
+        const [x, y] = project.forward(
           (f.geometry as any).coordinates as [number, number]
         );
         const props = f.properties as any;
@@ -1688,8 +1686,8 @@ const App: React.FC = () => {
     const pipes = pipeFeatures
       .map((f) => {
         const coords = (f.geometry as LineString).coordinates;
-        const [sx, sy] = projectFn.forward(coords[0] as [number, number]);
-        const [ex, ey] = projectFn.forward(
+        const [sx, sy] = project.forward(coords[0] as [number, number]);
+        const [ex, ey] = project.forward(
           coords[coords.length - 1] as [number, number]
         );
         const invIn = parseFloat(
