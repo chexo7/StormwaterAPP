@@ -6,17 +6,19 @@ interface ExportModalProps {
   onExportHydroCAD: () => void;
   onExportSWMM: () => void;
   onExportShapefiles: () => void;
+  onExportLandXML: () => void;
   onClose: () => void;
   exportHydroCADEnabled?: boolean;
   exportSWMMEnabled?: boolean;
   exportShapefilesEnabled?: boolean;
+  exportLandXMLEnabled?: boolean;
   projection: ProjectionOption;
   onProjectionChange: (epsg: string) => void;
   onProjectionConfirm: () => void;
   projectionConfirmed: boolean;
 }
 
-const ExportModal: React.FC<ExportModalProps> = ({ onExportHydroCAD, onExportSWMM, onExportShapefiles, onClose, exportHydroCADEnabled, exportSWMMEnabled, exportShapefilesEnabled, projection, onProjectionChange, onProjectionConfirm, projectionConfirmed }) => {
+const ExportModal: React.FC<ExportModalProps> = ({ onExportHydroCAD, onExportSWMM, onExportShapefiles, onExportLandXML, onClose, exportHydroCADEnabled, exportSWMMEnabled, exportShapefilesEnabled, exportLandXMLEnabled, projection, onProjectionChange, onProjectionConfirm, projectionConfirmed }) => {
   const [filter, setFilter] = useState('');
 
   const filteredOptions = useMemo(
@@ -93,6 +95,18 @@ const ExportModal: React.FC<ExportModalProps> = ({ onExportHydroCAD, onExportSWM
           }
         >
           Export to SWMM
+        </button>
+        <button
+          onClick={onExportLandXML}
+          disabled={!exportLandXMLEnabled}
+          className={
+            'w-full font-semibold px-4 py-2 rounded ' +
+            (exportLandXMLEnabled
+              ? 'bg-cyan-600 hover:bg-cyan-700 text-white'
+              : 'bg-gray-600 text-gray-300 cursor-not-allowed')
+          }
+        >
+          Export pipe network (LandXML)
         </button>
         <button
           onClick={onExportShapefiles}
