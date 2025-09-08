@@ -6,7 +6,7 @@ import { intersect as turfIntersect, area as turfArea } from '@turf/turf';
 import processFileMap from './process-file-map.json' assert { type: 'json' };
 
 // processFileMap maps backend processes (e.g., exportHydroCAD, exportSWMM,
-// exportShapefiles) to the spatial data layers they require. Update
+// exportGpkg) to the spatial data layers they require. Update
 // process-file-map.json whenever process requirements change so future
 // automation can determine which files are needed for each operation.
 
