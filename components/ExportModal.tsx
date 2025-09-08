@@ -1,34 +1,24 @@
-import React, { useMemo, useState } from 'react';
-import { STATE_PLANE_OPTIONS } from '../utils/projections';
-import type { ProjectionOption } from '../types';
+import React from 'react';
 
 interface ExportModalProps {
   onExportHydroCAD: () => void;
   onExportSWMM: () => void;
-  onExportShapefiles: () => void;
+  onExportGpkg: () => void;
   onClose: () => void;
   exportHydroCADEnabled?: boolean;
   exportSWMMEnabled?: boolean;
-  exportShapefilesEnabled?: boolean;
-  projection: ProjectionOption;
-  onProjectionChange: (epsg: string) => void;
-  onProjectionConfirm: () => void;
-  projectionConfirmed: boolean;
+  exportGpkgEnabled?: boolean;
 }
 
-const ExportModal: React.FC<ExportModalProps> = ({ onExportHydroCAD, onExportSWMM, onExportShapefiles, onClose, exportHydroCADEnabled, exportSWMMEnabled, exportShapefilesEnabled, projection, onProjectionChange, onProjectionConfirm, projectionConfirmed }) => {
-  const [filter, setFilter] = useState('');
-
-  const filteredOptions = useMemo(
-    () =>
-      STATE_PLANE_OPTIONS.filter(
-        (opt) =>
-          opt.name.toLowerCase().includes(filter.toLowerCase()) ||
-          opt.epsg.includes(filter)
-      ),
-    [filter]
-  );
-
+const ExportModal: React.FC<ExportModalProps> = ({
+  onExportHydroCAD,
+  onExportSWMM,
+  onExportGpkg,
+  onClose,
+  exportHydroCADEnabled,
+  exportSWMMEnabled,
+  exportGpkgEnabled,
+}) => {
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[2000]">
       <div className="bg-gray-800 p-6 rounded-lg border border-gray-600 w-[30rem] space-y-4">
@@ -36,40 +26,6 @@ const ExportModal: React.FC<ExportModalProps> = ({ onExportHydroCAD, onExportSWM
           <h2 className="text-lg font-semibold text-white">Export</h2>
           <button className="text-gray-400 hover:text-white" onClick={onClose}>✕</button>
         </div>
-        <div>
-          <label className="block text-sm text-gray-300 mb-1">State Plane</label>
-          <input
-            type="text"
-            placeholder="Filter by name or EPSG"
-            className="w-full mb-2 bg-gray-700 text-white p-2 rounded"
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-          />
-          <select
-            size={12}
-            className="w-full bg-gray-700 text-white p-2 rounded overflow-y-auto"
-            value={projection.epsg}
-            onChange={(e) => onProjectionChange(e.target.value)}
-          >
-            {filteredOptions.map((opt) => (
-              <option key={opt.epsg} value={opt.epsg} title={`${opt.epsg} - ${opt.name}`}>
-                {`EPSG:${opt.epsg} - ${opt.name}`}
-              </option>
-            ))}
-          </select>
-        </div>
-        <button
-          onClick={onProjectionConfirm}
-          disabled={projectionConfirmed}
-          className={
-            'w-full font-semibold px-4 py-2 rounded ' +
-            (projectionConfirmed
-              ? 'bg-green-700 text-white cursor-default'
-              : 'bg-cyan-600 hover:bg-cyan-700 text-white')
-          }
-        >
-          {projectionConfirmed ? 'Projection confirmed' : 'Confirm projection'}
-        </button>
         <button
           onClick={onExportHydroCAD}
           disabled={!exportHydroCADEnabled}
@@ -95,16 +51,16 @@ const ExportModal: React.FC<ExportModalProps> = ({ onExportHydroCAD, onExportSWM
           Export to SWMM
         </button>
         <button
-          onClick={onExportShapefiles}
-          disabled={!exportShapefilesEnabled}
+          onClick={onExportGpkg}
+          disabled={!exportGpkgEnabled}
           className={
             'w-full font-semibold px-4 py-2 rounded ' +
-            (exportShapefilesEnabled
+            (exportGpkgEnabled
               ? 'bg-cyan-600 hover:bg-cyan-700 text-white'
               : 'bg-gray-600 text-gray-300 cursor-not-allowed')
           }
         >
-          Export processed shapefiles
+          Export network GeoPackage
         </button>
       </div>
     </div>
