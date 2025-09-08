@@ -94,7 +94,8 @@ const App: React.FC = () => {
     pipesLayer.geojson.features.length > 0;
 
   const exportHydroCADEnabled = computeSucceeded;
-  const exportShapefilesEnabled = computeSucceeded && projectionConfirmed;
+  const exportShapefilesEnabled =
+    (computeSucceeded || pipe3DEnabled) && projectionConfirmed;
   const exportSWMMEnabled = (computeSucceeded || pipe3DEnabled) && projectionConfirmed;
   const exportEnabled = computeSucceeded || pipe3DEnabled;
 
@@ -1377,7 +1378,6 @@ const App: React.FC = () => {
     const processedLayers = layers.filter(
       l =>
         l.category === 'Process' ||
-        l.name === 'Pipes' ||
         l.name === 'Catch Basins / Manholes'
     );
 
