@@ -1414,6 +1414,196 @@ const App: React.FC = () => {
       }
     }
 
+    // Generate Pipe Network shapefile with processed attributes
+    const jLayer = layers.find(l => l.name === 'Catch Basins / Manholes');
+    const pLayer = layers.find(l => l.name === 'Pipes');
+    if (jLayer && pLayer) {
+      const getPropStrict = (props: any, candidates: string[]) => {
+        if (!props) return undefined;
+        const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const map = new Map(Object.keys(props).map(k => [norm(k), k]));
+        for (const cand of candidates) {
+          const hit = map.get(norm(cand));
+          if (hit !== undefined) return (props as any)[hit];
+        }
+        return undefined;
+      };
+      const getMapped = (
+        props: any,
+        map: Record<string, string> | undefined,
+        key: string,
+        candidates: string[]
+      ) => {
+        if (map && map[key] && props?.[map[key]] !== undefined) {
+          return (props as any)[map[key]];
+        }
+        return getPropStrict(props, candidates);
+      };
+      const sanitizeId = (s: string, i: number) =>
+        (s || `S${i + 1}`)
+          .trim()
+          .replace(/[^\w\-]/g, '_')
+          .replace(/_+/g, '_')
+          .slice(0, 31);
+
+      type NodeRec = { origId: string; id: string; coord: [number, number]; invert: number };
+      const projectFn = proj4('EPSG:4326', projection.proj4);
+      const rawNodes: NodeRec[] = [];
+      const jMap = jLayer.fieldMap;
+      jLayer.geojson.features.forEach((f, i) => {
+        if (!f.geometry || f.geometry.type !== 'Point') return;
+        const raw = String(getMapped(f.properties, jMap, 'label', ['Label']) ?? '');
+        const id = sanitizeId(raw, i);
+        const invert = Number(
+          getMapped(f.properties, jMap, 'inv_out', [
+            'Inv Out [ft]',
+            'Inv Out [ft]:',
+            'Elevation Invert[ft]'
+          ]) ?? 0
+        );
+        const coord = projectFn.forward((f.geometry as any).coordinates as [number, number]);
+        rawNodes.push({ origId: id, id, coord, invert });
+      });
+
+      const feetTol = 0.3;
+      const byId = new Map<string, NodeRec[]>();
+      rawNodes.forEach(n => {
+        const arr = byId.get(n.origId);
+        if (arr) arr.push(n);
+        else byId.set(n.origId, [n]);
+      });
+      const nodes: NodeRec[] = [];
+      for (const [, group] of byId) {
+        const chosen: NodeRec[] = [];
+        for (const n of group) {
+          const same = chosen.find(m => Math.hypot(m.coord[0] - n.coord[0], m.coord[1] - n.coord[1]) <= feetTol);
+          if (same) {
+            if (n.invert > 0 && (same.invert === 0 || n.invert < same.invert)) {
+              same.invert = n.invert;
+            }
+            continue;
+          }
+          let uniqueId = n.id;
+          let k = 1;
+          while (nodes.some(x => x.id === uniqueId) || chosen.some(x => x.id === uniqueId)) {
+            uniqueId = `${n.id}_${++k}`;
+          }
+          chosen.push({ ...n, id: uniqueId });
+        }
+        nodes.push(...chosen);
+      }
+
+      const findNearestNode = (pt: [number, number]) => {
+        let best = nodes[0];
+        let bestDist = Infinity;
+        for (const n of nodes) {
+          const dx = pt[0] - n.coord[0];
+          const dy = pt[1] - n.coord[1];
+          const d = Math.hypot(dx, dy);
+          if (d < bestDist) {
+            bestDist = d;
+            best = n;
+          }
+        }
+        return best;
+      };
+
+      const lineLength = (coords: number[][]) => {
+        let len = 0;
+        for (let i = 1; i < coords.length; i++) {
+          const [x1, y1] = projectFn.forward(coords[i - 1] as [number, number]);
+          const [x2, y2] = projectFn.forward(coords[i] as [number, number]);
+          len += Math.hypot(x2 - x1, y2 - y1);
+        }
+        return len;
+      };
+
+      const nodeFeatures = jLayer.geojson.features.filter(
+        f => f.geometry && f.geometry.type === 'Point'
+      ) as Feature<Point>[];
+      const rawPipeFeatures = pLayer.geojson.features.filter(
+        f => f.geometry && f.geometry.type === 'LineString'
+      ) as Feature<LineString>[];
+      const pipeFeatures = splitPipesAtNodes(rawPipeFeatures, nodeFeatures);
+
+      const pMap = pLayer.fieldMap;
+      const networkFeatures: Feature<LineString>[] = [];
+      pipeFeatures.forEach((f, i) => {
+        const seg = (f.properties as any)?._segment;
+        let raw = String(getMapped(f.properties, pMap, 'label', ['Label']) ?? '');
+        if (seg) raw = `${raw}-${seg}`;
+        const id = sanitizeId(raw, i);
+        const coords = (f.geometry as LineString).coordinates;
+        let dirStr = String(getMapped(f.properties, pMap, 'direction', ['Directions']) ?? '');
+        if (seg) dirStr = '';
+        let from: NodeRec | undefined;
+        let to: NodeRec | undefined;
+        if (dirStr.includes(' to ')) {
+          const [a, b] = dirStr.split(/\s+to\s+/);
+          const fromId = sanitizeId(a, 0);
+          const toId = sanitizeId(b, 0);
+          from = nodes.find(n => n.id === fromId);
+          to = nodes.find(n => n.id === toId);
+        }
+        if (!from || !to) {
+          const start = projectFn.forward(coords[0] as [number, number]);
+          const end = projectFn.forward(coords[coords.length - 1] as [number, number]);
+          from = findNearestNode(start);
+          to = findNearestNode(end);
+        }
+        const len = lineLength(coords);
+        const rough = Number(getMapped(f.properties, pMap, 'roughness', ['Rougness', 'Roughness']) ?? 0);
+        const diamIn = Number(getMapped(f.properties, pMap, 'diameter', ['Diameter [in]']) ?? 0);
+        const invIn = Number(getMapped(f.properties, pMap, 'inv_in', ['Elevation Invert In [ft]']));
+        const invOut = Number(getMapped(f.properties, pMap, 'inv_out', ['Elevation Invert Out [ft]']));
+        const diamFt = diamIn / 12;
+        const inOffset = from && Number.isFinite(invIn) ? invIn - from.invert : 0;
+        const outOffset = to && Number.isFinite(invOut) ? invOut - to.invert : 0;
+        const slope = Number.isFinite(invIn) && Number.isFinite(invOut) && len > 0 ? (invIn - invOut) / len : undefined;
+        const props: any = {
+          PIPE_ID: id,
+          FROM_ID: from?.id ?? '',
+          TO_ID: to?.id ?? '',
+          LENGTH_FT: Number(len.toFixed(3)),
+          ROUGH: rough,
+          DIAM_FT: Number(diamFt.toFixed(3)),
+          INV_IN: invIn,
+          INV_OUT: invOut,
+          IN_OFF: Number(inOffset.toFixed(3)),
+          OUT_OFF: Number(outOffset.toFixed(3)),
+        };
+        if (slope !== undefined) props.SLOPE = Number(slope.toFixed(5));
+        networkFeatures.push({ type: 'Feature', geometry: f.geometry, properties: props });
+      });
+
+      if (networkFeatures.length) {
+        const networkFc: FeatureCollection = { type: 'FeatureCollection', features: networkFeatures } as any;
+        const preparedNet = prepareForShapefile(networkFc, 'Pipe Network');
+        const projectedNet = reprojectFeatureCollection(preparedNet, projection.proj4);
+        addLog(`Exporting "Pipe Network": ${projectedNet.features.length} features`);
+        let prj: string | undefined;
+        try {
+          prj = await fetch(`https://epsg.io/${projection.epsg}.prj`).then(r => r.text());
+        } catch {}
+        const netZipBuffer = await shpwrite.zip(projectedNet, { outputType: 'arraybuffer', prj });
+        const netZip = await JSZip.loadAsync(netZipBuffer);
+        const folder = zip.folder('Pipe_Network');
+        if (folder) {
+          await Promise.all(
+            Object.keys(netZip.files).map(async filename => {
+              const content = await netZip.files[filename].async('arraybuffer');
+              folder.file(filename, content);
+            })
+          );
+          const dbf = Object.keys(netZip.files).find(f => f.toLowerCase().endsWith('.dbf'));
+          if (dbf) {
+            const base = dbf.replace(/\.dbf$/i, '');
+            folder.file(`${base}.cpg`, 'UTF-8');
+          }
+        }
+      }
+    }
+
     const blob = await zip.generateAsync({ type: 'blob' });
     const filename = `${(projectName || 'project')}_${projectVersion}_shapefiles.zip`;
     const url = URL.createObjectURL(blob);
