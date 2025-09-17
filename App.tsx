@@ -708,7 +708,9 @@ const App: React.FC = () => {
     setComputeTasks(prev => prev.map(t => t.id === 'check_attrs' ? { ...t, status: 'success' } : t));
 
     try {
-      const { intersect, featureCollection } = await import('@turf/turf');
+      const { intersect: turfIntersect } = await import('@turf/turf');
+      const intersect = (a: Feature | any, b: Feature | any) =>
+        turfIntersect({ type: 'FeatureCollection', features: [a, b] } as any);
       const lodGeom = lod.geojson.features[0];
 
 
@@ -718,8 +720,7 @@ const App: React.FC = () => {
         if (!source) return;
         const clipped: any[] = [];
         source.geojson.features.forEach(f => {
-          const fc = featureCollection([f as any, lodGeom as any]);
-          const inter = intersect(fc as any);
+          const inter = intersect(f as any, lodGeom as any);
           if (inter) {
             inter.properties = { ...(f.properties || {}) };
             clipped.push(inter);
@@ -757,12 +758,10 @@ const App: React.FC = () => {
         const overlay: any[] = [];
         daLayer.geojson.features.forEach(daF => {
           wssLayer.geojson.features.forEach(wssF => {
-            const fc1 = featureCollection([daF as any, wssF as any]);
-            const inter1 = intersect(fc1 as any);
+            const inter1 = intersect(daF as any, wssF as any);
             if (!inter1) return;
             lcLayer.geojson.features.forEach(lcF => {
-              const fc2 = featureCollection([inter1 as any, lcF as any]);
-              const inter2 = intersect(fc2 as any);
+              const inter2 = intersect(inter1 as any, lcF as any);
               if (inter2) {
                 inter2.properties = {
                   ...(daF.properties || {}),
