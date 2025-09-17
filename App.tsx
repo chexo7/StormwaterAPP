@@ -147,6 +147,34 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    if (!landCoverOptions.length) return;
+    setLayers(prevLayers => {
+      let layersChanged = false;
+      const nextLayers = prevLayers.map(layer => {
+        if (layer.name !== 'Land Cover') return layer;
+        let layerChanged = false;
+        const features = layer.geojson.features.map(f => {
+          if (!f.properties) return f;
+          const current = (f.properties as any)?.LAND_COVER;
+          if (current == null) return f;
+          const currentStr = String(current);
+          if (currentStr === '') return f;
+          const match = landCoverOptions.find(
+            opt => opt.toLowerCase() === currentStr.toLowerCase()
+          );
+          if (!match || match === currentStr) return f;
+          layerChanged = true;
+          return { ...f, properties: { ...(f.properties || {}), LAND_COVER: match } };
+        });
+        if (!layerChanged) return layer;
+        layersChanged = true;
+        return { ...layer, geojson: { ...layer.geojson, features } };
+      });
+      return layersChanged ? nextLayers : prevLayers;
+    });
+  }, [landCoverOptions]);
+
+  useEffect(() => {
     if (typeof window === 'undefined' || window.location.hostname !== 'localhost') return;
 
     const fetchBackendLogs = async () => {
@@ -203,12 +231,14 @@ const App: React.FC = () => {
       geojson = {
         ...geojson,
         features: geojson.features.map(f => {
-          const raw = (f.properties as any)?.LandCover ?? (f.properties as any)?.LAND_COVER ?? '';
-          const match =
-            landCoverOptions.find(opt => opt.toLowerCase() === String(raw).toLowerCase()) ?? '';
+          const rawSource = (f.properties as any)?.LandCover ?? (f.properties as any)?.LAND_COVER;
+          const rawValue = rawSource == null ? '' : String(rawSource);
+          const match = landCoverOptions.find(
+            opt => opt.toLowerCase() === rawValue.toLowerCase()
+          );
           return {
             ...f,
-            properties: { ...(f.properties || {}), LAND_COVER: match },
+            properties: { ...(f.properties || {}), LAND_COVER: match ?? rawValue },
           };
         }),
       } as FeatureCollection;
