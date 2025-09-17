@@ -2,7 +2,7 @@ import express from 'express';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { intersect as turfIntersect, area as turfArea } from '@turf/turf';
+import { intersect as turfIntersectRaw, area as turfArea } from '@turf/turf';
 import processFileMap from './process-file-map.json' assert { type: 'json' };
 
 // processFileMap maps backend processes (e.g., exportHydroCAD, exportSWMM,
@@ -19,9 +19,10 @@ const port = process.env.PORT || 3001;
 const logLimit = parseInt(process.env.LOG_LIMIT || '100', 10);
 
 const logs = [];
-const featureCollectionLocal = (features) => ({ type: 'FeatureCollection', features });
 const toFeature = (poly) =>
   poly.type === 'Feature' ? poly : { type: 'Feature', properties: {}, geometry: poly };
+const turfIntersect = (a, b) =>
+  turfIntersectRaw({ type: 'FeatureCollection', features: [a, b] });
 function addLog(message, type = 'info') {
   const entry = { message, type, source: 'backend', timestamp: Date.now() };
   logs.push(entry);
@@ -84,9 +85,7 @@ app.post('/api/intersect', (req, res) => {
   }
 
   try {
-    const result = turfIntersect(
-      featureCollectionLocal([toFeature(poly1), toFeature(poly2)])
-    );
+    const result = turfIntersect(toFeature(poly1), toFeature(poly2));
     addLog('Intersection calculated');
     res.json(result || null);
   } catch (err) {
