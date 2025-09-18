@@ -10,6 +10,7 @@ import {
   Eye as EyeIconBase,
   EyeOff as EyeOffIconBase,
   CheckCircle as CheckCircleIconBase,
+  AlertTriangle as AlertTriangleIconBase,
   Search as SearchIconBase,
 } from 'lucide-react';
 
@@ -24,5 +25,6 @@ export const LockClosedIcon: React.FC<IconProps> = ({ className }) => <LockClose
 export const EyeIcon: React.FC<IconProps> = ({ className }) => <EyeIconBase className={className} />;
 export const EyeOffIcon: React.FC<IconProps> = ({ className }) => <EyeOffIconBase className={className} />;
 export const CheckCircleIcon: React.FC<IconProps> = ({ className }) => <CheckCircleIconBase className={className} />;
+export const AlertTriangleIcon: React.FC<IconProps> = ({ className }) => <AlertTriangleIconBase className={className} />;
 export const SearchIcon: React.FC<IconProps> = ({ className }) => <SearchIconBase className={className} />;
 
