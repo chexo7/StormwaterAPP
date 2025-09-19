@@ -99,6 +99,7 @@ const App: React.FC = () => {
   const exportShapefilesEnabled =
     (computeSucceeded || pipe3DEnabled) && projectionConfirmed;
   const exportSWMMEnabled = (computeSucceeded || pipe3DEnabled) && projectionConfirmed;
+  const exportLandXMLEnabled = pipe3DEnabled && projectionConfirmed;
   const exportEnabled = computeSucceeded || pipe3DEnabled;
 
   const splitPipesAtNodes = (
@@ -1166,7 +1167,144 @@ const App: React.FC = () => {
     URL.revokeObjectURL(url);
     addLog('SWMM file exported');
     setExportModalOpen(false);
-    }, [addLog, layers, projectName, projectVersion, projection]);
+  }, [addLog, layers, projectName, projectVersion, projection]);
+
+  const handleExportLandXML = useCallback(() => {
+    const jLayer = layers.find(l => l.name === 'Catch Basins / Manholes');
+    const pLayer = layers.find(l => l.name === 'Pipes');
+    if (!jLayer || !pLayer) {
+      addLog('No pipe network data to export', 'error');
+      return;
+    }
+    const projectFn = proj4('EPSG:4326', projection.proj4);
+    const nodeFeatures = jLayer.geojson.features.filter(
+      f => f.geometry && f.geometry.type === 'Point'
+    ) as Feature<Point>[];
+    const nodeKey = (c: number[]) => `${c[0].toFixed(6)},${c[1].toFixed(6)}`;
+    const nodes = nodeFeatures
+      .map((f, i) => {
+        const raw = (f.geometry as Point).coordinates as [number, number];
+        const [x, y] = projectFn.forward(raw);
+        const props = f.properties as any;
+        const ground = parseFloat(props?.['Elevation Ground [ft]']);
+        const invOut = parseFloat(
+          props?.['Inv Out [ft]'] ?? props?.['Elevation Invert[ft]']
+        );
+        if (!isFinite(ground) || !isFinite(invOut)) return null;
+        const id = `N${i + 1}`;
+        return { id, x, y, ground, invOut, key: nodeKey(raw) };
+      })
+      .filter(
+        (n): n is {
+          id: string;
+          x: number;
+          y: number;
+          ground: number;
+          invOut: number;
+          key: string;
+        } => n !== null
+      );
+    const nodeMap = new Map(nodes.map(n => [n.key, n.id]));
+
+    const rawPipeFeatures: Feature<LineString>[] = [];
+    pLayer.geojson.features.forEach(f => {
+      if (!f.geometry) return;
+      if (f.geometry.type === 'LineString') {
+        rawPipeFeatures.push(f as Feature<LineString>);
+      } else if (f.geometry.type === 'MultiLineString') {
+        (f.geometry.coordinates as number[][][]).forEach(coords => {
+          rawPipeFeatures.push({
+            type: 'Feature',
+            geometry: { type: 'LineString', coordinates: coords },
+            properties: f.properties || {},
+          });
+        });
+      }
+    });
+    const pipeFeatures = splitPipesAtNodes(rawPipeFeatures, nodeFeatures);
+    const pipes = pipeFeatures
+      .map((f, i) => {
+        const coords = (f.geometry as LineString).coordinates;
+        const startRaw = coords[0] as [number, number];
+        const endRaw = coords[coords.length - 1] as [number, number];
+        const [sx, sy] = projectFn.forward(startRaw);
+        const [ex, ey] = projectFn.forward(endRaw);
+        const invIn = parseFloat(
+          (f.properties as any)?.['Elevation Invert In [ft]']
+        );
+        const invOut = parseFloat(
+          (f.properties as any)?.['Elevation Invert Out [ft]']
+        );
+        const diam =
+          parseFloat((f.properties as any)?.['Diameter [in]']) / 12;
+        if (![invIn, invOut, diam].every(isFinite)) return null;
+        const id = `P${i + 1}`;
+        return {
+          id,
+          startId: nodeMap.get(nodeKey(startRaw)) || '',
+          endId: nodeMap.get(nodeKey(endRaw)) || '',
+          sx,
+          sy,
+          sz: invIn + diam / 2,
+          ex,
+          ey,
+          ez: invOut + diam / 2,
+          diam,
+        };
+      })
+      .filter(
+        (p): p is {
+          id: string;
+          startId: string;
+          endId: string;
+          sx: number;
+          sy: number;
+          sz: number;
+          ex: number;
+          ey: number;
+          ez: number;
+          diam: number;
+        } => p !== null
+      );
+
+    if (nodes.length === 0 && pipes.length === 0) {
+      addLog('No pipe network data to export', 'error');
+      return;
+    }
+
+    const structLines = nodes.map(
+      n =>
+        `        <Struct name="${n.id}" id="${n.id}">\n          <Center><P x="${n.x.toFixed(
+            3
+          )}" y="${n.y.toFixed(3)}" z="${n.ground.toFixed(
+            3
+          )}"/></Center>\n          <Invert>${n.invOut.toFixed(3)}</Invert>\n        </Struct>`
+    );
+    const pipeLines = pipes.map(
+      p =>
+        `        <Pipe name="${p.id}" id="${p.id}" refStart="${p.startId}" refEnd="${p.endId}" diam="${p.diam.toFixed(
+          3
+        )}">\n          <Geometry>\n            <Line>\n              <PntList3D>${p.sx.toFixed(3)} ${p.sy.toFixed(3)} ${p.sz.toFixed(
+          3
+        )} ${p.ex.toFixed(3)} ${p.ey.toFixed(3)} ${p.ez.toFixed(
+          3
+        )}</PntList3D>\n            </Line>\n          </Geometry>\n        </Pipe>`
+    );
+    const content = `<?xml version="1.0" encoding="UTF-8"?>\n<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2">\n  <Units>\n    <Imperial linearUnit="foot"/>\n  </Units>\n  <PipeNetworks>\n    <PipeNetwork name="${
+      projectName || 'PipeNetwork'
+    }">\n      <Structs>\n${structLines.join('\n')}\n      </Structs>\n      <Pipes>\n${pipeLines.join('\n')}\n      </Pipes>\n    </PipeNetwork>\n  </PipeNetworks>\n</LandXML>\n`;
+
+    const blob = new Blob([content], { type: 'application/xml' });
+    const filename = `${(projectName || 'project')}_${projectVersion}.xml`;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+    addLog('LandXML file exported');
+    setExportModalOpen(false);
+  }, [addLog, layers, projectName, projectVersion, projection]);
 
   const handleExportShapefiles = useCallback(async () => {
     const processedLayers = layers.filter(
@@ -1824,10 +1962,12 @@ const App: React.FC = () => {
           onExportHydroCAD={handleExportHydroCAD}
           onExportSWMM={handleExportSWMM}
           onExportShapefiles={handleExportShapefiles}
+          onExportLandXML={handleExportLandXML}
           onClose={() => setExportModalOpen(false)}
           exportHydroCADEnabled={exportHydroCADEnabled}
           exportSWMMEnabled={exportSWMMEnabled}
           exportShapefilesEnabled={exportShapefilesEnabled}
+          exportLandXMLEnabled={exportLandXMLEnabled}
           projection={projection}
           onProjectionChange={(epsg) => {
             const proj = STATE_PLANE_OPTIONS.find(p => p.epsg === epsg);
