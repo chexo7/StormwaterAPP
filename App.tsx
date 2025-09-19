@@ -99,6 +99,7 @@ const App: React.FC = () => {
   const exportShapefilesEnabled =
     (computeSucceeded || pipe3DEnabled) && projectionConfirmed;
   const exportSWMMEnabled = (computeSucceeded || pipe3DEnabled) && projectionConfirmed;
+  const exportLandXMLEnabled = pipe3DEnabled && projectionConfirmed;
   const exportEnabled = computeSucceeded || pipe3DEnabled;
 
   const splitPipesAtNodes = (
@@ -1166,7 +1167,61 @@ const App: React.FC = () => {
     URL.revokeObjectURL(url);
     addLog('SWMM file exported');
     setExportModalOpen(false);
-    }, [addLog, layers, projectName, projectVersion, projection]);
+  }, [addLog, layers, projectName, projectVersion, projection]);
+
+  const handleExportLandXML = useCallback(() => {
+    if (!cbLayer || !pipesLayer) return;
+
+    const cbs = reprojectFeatureCollection(cbLayer.geojson, projection.proj4);
+    const pipes = reprojectFeatureCollection(pipesLayer.geojson, projection.proj4);
+
+    const coordKey = (p: number[]) => `${p[0].toFixed(3)},${p[1].toFixed(3)}`;
+    const nodeMap = new Map<string, string>();
+    const structLines: string[] = [];
+    cbs.features.forEach((f, i) => {
+      if (!f.geometry || f.geometry.type !== 'Point') return;
+      const [x, y] = (f.geometry.coordinates as number[]) || [];
+      const id = `S${i + 1}`;
+      nodeMap.set(coordKey([x, y]), id);
+      structLines.push(
+        `<Struct name="${id}"><Location><Pnt>${i + 1} ${x} ${y} 0</Pnt></Location></Struct>`
+      );
+    });
+
+    const pipeLines: string[] = [];
+    pipes.features.forEach((f, i) => {
+      if (!f.geometry || f.geometry.type !== 'LineString') return;
+      const coords = f.geometry.coordinates as number[][];
+      const start = nodeMap.get(coordKey(coords[0])) || '';
+      const end = nodeMap.get(coordKey(coords[coords.length - 1])) || '';
+      const pts = coords.map(c => `${c[0]} ${c[1]} 0`).join(' ');
+      pipeLines.push(
+        `<Pipe name="P${i + 1}" refStart="${start}" refEnd="${end}"><CenterLine><PntList3D>${pts}</PntList3D></CenterLine></Pipe>`
+      );
+    });
+
+    const xml =
+      `<?xml version="1.0" encoding="UTF-8"?>\n` +
+      `<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2">\n` +
+      `  <Units><Metric linearUnit="foot"/></Units>\n` +
+      `  <PipeNetworks>\n` +
+      `    <PipeNetwork name="${projectName || 'Pipe Network'}">\n` +
+      `      <Structs>\n        ${structLines.join('\n        ')}\n      </Structs>\n` +
+      `      <Pipes>\n        ${pipeLines.join('\n        ')}\n      </Pipes>\n` +
+      `    </PipeNetwork>\n` +
+      `  </PipeNetworks>\n` +
+      `</LandXML>`;
+
+    const blob = new Blob([xml], { type: 'application/xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${projectName || 'project'}_${projectVersion}_pipe_network.xml`;
+    a.click();
+    URL.revokeObjectURL(url);
+    addLog('LandXML file exported');
+    setExportModalOpen(false);
+  }, [addLog, cbLayer, pipesLayer, projectName, projectVersion, projection]);
 
   const handleExportShapefiles = useCallback(async () => {
     const processedLayers = layers.filter(
@@ -1823,10 +1878,12 @@ const App: React.FC = () => {
         <ExportModal
           onExportHydroCAD={handleExportHydroCAD}
           onExportSWMM={handleExportSWMM}
+          onExportLandXML={handleExportLandXML}
           onExportShapefiles={handleExportShapefiles}
           onClose={() => setExportModalOpen(false)}
           exportHydroCADEnabled={exportHydroCADEnabled}
           exportSWMMEnabled={exportSWMMEnabled}
+          exportLandXMLEnabled={exportLandXMLEnabled}
           exportShapefilesEnabled={exportShapefilesEnabled}
           projection={projection}
           onProjectionChange={(epsg) => {
