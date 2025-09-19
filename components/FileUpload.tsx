@@ -1,7 +1,8 @@
 import React, { useCallback, useState, useEffect } from 'react';
 import * as shp from 'shpjs';
 import JSZip from 'jszip';
-import type { FeatureCollection } from 'geojson';
+import proj4 from 'proj4';
+import type { FeatureCollection, Geometry } from 'geojson';
 import { UploadIcon } from './Icons';
 import { loadHsgMap } from '../utils/soil';
 import { ARCHIVE_NAME_MAP, KNOWN_LAYER_NAMES } from '../utils/constants';
@@ -75,6 +76,54 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
       }
 
       let geojson = await shp.parseZip(buffer) as FeatureCollection;
+
+      // --- CRS DETECTION AND REPROJECTION ---
+      try {
+        const zipForPrj = await JSZip.loadAsync(buffer);
+        const prjFile = zipForPrj.file(/\.prj$/i)[0];
+        if (prjFile) {
+          const prjText = await prjFile.async('string');
+          const isWgs84 = /EPSG\s*:?\s*4326/i.test(prjText) || /WGS[_ ]?1984/i.test(prjText);
+          if (!isWgs84) {
+            try {
+              const project = proj4(prjText, 'EPSG:4326');
+              const reprojectCoords = (coords: any): any => {
+                if (typeof coords[0] === 'number') {
+                  return project.forward(coords as [number, number]);
+                }
+                return coords.map(reprojectCoords);
+              };
+              geojson = {
+                type: 'FeatureCollection',
+                features: geojson.features.map(f =>
+                  f.geometry
+                    ? {
+                        ...f,
+                        geometry: {
+                          ...(f.geometry as Geometry),
+                          coordinates: reprojectCoords((f.geometry as any).coordinates),
+                        },
+                      }
+                    : f
+                ),
+              };
+              onLog('Reprojected layer to WGS84');
+            } catch (reprojError) {
+              console.error('Reprojection failed:', reprojError);
+              const msg = 'Failed to reproject layer to WGS84.';
+              onError(msg);
+              onLog(msg, 'error');
+              return;
+            }
+          }
+        } else {
+          onLog('No .prj file found; assuming EPSG:4326');
+        }
+      } catch (crsErr) {
+        console.error('CRS detection error:', crsErr);
+        onLog('Could not read .prj; assuming EPSG:4326', 'error');
+      }
+      // --- END CRS DETECTION AND REPROJECTION ---
 
       // --- DATA ENRICHMENT FOR WSS FILES ---
       if (isWssFile && geojson.features.length > 0) {
