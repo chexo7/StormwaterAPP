@@ -89,20 +89,20 @@ const preparePipesLayer = (
       NW: 'Invert NW [ft]',
     };
     const val = Number((properties as any)[keyMap[dir]]);
-    if (val && !isNaN(val)) return val;
+    if (Number.isFinite(val)) return val;
     const outVal = Number((properties as any)['Inv Out [ft]']);
-    if (outVal && !isNaN(outVal)) return outVal;
+    if (Number.isFinite(outVal)) return outVal;
     const nodeVal = Number((properties as any)['Elevation Invert[ft]']);
-    return nodeVal && !isNaN(nodeVal) ? nodeVal : null;
+    return Number.isFinite(nodeVal) ? nodeVal : null;
   };
 
   const invOutFromCb = (cb: Feature<Point> | null) => {
     if (!cb) return null;
     const properties = cb.properties || {};
     const val = Number((properties as any)['Elevation Invert[ft]']);
-    if (val && !isNaN(val)) return val;
+    if (Number.isFinite(val)) return val;
     const outVal = Number((properties as any)['Inv Out [ft]']);
-    if (outVal && !isNaN(outVal)) return outVal;
+    if (Number.isFinite(outVal)) return outVal;
     const dirs = [
       'Invert N [ft]',
       'Invert S [ft]',
@@ -215,8 +215,7 @@ const prepareCatchBasinsLayer = (
     const column = fieldMap[columnKey];
     if (!column) return null;
     const value = Number(props[column]);
-    if (!value || value === 0 || isNaN(value)) return null;
-    return value;
+    return Number.isFinite(value) ? value : null;
   };
 
   const features = geojson.features.map(feature => {
@@ -245,10 +244,11 @@ const prepareCatchBasinsLayer = (
       : invCandidates.length
         ? Math.min(...invCandidates)
         : null;
-    const ground =
-      fieldMap.ground && props[fieldMap.ground] !== undefined
-        ? Number(props[fieldMap.ground]) || null
-        : null;
+    let ground: number | null = null;
+    if (fieldMap.ground && props[fieldMap.ground] !== undefined) {
+      const parsed = Number(props[fieldMap.ground]);
+      ground = Number.isFinite(parsed) ? parsed : null;
+    }
 
     return {
       ...feature,
