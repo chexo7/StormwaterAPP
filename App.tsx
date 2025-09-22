@@ -19,6 +19,13 @@ import type { ProjectionOption } from './types';
 import { reprojectFeatureCollection } from './utils/reproject';
 import { resolvePrj } from './utils/prj';
 import { transformLayerGeojson } from './utils/layerTransforms';
+import {
+  sanitizeCatchBasinsForExport,
+  getMapped,
+  sanitizeId,
+  toNumericOrNull,
+  type CatchBasinNode,
+} from './utils/exportCatchBasins';
 
 const DEFAULT_COLORS: Record<string, string> = {
   'Drainage Areas': '#67e8f9',
@@ -654,13 +661,6 @@ const App: React.FC = () => {
       kinks,
     } = await import('@turf/turf');
 
-    const sanitizeId = (s: string, i: number) =>
-      (s || `S${i + 1}`)
-        .trim()
-        .replace(/[^\w\-]/g, '_')
-        .replace(/_+/g, '_')
-        .slice(0, 31);
-
     const isFinitePair = (p: number[]) =>
       Number.isFinite(p[0]) && Number.isFinite(p[1]);
 
@@ -1179,66 +1179,16 @@ const App: React.FC = () => {
     const pLayer = layers.find((l) => l.name === 'Pipes');
 
     if (jLayer && pLayer) {
-
-      const getPropStrict = (props: any, candidates: string[]) => {
-        if (!props) return undefined;
-        const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
-        const map = new Map(Object.keys(props).map((k) => [norm(k), k]));
-        for (const cand of candidates) {
-          const hit = map.get(norm(cand));
-          if (hit !== undefined) return (props as any)[hit];
-        }
-        return undefined;
-      };
-
-      const getMapped = (
-        props: any,
-        map: Record<string, string> | undefined,
-        key: string,
-        candidates: string[]
-      ) => {
-        if (map && map[key] && props?.[map[key]] !== undefined) {
-          return (props as any)[map[key]];
-        }
-        return getPropStrict(props, candidates);
-      };
-
-      const sanitizeId = (s: string, i: number) =>
-        (s || `S${i + 1}`)
-          .trim()
-          .replace(/[^\w\-]/g, '_')
-          .replace(/_+/g, '_')
-          .slice(0, 31);
-
-      type NodeRec = { id: string; coord: [number, number]; invert: number };
       const jMap = jLayer.fieldMap;
-      const nodeFeatures = jLayer.geojson.features.filter(
+      const rawNodeFeatures = jLayer.geojson.features.filter(
         (f) => f.geometry && f.geometry.type === 'Point'
       ) as Feature<Point>[];
-      const nodes: NodeRec[] = [];
-      const goodNodeFeatures: Feature<Point>[] = [];
-      nodeFeatures.forEach((f, i) => {
-        const props = f.properties;
-        const id = sanitizeId(
-          String(getMapped(props, jMap, 'label', ['Label']) ?? ''),
-          i
-        );
-        const invert = Number(
-          getMapped(props, jMap, 'inv_out', [
-            'Inv Out [ft]',
-            'Inv Out [ft]:',
-            'Elevation Invert[ft]'
-          ])
-        );
-        const ground = Number(
-          getMapped(props, jMap, 'ground', ['Elevation Ground [ft]'])
-        );
-        if (!Number.isFinite(invert) || !Number.isFinite(ground)) return;
-        const coord = project.forward(
-          (f.geometry as any).coordinates as [number, number]
-        );
-        nodes.push({ id, coord, invert });
-        goodNodeFeatures.push(f);
+      const {
+        nodes,
+        sanitizedFeatures: catchBasinFeatures,
+      } = sanitizeCatchBasinsForExport(rawNodeFeatures, {
+        fieldMap: jMap,
+        project,
       });
 
       const cbIdx = processedLayers.findIndex(
@@ -1249,13 +1199,13 @@ const App: React.FC = () => {
           ...processedLayers[cbIdx],
           geojson: {
             type: 'FeatureCollection',
-            features: goodNodeFeatures,
+            features: catchBasinFeatures,
           },
         };
       }
 
       const findNearestNode = (pt: [number, number]) => {
-        let best: NodeRec | undefined;
+        let best: CatchBasinNode | undefined;
         let bestDist = Infinity;
         for (const n of nodes) {
           const dx = pt[0] - n.coord[0];
@@ -1294,15 +1244,9 @@ const App: React.FC = () => {
           });
         }
       });
-      const pipeFeatures = splitPipesAtNodes(rawPipeFeatures, nodeFeatures);
+      const pipeFeatures = splitPipesAtNodes(rawPipeFeatures, catchBasinFeatures);
       const pMap = pLayer.fieldMap;
       const pipeOut: Feature<LineString>[] = [];
-      const toNumericOrNull = (value: unknown): number | null => {
-        if (value == null || value === '') return null;
-        const num = Number(value);
-        return Number.isFinite(num) ? num : null;
-      };
-
       const formatOrEmpty = (value: number | null, digits: number) =>
         value == null ? '' : Number(value.toFixed(digits));
 
@@ -1328,8 +1272,8 @@ const App: React.FC = () => {
           getMapped(f.properties, pMap, 'direction', ['Directions']) ?? ''
         );
         if (seg) dirStr = '';
-        let from: NodeRec | undefined;
-        let to: NodeRec | undefined;
+        let from: CatchBasinNode | undefined;
+        let to: CatchBasinNode | undefined;
         if (dirStr.includes(' to ')) {
           const [a, b] = dirStr.split(/\s+to\s+/);
           const fromId = sanitizeId(a, 0);
