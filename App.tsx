@@ -1297,6 +1297,15 @@ const App: React.FC = () => {
       const pipeFeatures = splitPipesAtNodes(rawPipeFeatures, nodeFeatures);
       const pMap = pLayer.fieldMap;
       const pipeOut: Feature<LineString>[] = [];
+      const toNumericOrNull = (value: unknown): number | null => {
+        if (value == null || value === '') return null;
+        const num = Number(value);
+        return Number.isFinite(num) ? num : null;
+      };
+
+      const formatOrEmpty = (value: number | null, digits: number) =>
+        value == null ? '' : Number(value.toFixed(digits));
+
       pipeFeatures.forEach((f, i) => {
         const seg = (f.properties as any)?._segment;
         let raw = String(
@@ -1305,16 +1314,15 @@ const App: React.FC = () => {
         if (seg) raw = `${raw}-${seg}`;
         const id = sanitizeId(raw, i);
         const coords = (f.geometry as LineString).coordinates;
-        const diamIn = Number(
+        const diamIn = toNumericOrNull(
           getMapped(f.properties, pMap, 'diameter', ['Diameter [in]'])
         );
-        const invIn = Number(
+        const invIn = toNumericOrNull(
           getMapped(f.properties, pMap, 'inv_in', ['Elevation Invert In [ft]'])
         );
-        const invOut = Number(
+        const invOut = toNumericOrNull(
           getMapped(f.properties, pMap, 'inv_out', ['Elevation Invert Out [ft]'])
         );
-        if (![diamIn, invIn, invOut].every(Number.isFinite)) return;
 
         let dirStr = String(
           getMapped(f.properties, pMap, 'direction', ['Directions']) ?? ''
@@ -1344,9 +1352,10 @@ const App: React.FC = () => {
           getMapped(f.properties, pMap, 'roughness', ['Rougness', 'Roughness']) ??
             0
         );
-        const slope = len > 0 ? (invIn - invOut) / len : 0;
-        const inOffset = invIn - from.invert;
-        const outOffset = invOut - to.invert;
+        const slope =
+          invIn != null && invOut != null && len > 0 ? (invIn - invOut) / len : null;
+        const inOffset = invIn != null ? invIn - from.invert : null;
+        const outOffset = invOut != null ? invOut - to.invert : null;
         pipeOut.push({
           type: 'Feature',
           geometry: f.geometry,
@@ -1355,13 +1364,13 @@ const App: React.FC = () => {
             FROM_ID: from.id,
             TO_ID: to.id,
             LEN_FT: Number(len.toFixed(3)),
-            DIAM_IN: Number(diamIn.toFixed(3)),
-            INV_IN: Number(invIn.toFixed(3)),
-            INV_OUT: Number(invOut.toFixed(3)),
+            DIAM_IN: formatOrEmpty(diamIn, 3),
+            INV_IN: formatOrEmpty(invIn, 3),
+            INV_OUT: formatOrEmpty(invOut, 3),
             ROUGH: rough,
-            SLOPE: Number(slope.toFixed(6)),
-            IN_OFF: Number(inOffset.toFixed(3)),
-            OUT_OFF: Number(outOffset.toFixed(3)),
+            SLOPE: formatOrEmpty(slope, 6),
+            IN_OFF: formatOrEmpty(inOffset, 3),
+            OUT_OFF: formatOrEmpty(outOffset, 3),
           },
         });
       });

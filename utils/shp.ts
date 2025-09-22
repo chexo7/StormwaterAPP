@@ -73,8 +73,11 @@ function sanitizeProps(props: GeoJsonProperties, layerName: string): GeoJsonProp
     if (!(key in (props || {}))) continue;
     let v = (props as any)[key];
 
+    if (v === null || typeof v === 'undefined') v = '';
+
     // DBF no admite objetos/arrays -> a string
     if (typeof v === 'object' && v !== null) v = JSON.stringify(v);
+    if (typeof v === 'number' && !Number.isFinite(v)) v = '';
     if (typeof v === 'string') v = v.slice(0, 254); // límite típico DBF
 
     // Renombra a ≤10 chars, solo [A-Za-z0-9_]
