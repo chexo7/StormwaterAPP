@@ -13,6 +13,7 @@ import ExportModal from './components/ExportModal';
 import FieldMapModal from './components/FieldMapModal';
 import { loadLandCoverList, loadCnValues, CnRecord } from './utils/landcover';
 import { prepareForShapefile } from './utils/shp';
+import { buildCatchBasinExportData, CatchBasinNode } from './utils/exportCatchBasins';
 import proj4 from 'proj4';
 import { STATE_PLANE_OPTIONS } from './utils/projections';
 import type { ProjectionOption } from './types';
@@ -1210,35 +1211,14 @@ const App: React.FC = () => {
           .replace(/_+/g, '_')
           .slice(0, 31);
 
-      type NodeRec = { id: string; coord: [number, number]; invert: number };
       const jMap = jLayer.fieldMap;
       const nodeFeatures = jLayer.geojson.features.filter(
         (f) => f.geometry && f.geometry.type === 'Point'
       ) as Feature<Point>[];
-      const nodes: NodeRec[] = [];
-      const goodNodeFeatures: Feature<Point>[] = [];
-      nodeFeatures.forEach((f, i) => {
-        const props = f.properties;
-        const id = sanitizeId(
-          String(getMapped(props, jMap, 'label', ['Label']) ?? ''),
-          i
-        );
-        const invert = Number(
-          getMapped(props, jMap, 'inv_out', [
-            'Inv Out [ft]',
-            'Inv Out [ft]:',
-            'Elevation Invert[ft]'
-          ])
-        );
-        const ground = Number(
-          getMapped(props, jMap, 'ground', ['Elevation Ground [ft]'])
-        );
-        if (!Number.isFinite(invert) || !Number.isFinite(ground)) return;
-        const coord = project.forward(
-          (f.geometry as any).coordinates as [number, number]
-        );
-        nodes.push({ id, coord, invert });
-        goodNodeFeatures.push(f);
+      const { nodes, features: catchBasinFeatures } = buildCatchBasinExportData({
+        features: nodeFeatures,
+        fieldMap: jMap,
+        forward: (coord) => project.forward(coord) as [number, number],
       });
 
       const cbIdx = processedLayers.findIndex(
@@ -1249,13 +1229,13 @@ const App: React.FC = () => {
           ...processedLayers[cbIdx],
           geojson: {
             type: 'FeatureCollection',
-            features: goodNodeFeatures,
+            features: catchBasinFeatures,
           },
         };
       }
 
       const findNearestNode = (pt: [number, number]) => {
-        let best: NodeRec | undefined;
+        let best: CatchBasinNode | undefined;
         let bestDist = Infinity;
         for (const n of nodes) {
           const dx = pt[0] - n.coord[0];
@@ -1294,7 +1274,7 @@ const App: React.FC = () => {
           });
         }
       });
-      const pipeFeatures = splitPipesAtNodes(rawPipeFeatures, nodeFeatures);
+      const pipeFeatures = splitPipesAtNodes(rawPipeFeatures, catchBasinFeatures);
       const pMap = pLayer.fieldMap;
       const pipeOut: Feature<LineString>[] = [];
       pipeFeatures.forEach((f, i) => {
@@ -1320,8 +1300,8 @@ const App: React.FC = () => {
           getMapped(f.properties, pMap, 'direction', ['Directions']) ?? ''
         );
         if (seg) dirStr = '';
-        let from: NodeRec | undefined;
-        let to: NodeRec | undefined;
+        let from: CatchBasinNode | undefined;
+        let to: CatchBasinNode | undefined;
         if (dirStr.includes(' to ')) {
           const [a, b] = dirStr.split(/\s+to\s+/);
           const fromId = sanitizeId(a, 0);

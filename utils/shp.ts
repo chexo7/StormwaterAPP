@@ -66,7 +66,7 @@ function sanitizeProps(props: GeoJsonProperties, layerName: string): GeoJsonProp
   };
 
   const wl = wlMap[layerName] || Object.keys(props || {});
-  const out: Record<string, number | string> = {};
+  const out: Record<string, number | string | null> = {};
   const used = new Set<string>();
 
   for (const key of wl) {
@@ -74,7 +74,7 @@ function sanitizeProps(props: GeoJsonProperties, layerName: string): GeoJsonProp
     let v = (props as any)[key];
 
     // DBF no admite objetos/arrays -> a string
-    if (typeof v === 'object' && v !== null) v = JSON.stringify(v);
+    if (v !== null && typeof v === 'object') v = JSON.stringify(v);
     if (typeof v === 'string') v = v.slice(0, 254); // límite típico DBF
 
     // Renombra a ≤10 chars, solo [A-Za-z0-9_]
@@ -88,7 +88,7 @@ function sanitizeProps(props: GeoJsonProperties, layerName: string): GeoJsonProp
     used.add(k);
 
     // A DBF sólo number|string; nulls y undefined los saltamos
-    if (typeof v === 'number' || typeof v === 'string') out[k] = v;
+    if (typeof v === 'number' || typeof v === 'string' || v === null) out[k] = v;
   }
 
   return out;
