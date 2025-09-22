@@ -10,679 +10,679 @@ export const STATE_PLANE_OPTIONS: ProjectionOption[] = [
   {
     "epsg": "26729",
     "name": "NAD27 / Alabama East",
-    "proj4": "+proj=tmerc +lat_0=30.5 +lon_0=-85.8333333333333 +k=0.99996 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=tmerc +lat_0=30.5 +lon_0=-85.8333333333333 +k=0.99996 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26730",
     "name": "NAD27 / Alabama West",
-    "proj4": "+proj=tmerc +lat_0=30 +lon_0=-87.5 +k=0.999933333 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=tmerc +lat_0=30 +lon_0=-87.5 +k=0.999933333 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26731",
     "name": "NAD27 / Alaska zone 1",
-    "proj4": "+proj=omerc +no_uoff +lat_0=57 +lonc=-133.666666666667 +alpha=323.130102361111 +gamma=323.130102361111 +k=0.9999 +x_0=5000000.001016 +y_0=-5000000.001016 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=omerc +no_uoff +lat_0=57 +lonc=-133.666666666667 +alpha=323.130102361111 +gamma=323.130102361111 +k=0.9999 +x_0=5000000.001016 +y_0=-5000000.001016 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26740",
     "name": "NAD27 / Alaska zone 10",
-    "proj4": "+proj=lcc +lat_0=51 +lon_0=-176 +lat_1=53.8333333333333 +lat_2=51.8333333333333 +x_0=914401.828803657 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=51 +lon_0=-176 +lat_1=53.8333333333333 +lat_2=51.8333333333333 +x_0=914401.828803657 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26732",
     "name": "NAD27 / Alaska zone 2",
-    "proj4": "+proj=tmerc +lat_0=54 +lon_0=-142 +k=0.9999 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=tmerc +lat_0=54 +lon_0=-142 +k=0.9999 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26733",
     "name": "NAD27 / Alaska zone 3",
-    "proj4": "+proj=tmerc +lat_0=54 +lon_0=-146 +k=0.9999 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=tmerc +lat_0=54 +lon_0=-146 +k=0.9999 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26734",
     "name": "NAD27 / Alaska zone 4",
-    "proj4": "+proj=tmerc +lat_0=54 +lon_0=-150 +k=0.9999 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=tmerc +lat_0=54 +lon_0=-150 +k=0.9999 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26735",
     "name": "NAD27 / Alaska zone 5",
-    "proj4": "+proj=tmerc +lat_0=54 +lon_0=-154 +k=0.9999 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=tmerc +lat_0=54 +lon_0=-154 +k=0.9999 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26736",
     "name": "NAD27 / Alaska zone 6",
-    "proj4": "+proj=tmerc +lat_0=54 +lon_0=-158 +k=0.9999 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=tmerc +lat_0=54 +lon_0=-158 +k=0.9999 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26737",
     "name": "NAD27 / Alaska zone 7",
-    "proj4": "+proj=tmerc +lat_0=54 +lon_0=-162 +k=0.9999 +x_0=213360.426720853 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=tmerc +lat_0=54 +lon_0=-162 +k=0.9999 +x_0=213360.426720853 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26738",
     "name": "NAD27 / Alaska zone 8",
-    "proj4": "+proj=tmerc +lat_0=54 +lon_0=-166 +k=0.9999 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=tmerc +lat_0=54 +lon_0=-166 +k=0.9999 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26739",
     "name": "NAD27 / Alaska zone 9",
-    "proj4": "+proj=tmerc +lat_0=54 +lon_0=-170 +k=0.9999 +x_0=182880.365760731 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=tmerc +lat_0=54 +lon_0=-170 +k=0.9999 +x_0=182880.365760731 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26749",
     "name": "NAD27 / Arizona Central",
-    "proj4": "+proj=tmerc +lat_0=31 +lon_0=-111.916666666667 +k=0.9999 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=tmerc +lat_0=31 +lon_0=-111.916666666667 +k=0.9999 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26748",
     "name": "NAD27 / Arizona East",
-    "proj4": "+proj=tmerc +lat_0=31 +lon_0=-110.166666666667 +k=0.9999 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=tmerc +lat_0=31 +lon_0=-110.166666666667 +k=0.9999 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26750",
     "name": "NAD27 / Arizona West",
-    "proj4": "+proj=tmerc +lat_0=31 +lon_0=-113.75 +k=0.999933333 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=tmerc +lat_0=31 +lon_0=-113.75 +k=0.999933333 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26751",
     "name": "NAD27 / Arkansas North",
-    "proj4": "+proj=lcc +lat_0=34.3333333333333 +lon_0=-92 +lat_1=36.2333333333333 +lat_2=34.9333333333333 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=34.3333333333333 +lon_0=-92 +lat_1=36.2333333333333 +lat_2=34.9333333333333 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26752",
     "name": "NAD27 / Arkansas South",
-    "proj4": "+proj=lcc +lat_0=32.6666666666667 +lon_0=-92 +lat_1=34.7666666666667 +lat_2=33.3 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=32.6666666666667 +lon_0=-92 +lat_1=34.7666666666667 +lat_2=33.3 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26741",
     "name": "NAD27 / California zone I",
-    "proj4": "+proj=lcc +lat_0=39.3333333333333 +lon_0=-122 +lat_1=41.6666666666667 +lat_2=40 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=39.3333333333333 +lon_0=-122 +lat_1=41.6666666666667 +lat_2=40 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26742",
     "name": "NAD27 / California zone II",
-    "proj4": "+proj=lcc +lat_0=37.6666666666667 +lon_0=-122 +lat_1=39.8333333333333 +lat_2=38.3333333333333 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=37.6666666666667 +lon_0=-122 +lat_1=39.8333333333333 +lat_2=38.3333333333333 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26743",
     "name": "NAD27 / California zone III",
-    "proj4": "+proj=lcc +lat_0=36.5 +lon_0=-120.5 +lat_1=38.4333333333333 +lat_2=37.0666666666667 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=36.5 +lon_0=-120.5 +lat_1=38.4333333333333 +lat_2=37.0666666666667 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26744",
     "name": "NAD27 / California zone IV",
-    "proj4": "+proj=lcc +lat_0=35.3333333333333 +lon_0=-119 +lat_1=37.25 +lat_2=36 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=35.3333333333333 +lon_0=-119 +lat_1=37.25 +lat_2=36 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26745",
     "name": "NAD27 / California zone V",
-    "proj4": "+proj=lcc +lat_0=33.5 +lon_0=-118 +lat_1=35.4666666666667 +lat_2=34.0333333333333 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=33.5 +lon_0=-118 +lat_1=35.4666666666667 +lat_2=34.0333333333333 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26746",
     "name": "NAD27 / California zone VI",
-    "proj4": "+proj=lcc +lat_0=32.1666666666667 +lon_0=-116.25 +lat_1=33.8833333333333 +lat_2=32.7833333333333 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=32.1666666666667 +lon_0=-116.25 +lat_1=33.8833333333333 +lat_2=32.7833333333333 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26799",
     "name": "NAD27 / California zone VII",
-    "proj4": "+proj=lcc +lat_0=34.1333333333333 +lon_0=-118.333333333333 +lat_1=34.4166666666667 +lat_2=33.8666666666667 +x_0=1276106.4505969 +y_0=1268253.00685801 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=34.1333333333333 +lon_0=-118.333333333333 +lat_1=34.4166666666667 +lat_2=33.8666666666667 +x_0=1276106.4505969 +y_0=1268253.00685801 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26754",
     "name": "NAD27 / Colorado Central",
-    "proj4": "+proj=lcc +lat_0=37.8333333333333 +lon_0=-105.5 +lat_1=39.75 +lat_2=38.45 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=37.8333333333333 +lon_0=-105.5 +lat_1=39.75 +lat_2=38.45 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26753",
     "name": "NAD27 / Colorado North",
-    "proj4": "+proj=lcc +lat_0=39.3333333333333 +lon_0=-105.5 +lat_1=39.7166666666667 +lat_2=40.7833333333333 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=39.3333333333333 +lon_0=-105.5 +lat_1=39.7166666666667 +lat_2=40.7833333333333 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26755",
     "name": "NAD27 / Colorado South",
-    "proj4": "+proj=lcc +lat_0=36.6666666666667 +lon_0=-105.5 +lat_1=38.4333333333333 +lat_2=37.2333333333333 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=36.6666666666667 +lon_0=-105.5 +lat_1=38.4333333333333 +lat_2=37.2333333333333 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26758",
     "name": "NAD27 / Florida East",
-    "proj4": "+proj=tmerc +lat_0=24.3333333333333 +lon_0=-81 +k=0.999941177 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=tmerc +lat_0=24.3333333333333 +lon_0=-81 +k=0.999941177 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26760",
     "name": "NAD27 / Florida North",
-    "proj4": "+proj=lcc +lat_0=29 +lon_0=-84.5 +lat_1=30.75 +lat_2=29.5833333333333 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=29 +lon_0=-84.5 +lat_1=30.75 +lat_2=29.5833333333333 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26759",
     "name": "NAD27 / Florida West",
-    "proj4": "+proj=tmerc +lat_0=24.3333333333333 +lon_0=-82 +k=0.999941177 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=tmerc +lat_0=24.3333333333333 +lon_0=-82 +k=0.999941177 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26766",
     "name": "NAD27 / Georgia East",
-    "proj4": "+proj=tmerc +lat_0=30 +lon_0=-82.1666666666667 +k=0.9999 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=tmerc +lat_0=30 +lon_0=-82.1666666666667 +k=0.9999 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26767",
     "name": "NAD27 / Georgia West",
-    "proj4": "+proj=tmerc +lat_0=30 +lon_0=-84.1666666666667 +k=0.9999 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=tmerc +lat_0=30 +lon_0=-84.1666666666667 +k=0.9999 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26769",
     "name": "NAD27 / Idaho Central",
-    "proj4": "+proj=tmerc +lat_0=41.6666666666667 +lon_0=-114 +k=0.999947368 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=tmerc +lat_0=41.6666666666667 +lon_0=-114 +k=0.999947368 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26768",
     "name": "NAD27 / Idaho East",
-    "proj4": "+proj=tmerc +lat_0=41.6666666666667 +lon_0=-112.166666666667 +k=0.999947368 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=tmerc +lat_0=41.6666666666667 +lon_0=-112.166666666667 +k=0.999947368 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26770",
     "name": "NAD27 / Idaho West",
-    "proj4": "+proj=tmerc +lat_0=41.6666666666667 +lon_0=-115.75 +k=0.999933333 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=tmerc +lat_0=41.6666666666667 +lon_0=-115.75 +k=0.999933333 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26771",
     "name": "NAD27 / Illinois East",
-    "proj4": "+proj=tmerc +lat_0=36.6666666666667 +lon_0=-88.3333333333333 +k=0.999975 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=tmerc +lat_0=36.6666666666667 +lon_0=-88.3333333333333 +k=0.999975 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26772",
     "name": "NAD27 / Illinois West",
-    "proj4": "+proj=tmerc +lat_0=36.6666666666667 +lon_0=-90.1666666666667 +k=0.999941177 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=tmerc +lat_0=36.6666666666667 +lon_0=-90.1666666666667 +k=0.999941177 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26773",
     "name": "NAD27 / Indiana East",
-    "proj4": "+proj=tmerc +lat_0=37.5 +lon_0=-85.6666666666667 +k=0.999966667 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=tmerc +lat_0=37.5 +lon_0=-85.6666666666667 +k=0.999966667 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26774",
     "name": "NAD27 / Indiana West",
-    "proj4": "+proj=tmerc +lat_0=37.5 +lon_0=-87.0833333333333 +k=0.999966667 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=tmerc +lat_0=37.5 +lon_0=-87.0833333333333 +k=0.999966667 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26775",
     "name": "NAD27 / Iowa North",
-    "proj4": "+proj=lcc +lat_0=41.5 +lon_0=-93.5 +lat_1=43.2666666666667 +lat_2=42.0666666666667 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=41.5 +lon_0=-93.5 +lat_1=43.2666666666667 +lat_2=42.0666666666667 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26776",
     "name": "NAD27 / Iowa South",
-    "proj4": "+proj=lcc +lat_0=40 +lon_0=-93.5 +lat_1=41.7833333333333 +lat_2=40.6166666666667 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=40 +lon_0=-93.5 +lat_1=41.7833333333333 +lat_2=40.6166666666667 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26777",
     "name": "NAD27 / Kansas North",
-    "proj4": "+proj=lcc +lat_0=38.3333333333333 +lon_0=-98 +lat_1=39.7833333333333 +lat_2=38.7166666666667 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=38.3333333333333 +lon_0=-98 +lat_1=39.7833333333333 +lat_2=38.7166666666667 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26778",
     "name": "NAD27 / Kansas South",
-    "proj4": "+proj=lcc +lat_0=36.6666666666667 +lon_0=-98.5 +lat_1=38.5666666666667 +lat_2=37.2666666666667 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=36.6666666666667 +lon_0=-98.5 +lat_1=38.5666666666667 +lat_2=37.2666666666667 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26779",
     "name": "NAD27 / Kentucky North",
-    "proj4": "+proj=lcc +lat_0=37.5 +lon_0=-84.25 +lat_1=37.9666666666667 +lat_2=38.9666666666667 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=37.5 +lon_0=-84.25 +lat_1=37.9666666666667 +lat_2=38.9666666666667 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26780",
     "name": "NAD27 / Kentucky South",
-    "proj4": "+proj=lcc +lat_0=36.3333333333333 +lon_0=-85.75 +lat_1=36.7333333333333 +lat_2=37.9333333333333 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=36.3333333333333 +lon_0=-85.75 +lat_1=36.7333333333333 +lat_2=37.9333333333333 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26781",
     "name": "NAD27 / Louisiana North",
-    "proj4": "+proj=lcc +lat_0=30.6666666666667 +lon_0=-92.5 +lat_1=31.1666666666667 +lat_2=32.6666666666667 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=30.6666666666667 +lon_0=-92.5 +lat_1=31.1666666666667 +lat_2=32.6666666666667 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26782",
     "name": "NAD27 / Louisiana South",
-    "proj4": "+proj=lcc +lat_0=28.6666666666667 +lon_0=-91.3333333333333 +lat_1=29.3 +lat_2=30.7 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=28.6666666666667 +lon_0=-91.3333333333333 +lat_1=29.3 +lat_2=30.7 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26783",
     "name": "NAD27 / Maine East",
-    "proj4": "+proj=tmerc +lat_0=43.8333333333333 +lon_0=-68.5 +k=0.9999 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=tmerc +lat_0=43.8333333333333 +lon_0=-68.5 +k=0.9999 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26784",
     "name": "NAD27 / Maine West",
-    "proj4": "+proj=tmerc +lat_0=42.8333333333333 +lon_0=-70.1666666666667 +k=0.999966667 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=tmerc +lat_0=42.8333333333333 +lon_0=-70.1666666666667 +k=0.999966667 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "6201",
     "name": "NAD27 / Michigan Central",
-    "proj4": "+proj=lcc +lat_0=43.3166666666667 +lon_0=-84.3333333333333 +lat_1=44.1833333333333 +lat_2=45.7 +x_0=609601.219202438 +y_0=0 +k_0=1.0000382 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=43.3166666666667 +lon_0=-84.3333333333333 +lat_1=44.1833333333333 +lat_2=45.7 +x_0=609601.219202438 +y_0=0 +k_0=1.0000382 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "5623",
     "name": "NAD27 / Michigan East",
-    "proj4": "+proj=tmerc +lat_0=41.5 +lon_0=-83.6666666666667 +k=0.999942857 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=tmerc +lat_0=41.5 +lon_0=-83.6666666666667 +k=0.999942857 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "6966",
     "name": "NAD27 / Michigan North",
-    "proj4": "+proj=lcc +lat_0=44.7833333333333 +lon_0=-87 +lat_1=45.4833333333333 +lat_2=47.0833333333333 +x_0=609601.219202438 +y_0=0 +k_0=1.0000382 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=44.7833333333333 +lon_0=-87 +lat_1=45.4833333333333 +lat_2=47.0833333333333 +x_0=609601.219202438 +y_0=0 +k_0=1.0000382 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "5624",
     "name": "NAD27 / Michigan Old Central",
-    "proj4": "+proj=tmerc +lat_0=41.5 +lon_0=-85.75 +k=0.999909091 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=tmerc +lat_0=41.5 +lon_0=-85.75 +k=0.999909091 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "6202",
     "name": "NAD27 / Michigan South",
-    "proj4": "+proj=lcc +lat_0=41.5 +lon_0=-84.3333333333333 +lat_1=42.1 +lat_2=43.6666666666667 +x_0=609601.219202438 +y_0=0 +k_0=1.0000382 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=41.5 +lon_0=-84.3333333333333 +lat_1=42.1 +lat_2=43.6666666666667 +x_0=609601.219202438 +y_0=0 +k_0=1.0000382 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "5625",
     "name": "NAD27 / Michigan West",
-    "proj4": "+proj=tmerc +lat_0=41.5 +lon_0=-88.75 +k=0.999909091 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=tmerc +lat_0=41.5 +lon_0=-88.75 +k=0.999909091 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26792",
     "name": "NAD27 / Minnesota Central",
-    "proj4": "+proj=lcc +lat_0=45 +lon_0=-94.25 +lat_1=45.6166666666667 +lat_2=47.05 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=45 +lon_0=-94.25 +lat_1=45.6166666666667 +lat_2=47.05 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26791",
     "name": "NAD27 / Minnesota North",
-    "proj4": "+proj=lcc +lat_0=46.5 +lon_0=-93.1 +lat_1=47.0333333333333 +lat_2=48.6333333333333 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=46.5 +lon_0=-93.1 +lat_1=47.0333333333333 +lat_2=48.6333333333333 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26793",
     "name": "NAD27 / Minnesota South",
-    "proj4": "+proj=lcc +lat_0=43 +lon_0=-94 +lat_1=43.7833333333333 +lat_2=45.2166666666667 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=43 +lon_0=-94 +lat_1=43.7833333333333 +lat_2=45.2166666666667 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26794",
     "name": "NAD27 / Mississippi East",
-    "proj4": "+proj=tmerc +lat_0=29.6666666666667 +lon_0=-88.8333333333333 +k=0.99996 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=tmerc +lat_0=29.6666666666667 +lon_0=-88.8333333333333 +k=0.99996 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26795",
     "name": "NAD27 / Mississippi West",
-    "proj4": "+proj=tmerc +lat_0=30.5 +lon_0=-90.3333333333333 +k=0.999941177 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=tmerc +lat_0=30.5 +lon_0=-90.3333333333333 +k=0.999941177 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26797",
     "name": "NAD27 / Missouri Central",
-    "proj4": "+proj=tmerc +lat_0=35.8333333333333 +lon_0=-92.5 +k=0.999933333 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=tmerc +lat_0=35.8333333333333 +lon_0=-92.5 +k=0.999933333 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26796",
     "name": "NAD27 / Missouri East",
-    "proj4": "+proj=tmerc +lat_0=35.8333333333333 +lon_0=-90.5 +k=0.999933333 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=tmerc +lat_0=35.8333333333333 +lon_0=-90.5 +k=0.999933333 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "26798",
     "name": "NAD27 / Missouri West",
-    "proj4": "+proj=tmerc +lat_0=36.1666666666667 +lon_0=-94.5 +k=0.999941177 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=tmerc +lat_0=36.1666666666667 +lon_0=-94.5 +k=0.999941177 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "32002",
     "name": "NAD27 / Montana Central",
-    "proj4": "+proj=lcc +lat_0=45.8333333333333 +lon_0=-109.5 +lat_1=47.8833333333333 +lat_2=46.45 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=45.8333333333333 +lon_0=-109.5 +lat_1=47.8833333333333 +lat_2=46.45 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "32001",
     "name": "NAD27 / Montana North",
-    "proj4": "+proj=lcc +lat_0=47 +lon_0=-109.5 +lat_1=48.7166666666667 +lat_2=47.85 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=47 +lon_0=-109.5 +lat_1=48.7166666666667 +lat_2=47.85 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "32003",
     "name": "NAD27 / Montana South",
-    "proj4": "+proj=lcc +lat_0=44 +lon_0=-109.5 +lat_1=46.4 +lat_2=44.8666666666667 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=44 +lon_0=-109.5 +lat_1=46.4 +lat_2=44.8666666666667 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "32005",
     "name": "NAD27 / Nebraska North",
-    "proj4": "+proj=lcc +lat_0=41.3333333333333 +lon_0=-100 +lat_1=41.85 +lat_2=42.8166666666667 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=41.3333333333333 +lon_0=-100 +lat_1=41.85 +lat_2=42.8166666666667 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "32006",
     "name": "NAD27 / Nebraska South",
-    "proj4": "+proj=lcc +lat_0=39.6666666666667 +lon_0=-99.5 +lat_1=40.2833333333333 +lat_2=41.7166666666667 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=39.6666666666667 +lon_0=-99.5 +lat_1=40.2833333333333 +lat_2=41.7166666666667 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "32008",
     "name": "NAD27 / Nevada Central",
-    "proj4": "+proj=tmerc +lat_0=34.75 +lon_0=-116.666666666667 +k=0.9999 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=tmerc +lat_0=34.75 +lon_0=-116.666666666667 +k=0.9999 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "32007",
     "name": "NAD27 / Nevada East",
-    "proj4": "+proj=tmerc +lat_0=34.75 +lon_0=-115.583333333333 +k=0.9999 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=tmerc +lat_0=34.75 +lon_0=-115.583333333333 +k=0.9999 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "32009",
     "name": "NAD27 / Nevada West",
-    "proj4": "+proj=tmerc +lat_0=34.75 +lon_0=-118.583333333333 +k=0.9999 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=tmerc +lat_0=34.75 +lon_0=-118.583333333333 +k=0.9999 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "32013",
     "name": "NAD27 / New Mexico Central",
-    "proj4": "+proj=tmerc +lat_0=31 +lon_0=-106.25 +k=0.9999 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=tmerc +lat_0=31 +lon_0=-106.25 +k=0.9999 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "32012",
     "name": "NAD27 / New Mexico East",
-    "proj4": "+proj=tmerc +lat_0=31 +lon_0=-104.333333333333 +k=0.999909091 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=tmerc +lat_0=31 +lon_0=-104.333333333333 +k=0.999909091 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "32014",
     "name": "NAD27 / New Mexico West",
-    "proj4": "+proj=tmerc +lat_0=31 +lon_0=-107.833333333333 +k=0.999916667 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=tmerc +lat_0=31 +lon_0=-107.833333333333 +k=0.999916667 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "32016",
     "name": "NAD27 / New York Central",
-    "proj4": "+proj=tmerc +lat_0=40 +lon_0=-76.5833333333333 +k=0.9999375 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=tmerc +lat_0=40 +lon_0=-76.5833333333333 +k=0.9999375 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "32015",
     "name": "NAD27 / New York East",
-    "proj4": "+proj=tmerc +lat_0=40 +lon_0=-74.3333333333333 +k=0.999966667 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=tmerc +lat_0=40 +lon_0=-74.3333333333333 +k=0.999966667 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "32017",
     "name": "NAD27 / New York West",
-    "proj4": "+proj=tmerc +lat_0=40 +lon_0=-78.5833333333333 +k=0.9999375 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=tmerc +lat_0=40 +lon_0=-78.5833333333333 +k=0.9999375 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "32019",
     "name": "NAD27 / North Carolina",
-    "proj4": "+proj=lcc +lat_0=33.75 +lon_0=-79 +lat_1=34.3333333333333 +lat_2=36.1666666666667 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=33.75 +lon_0=-79 +lat_1=34.3333333333333 +lat_2=36.1666666666667 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "32020",
     "name": "NAD27 / North Dakota North",
-    "proj4": "+proj=lcc +lat_0=47 +lon_0=-100.5 +lat_1=47.4333333333333 +lat_2=48.7333333333333 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=47 +lon_0=-100.5 +lat_1=47.4333333333333 +lat_2=48.7333333333333 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "32021",
     "name": "NAD27 / North Dakota South",
-    "proj4": "+proj=lcc +lat_0=45.6666666666667 +lon_0=-100.5 +lat_1=46.1833333333333 +lat_2=47.4833333333333 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=45.6666666666667 +lon_0=-100.5 +lat_1=46.1833333333333 +lat_2=47.4833333333333 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "32022",
     "name": "NAD27 / Ohio North",
-    "proj4": "+proj=lcc +lat_0=39.6666666666667 +lon_0=-82.5 +lat_1=40.4333333333333 +lat_2=41.7 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=39.6666666666667 +lon_0=-82.5 +lat_1=40.4333333333333 +lat_2=41.7 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "32023",
     "name": "NAD27 / Ohio South",
-    "proj4": "+proj=lcc +lat_0=38 +lon_0=-82.5 +lat_1=38.7333333333333 +lat_2=40.0333333333333 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=38 +lon_0=-82.5 +lat_1=38.7333333333333 +lat_2=40.0333333333333 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "32024",
     "name": "NAD27 / Oklahoma North",
-    "proj4": "+proj=lcc +lat_0=35 +lon_0=-98 +lat_1=35.5666666666667 +lat_2=36.7666666666667 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=35 +lon_0=-98 +lat_1=35.5666666666667 +lat_2=36.7666666666667 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "32025",
     "name": "NAD27 / Oklahoma South",
-    "proj4": "+proj=lcc +lat_0=33.3333333333333 +lon_0=-98 +lat_1=33.9333333333333 +lat_2=35.2333333333333 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=33.3333333333333 +lon_0=-98 +lat_1=33.9333333333333 +lat_2=35.2333333333333 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "32026",
     "name": "NAD27 / Oregon North",
-    "proj4": "+proj=lcc +lat_0=43.6666666666667 +lon_0=-120.5 +lat_1=44.3333333333333 +lat_2=46 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=43.6666666666667 +lon_0=-120.5 +lat_1=44.3333333333333 +lat_2=46 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "32027",
     "name": "NAD27 / Oregon South",
-    "proj4": "+proj=lcc +lat_0=41.6666666666667 +lon_0=-120.5 +lat_1=42.3333333333333 +lat_2=44 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=41.6666666666667 +lon_0=-120.5 +lat_1=42.3333333333333 +lat_2=44 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "32028",
     "name": "NAD27 / Pennsylvania North",
-    "proj4": "+proj=lcc +lat_0=40.1666666666667 +lon_0=-77.75 +lat_1=40.8833333333333 +lat_2=41.95 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=40.1666666666667 +lon_0=-77.75 +lat_1=40.8833333333333 +lat_2=41.95 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "4455",
     "name": "NAD27 / Pennsylvania South",
-    "proj4": "+proj=lcc +lat_0=39.3333333333333 +lon_0=-77.75 +lat_1=40.9666666666667 +lat_2=39.9333333333333 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=39.3333333333333 +lon_0=-77.75 +lat_1=40.9666666666667 +lat_2=39.9333333333333 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "32031",
     "name": "NAD27 / South Carolina North",
-    "proj4": "+proj=lcc +lat_0=33 +lon_0=-81 +lat_1=33.7666666666667 +lat_2=34.9666666666667 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=33 +lon_0=-81 +lat_1=33.7666666666667 +lat_2=34.9666666666667 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "32033",
     "name": "NAD27 / South Carolina South",
-    "proj4": "+proj=lcc +lat_0=31.8333333333333 +lon_0=-81 +lat_1=32.3333333333333 +lat_2=33.6666666666667 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=31.8333333333333 +lon_0=-81 +lat_1=32.3333333333333 +lat_2=33.6666666666667 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "32034",
     "name": "NAD27 / South Dakota North",
-    "proj4": "+proj=lcc +lat_0=43.8333333333333 +lon_0=-100 +lat_1=44.4166666666667 +lat_2=45.6833333333333 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=43.8333333333333 +lon_0=-100 +lat_1=44.4166666666667 +lat_2=45.6833333333333 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "32035",
     "name": "NAD27 / South Dakota South",
-    "proj4": "+proj=lcc +lat_0=42.3333333333333 +lon_0=-100.333333333333 +lat_1=42.8333333333333 +lat_2=44.4 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=42.3333333333333 +lon_0=-100.333333333333 +lat_1=42.8333333333333 +lat_2=44.4 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "32039",
     "name": "NAD27 / Texas Central",
-    "proj4": "+proj=lcc +lat_0=29.6666666666667 +lon_0=-100.333333333333 +lat_1=30.1166666666667 +lat_2=31.8833333333333 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=29.6666666666667 +lon_0=-100.333333333333 +lat_1=30.1166666666667 +lat_2=31.8833333333333 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "32037",
     "name": "NAD27 / Texas North",
-    "proj4": "+proj=lcc +lat_0=34 +lon_0=-101.5 +lat_1=34.65 +lat_2=36.1833333333333 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=34 +lon_0=-101.5 +lat_1=34.65 +lat_2=36.1833333333333 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "32038",
     "name": "NAD27 / Texas North Central",
-    "proj4": "+proj=lcc +lat_0=31.6666666666667 +lon_0=-97.5 +lat_1=32.1333333333333 +lat_2=33.9666666666667 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=31.6666666666667 +lon_0=-97.5 +lat_1=32.1333333333333 +lat_2=33.9666666666667 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "32041",
     "name": "NAD27 / Texas South",
-    "proj4": "+proj=lcc +lat_0=25.6666666666667 +lon_0=-98.5 +lat_1=26.1666666666667 +lat_2=27.8333333333333 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=25.6666666666667 +lon_0=-98.5 +lat_1=26.1666666666667 +lat_2=27.8333333333333 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "32040",
     "name": "NAD27 / Texas South Central",
-    "proj4": "+proj=lcc +lat_0=27.8333333333333 +lon_0=-99 +lat_1=28.3833333333333 +lat_2=30.2833333333333 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=27.8333333333333 +lon_0=-99 +lat_1=28.3833333333333 +lat_2=30.2833333333333 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "32043",
     "name": "NAD27 / Utah Central",
-    "proj4": "+proj=lcc +lat_0=38.3333333333333 +lon_0=-111.5 +lat_1=39.0166666666667 +lat_2=40.65 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=38.3333333333333 +lon_0=-111.5 +lat_1=39.0166666666667 +lat_2=40.65 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "32042",
     "name": "NAD27 / Utah North",
-    "proj4": "+proj=lcc +lat_0=40.3333333333333 +lon_0=-111.5 +lat_1=40.7166666666667 +lat_2=41.7833333333333 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=40.3333333333333 +lon_0=-111.5 +lat_1=40.7166666666667 +lat_2=41.7833333333333 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "32044",
     "name": "NAD27 / Utah South",
-    "proj4": "+proj=lcc +lat_0=36.6666666666667 +lon_0=-111.5 +lat_1=37.2166666666667 +lat_2=38.35 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=36.6666666666667 +lon_0=-111.5 +lat_1=37.2166666666667 +lat_2=38.35 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "32046",
     "name": "NAD27 / Virginia North",
-    "proj4": "+proj=lcc +lat_0=37.6666666666667 +lon_0=-78.5 +lat_1=38.0333333333333 +lat_2=39.2 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=37.6666666666667 +lon_0=-78.5 +lat_1=38.0333333333333 +lat_2=39.2 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "32047",
     "name": "NAD27 / Virginia South",
-    "proj4": "+proj=lcc +lat_0=36.3333333333333 +lon_0=-78.5 +lat_1=36.7666666666667 +lat_2=37.9666666666667 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=36.3333333333333 +lon_0=-78.5 +lat_1=36.7666666666667 +lat_2=37.9666666666667 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "32048",
     "name": "NAD27 / Washington North",
-    "proj4": "+proj=lcc +lat_0=47 +lon_0=-120.833333333333 +lat_1=47.5 +lat_2=48.7333333333333 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=47 +lon_0=-120.833333333333 +lat_1=47.5 +lat_2=48.7333333333333 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "32049",
     "name": "NAD27 / Washington South",
-    "proj4": "+proj=lcc +lat_0=45.3333333333333 +lon_0=-120.5 +lat_1=45.8333333333333 +lat_2=47.3333333333333 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=45.3333333333333 +lon_0=-120.5 +lat_1=45.8333333333333 +lat_2=47.3333333333333 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "32050",
     "name": "NAD27 / West Virginia North",
-    "proj4": "+proj=lcc +lat_0=38.5 +lon_0=-79.5 +lat_1=39 +lat_2=40.25 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=38.5 +lon_0=-79.5 +lat_1=39 +lat_2=40.25 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "32051",
     "name": "NAD27 / West Virginia South",
-    "proj4": "+proj=lcc +lat_0=37 +lon_0=-81 +lat_1=37.4833333333333 +lat_2=38.8833333333333 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=37 +lon_0=-81 +lat_1=37.4833333333333 +lat_2=38.8833333333333 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "32053",
     "name": "NAD27 / Wisconsin Central",
-    "proj4": "+proj=lcc +lat_0=43.8333333333333 +lon_0=-90 +lat_1=44.25 +lat_2=45.5 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=43.8333333333333 +lon_0=-90 +lat_1=44.25 +lat_2=45.5 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "32052",
     "name": "NAD27 / Wisconsin North",
-    "proj4": "+proj=lcc +lat_0=45.1666666666667 +lon_0=-90 +lat_1=45.5666666666667 +lat_2=46.7666666666667 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=45.1666666666667 +lon_0=-90 +lat_1=45.5666666666667 +lat_2=46.7666666666667 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "32054",
     "name": "NAD27 / Wisconsin South",
-    "proj4": "+proj=lcc +lat_0=42 +lon_0=-90 +lat_1=42.7333333333333 +lat_2=44.0666666666667 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=lcc +lat_0=42 +lon_0=-90 +lat_1=42.7333333333333 +lat_2=44.0666666666667 +x_0=609601.219202438 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "32055",
     "name": "NAD27 / Wyoming East",
-    "proj4": "+proj=tmerc +lat_0=40.6666666666667 +lon_0=-105.166666666667 +k=0.999941177 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=tmerc +lat_0=40.6666666666667 +lon_0=-105.166666666667 +k=0.999941177 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "32056",
     "name": "NAD27 / Wyoming East Central",
-    "proj4": "+proj=tmerc +lat_0=40.6666666666667 +lon_0=-107.333333333333 +k=0.999941177 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=tmerc +lat_0=40.6666666666667 +lon_0=-107.333333333333 +k=0.999941177 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "32058",
     "name": "NAD27 / Wyoming West",
-    "proj4": "+proj=tmerc +lat_0=40.6666666666667 +lon_0=-110.083333333333 +k=0.999941177 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=tmerc +lat_0=40.6666666666667 +lon_0=-110.083333333333 +k=0.999941177 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
     "epsg": "32057",
     "name": "NAD27 / Wyoming West Central",
-    "proj4": "+proj=tmerc +lat_0=40.6666666666667 +lon_0=-108.75 +k=0.999941177 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +nadgrids=NTv2_0.gsb +units=us-ft +no_defs +type=crs",
+    "proj4": "+proj=tmerc +lat_0=40.6666666666667 +lon_0=-108.75 +k=0.999941177 +x_0=152400.30480061 +y_0=0 +ellps=clrk66 +towgs84=8,-160,-176,0,0,0,0 +units=us-ft +no_defs +type=crs",
     "units": "feet"
   },
   {
