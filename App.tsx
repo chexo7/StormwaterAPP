@@ -1169,16 +1169,27 @@ const App: React.FC = () => {
     }, [addLog, layers, projectName, projectVersion, projection]);
 
   const handleExportShapefiles = useCallback(async () => {
-    const processedLayers = layers.filter(
-      l =>
-        l.category === 'Process' ||
-        l.name === 'Catch Basins / Manholes'
-    );
+    try {
+      const processedLayers = layers.filter(
+        l =>
+          l.category === 'Process' ||
+          l.name === 'Catch Basins / Manholes'
+      );
 
-    const jLayer = layers.find((l) => l.name === 'Catch Basins / Manholes');
-    const pLayer = layers.find((l) => l.name === 'Pipes');
+      const forward = (coord: [number, number]): [number, number] => {
+        const [x, y] = project.forward(coord);
+        if (!Number.isFinite(x) || !Number.isFinite(y)) {
+          throw new Error(
+            `Failed to project coordinate ${JSON.stringify(coord)} with EPSG:${projection.epsg}`
+          );
+        }
+        return [x, y] as [number, number];
+      };
 
-    if (jLayer && pLayer) {
+      const jLayer = layers.find((l) => l.name === 'Catch Basins / Manholes');
+      const pLayer = layers.find((l) => l.name === 'Pipes');
+
+      if (jLayer && pLayer) {
 
       const getPropStrict = (props: any, candidates: string[]) => {
         if (!props) return undefined;
@@ -1234,9 +1245,7 @@ const App: React.FC = () => {
           getMapped(props, jMap, 'ground', ['Elevation Ground [ft]'])
         );
         if (!Number.isFinite(invert) || !Number.isFinite(ground)) return;
-        const coord = project.forward(
-          (f.geometry as any).coordinates as [number, number]
-        );
+        const coord = forward((f.geometry as any).coordinates as [number, number]);
         nodes.push({ id, coord, invert });
         goodNodeFeatures.push(f);
       });
@@ -1272,8 +1281,8 @@ const App: React.FC = () => {
       const lineLength = (coords: number[][]) => {
         let len = 0;
         for (let i = 1; i < coords.length; i++) {
-          const [x1, y1] = project.forward(coords[i - 1] as [number, number]);
-          const [x2, y2] = project.forward(coords[i] as [number, number]);
+          const [x1, y1] = forward(coords[i - 1] as [number, number]);
+          const [x2, y2] = forward(coords[i] as [number, number]);
           len += Math.hypot(x2 - x1, y2 - y1);
         }
         return len;
@@ -1330,10 +1339,8 @@ const App: React.FC = () => {
           to = nodes.find((n) => n.id === toId);
         }
         if (!from || !to) {
-          const start = project.forward(coords[0] as [number, number]);
-          const end = project.forward(
-            coords[coords.length - 1] as [number, number]
-          );
+          const start = forward(coords[0] as [number, number]);
+          const end = forward(coords[coords.length - 1] as [number, number]);
           from = findNearestNode(start);
           to = findNearestNode(end);
         }
@@ -1382,54 +1389,64 @@ const App: React.FC = () => {
       }
     }
 
-    if (processedLayers.length === 0) {
-      addLog('No processed layers to export', 'error');
-      return;
-    }
-    const JSZip = (await import('jszip')).default;
-    const shpwrite = (await import('@mapbox/shp-write')).default as any;
-    const zip = new JSZip();
-
-    let prj: string;
-    try {
-      prj = await resolvePrj(projection.epsg);
-    } catch (e) {
-      addLog(`Export canceled: missing PRJ for EPSG:${projection.epsg}`, 'error');
-      return;
-    }
-
-    for (const layer of processedLayers) {
-      const prepared = prepareForShapefile(layer.geojson, layer.name);
-      const projected = reprojectFeatureCollection(prepared, projection.proj4);
-      addLog(`Exporting "${layer.name}": ${projected.features.length} features`);
-      const layerZipBuffer = await shpwrite.zip(projected, { outputType: 'arraybuffer', prj });
-      const layerZip = await JSZip.loadAsync(layerZipBuffer);
-      const folderName = layer.name.replace(/[^a-z0-9_\-]/gi, '_');
-      const folder = zip.folder(folderName);
-      if (!folder) continue;
-      await Promise.all(
-        Object.keys(layerZip.files).map(async filename => {
-          const content = await layerZip.files[filename].async('arraybuffer');
-          folder.file(filename, content);
-        })
-      );
-      const dbf = Object.keys(layerZip.files).find(f => f.toLowerCase().endsWith('.dbf'));
-      if (dbf) {
-      const base = dbf.replace(/\.dbf$/i, '');
-      folder.file(`${base}.cpg`, 'UTF-8');
+      if (processedLayers.length === 0) {
+        addLog('No processed layers to export', 'error');
+        return;
       }
-    }
+      const JSZip = (await import('jszip')).default;
+      const shpwrite = (await import('@mapbox/shp-write')).default as any;
+      const zip = new JSZip();
 
-    const blob = await zip.generateAsync({ type: 'blob' });
-    const filename = `${(projectName || 'project')}_${projectVersion}_shapefiles.zip`;
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
-    addLog('Processed shapefiles exported');
-    setExportModalOpen(false);
+      let prj: string;
+      try {
+        prj = await resolvePrj(projection.epsg);
+      } catch (e) {
+        addLog(`Export canceled: missing PRJ for EPSG:${projection.epsg}`, 'error');
+        return;
+      }
+
+      for (const layer of processedLayers) {
+        const prepared = prepareForShapefile(layer.geojson, layer.name);
+        let projected: FeatureCollection;
+        try {
+          projected = reprojectFeatureCollection(prepared, projection.proj4);
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : String(error);
+          throw new Error(`Failed to reproject layer "${layer.name}": ${reason}`);
+        }
+        addLog(`Exporting "${layer.name}": ${projected.features.length} features`);
+        const layerZipBuffer = await shpwrite.zip(projected, { outputType: 'arraybuffer', prj });
+        const layerZip = await JSZip.loadAsync(layerZipBuffer);
+        const folderName = layer.name.replace(/[^a-z0-9_\-]/gi, '_');
+        const folder = zip.folder(folderName);
+        if (!folder) continue;
+        await Promise.all(
+          Object.keys(layerZip.files).map(async filename => {
+            const content = await layerZip.files[filename].async('arraybuffer');
+            folder.file(filename, content);
+          })
+        );
+        const dbf = Object.keys(layerZip.files).find(f => f.toLowerCase().endsWith('.dbf'));
+        if (dbf) {
+          const base = dbf.replace(/\.dbf$/i, '');
+          folder.file(`${base}.cpg`, 'UTF-8');
+        }
+      }
+
+      const blob = await zip.generateAsync({ type: 'blob' });
+      const filename = `${(projectName || 'project')}_${projectVersion}_shapefiles.zip`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+      addLog('Processed shapefiles exported');
+      setExportModalOpen(false);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      addLog(`Export canceled: ${message}`, 'error');
+    }
   }, [addLog, layers, projectName, projectVersion, projection]);
 
   const handleView3D = useCallback(() => {
