@@ -1703,12 +1703,39 @@ const App: React.FC = () => {
         updateSlider();
       });
       slider?.addEventListener('input', () => {
+        const sliderValue = slider.valueAsNumber;
+        if (!Number.isFinite(sliderValue)) return;
+
+        const desired = (sliderValue / 100) * size;
+        if (!Number.isFinite(desired) || desired <= 0) return;
+
         const distance = camera.position.distanceTo(controls.target);
-        const desired = (slider.valueAsNumber / 100) * size;
-        const ratio = distance / desired;
-        if (ratio > 1) controls.dollyIn(ratio);
-        else controls.dollyOut(1 / ratio);
+        if (!Number.isFinite(distance)) return;
+
+        const moveToDesired = () => {
+          const offset = camera.position.clone().sub(controls.target);
+          if (offset.lengthSq() === 0) {
+            offset.set(0, -1, 1);
+          }
+          offset.normalize().multiplyScalar(desired);
+          camera.position.copy(controls.target).add(offset);
+        };
+
+        if (distance <= 1e-6) {
+          moveToDesired();
+        } else {
+          const ratio = distance / desired;
+          if (!Number.isFinite(ratio) || ratio <= 0) {
+            moveToDesired();
+          } else if (ratio > 1) {
+            controls.dollyIn(ratio);
+          } else {
+            controls.dollyOut(1 / ratio);
+          }
+        }
+
         controls.update();
+        updateSlider();
       });
       controls.addEventListener('change', updateSlider);
       updateSlider();
