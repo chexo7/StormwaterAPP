@@ -613,10 +613,25 @@ const App: React.FC = () => {
         nodes[da].push({ area: a, cn, desc });
       });
 
+      const groupedNodes: Record<string, { area: number; cn: number; desc?: string }[]> = {};
+      Object.entries(nodes).forEach(([da, entries]) => {
+        const grouped = new Map<string, { area: number; cn: number; desc?: string }>();
+        entries.forEach(({ area: arArea, cn, desc }) => {
+          const key = `${cn}|${desc ?? ''}`;
+          const existing = grouped.get(key);
+          if (existing) {
+            existing.area += arArea;
+          } else {
+            grouped.set(key, { area: arArea, cn, desc });
+          }
+        });
+        groupedNodes[da] = Array.from(grouped.values());
+      });
+
       let content = `[HydroCAD]\nFileUnits=English\nCalcUnits=English\nInputUnits=English-LowFlow\nReportUnits=English-LowFlow\nLargeAreas=False\nSource=HydroCAD\u00ae 10.20-6a  s/n 07447  \u00a9 2024 HydroCAD Software Solutions LLC\nName=${projectName || 'Project'}\nPath=\nView=-5.46349942062574 0 15.4634994206257 10\nGridShow=True\nGridSnap=True\nTimeSpan=0 86400\nTimeInc=36\nMaxGraph=0\nRunoffMethod=SCS TR-20\nReachMethod=Stor-Ind+Trans\nPondMethod=Stor-Ind\nUH=SCS\nMinTc=300\nRainEvent=test\n\n[EVENT]\nRainEvent=test\nStormType=Type II 24-hr\nStormDepth=0.0833333333333333\n`;
 
       let y = 0;
-      Object.entries(nodes).forEach(([da, areas]) => {
+      Object.entries(groupedNodes).forEach(([da, areas]) => {
         content += `\n[NODE]\nNumber=${da}\nType=Subcat\nName=${da}\nXYPos=0 ${y}\n`;
         areas.forEach(ar => {
           content += `[AREA]\nArea=${ar.area}\nCN=${ar.cn}\n`;
