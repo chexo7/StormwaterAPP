@@ -25,9 +25,10 @@ const instructionsContent = {
       {
         heading: 'Requisitos antes de exportar',
         items: [
-          'La capa LOD debe contener exactamente un polígono válido.',
-          'Recorta las Áreas de Drenaje con el polígono LOD y guárdalas como «Drainage Area in LOD», conservando todos los atributos.',
-          'Confirma que cada área de drenaje tenga un valor Land Cover y Housing Soil Group asignado.',
+          'Solicita y carga shapefiles separados para LOD, WSS, Land Cover, Áreas de Drenaje generales (por punto de descarga) y Subáreas de Drenaje asociadas.',
+          'La capa LOD debe contener exactamente un polígono válido; se usa como referencia del proyecto, no para recortar las áreas tributarias.',
+          'Asegúrate de que cada subárea herede un nombre de área de drenaje (DA_NAME) y un identificador propio (SUBDA_NAME); la aplicación calcula automáticamente cualquier área complementaria necesaria.',
+          'Verifica que las capas de Land Cover y WSS aporten los atributos LAND_COVER y HSG requeridos para el cálculo SCS.',
         ],
       },
     ],
@@ -57,9 +58,10 @@ const instructionsContent = {
       {
         heading: 'Pre-export checklist',
         items: [
-          'The LOD layer must contain exactly one valid polygon.',
-          'Clip the Drainage Areas layer with the LOD polygon and save it as “Drainage Area in LOD” while preserving all original attributes.',
-          'Ensure every drainage area has a Land Cover value and Housing Soil Group assigned.',
+          'Request and upload distinct shapefiles for the LOD, WSS, Land Cover, general Drainage Areas (per discharge point), and associated Drainage Subareas.',
+          'The LOD layer must contain exactly one valid polygon; it acts as a project reference and is not used to clip tributary areas.',
+          'Ensure each subarea carries the parent drainage area name (DA_NAME) and its own identifier (SUBDA_NAME); the app will build any complementary subareas automatically.',
+          'Confirm that the Land Cover and WSS layers supply the LAND_COVER and HSG attributes required for SCS calculations.',
         ],
       },
     ],
