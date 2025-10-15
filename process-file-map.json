@@ -1,14 +1,14 @@
 {
   "exportHydroCAD": {
-    "requires": ["drainageArea", "lod", "landCover", "wss"],
+    "requires": ["drainageArea", "drainageSubareas", "lod", "landCover", "wss"],
     "excludes": ["catchBasinManhole", "pipes"]
   },
   "exportSWMM": {
-    "requires": ["drainageArea", "lod", "landCover", "wss", "catchBasinManhole", "pipes"],
+    "requires": ["drainageArea", "drainageSubareas", "lod", "landCover", "wss", "catchBasinManhole", "pipes"],
     "excludes": []
   },
   "exportShapefiles": {
-    "requires": ["drainageArea", "lod", "landCover", "wss", "catchBasinManhole", "pipes"],
+    "requires": ["drainageArea", "drainageSubareas", "lod", "landCover", "wss", "catchBasinManhole", "pipes"],
     "excludes": []
   }
 }

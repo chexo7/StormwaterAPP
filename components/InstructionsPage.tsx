@@ -7,9 +7,9 @@ const instructionsContent = {
       'Esta herramienta te guía en la preparación y revisión de áreas de drenaje antes de exportarlas a otros formatos.',
     stepsTitle: 'Pasos para comenzar',
     steps: [
-      'Carga un archivo Shapefile o GeoPackage desde el panel izquierdo. Cada capa se validará automáticamente y el registro mostrará cualquier advertencia.',
+      'Carga los shapefiles de Web Soil Survey, LOD, Land Cover, Drainage Areas (áreas generales por punto de descarga) y Drainage Subareas (subáreas asociadas a cada área general). Cada capa se validará automáticamente y el registro mostrará cualquier advertencia.',
       'Revisa el panel de capas para activar o desactivar la visibilidad, cambiar estilos y seleccionar qué capa editar.',
-      'Usa el mapa para revisar geometrías. Puedes editar atributos clave como Housing (HSG), nombre del área de drenaje y cobertura del suelo desde los controles contextuales.',
+      'Usa el mapa para revisar geometrías. Puedes editar atributos clave como Housing (HSG), DA_NAME y SUBAREA_NAME desde los controles contextuales según corresponda.',
       'Cuando los datos estén listos, utiliza el botón Exportar para generar archivos HydroCAD, SWMM o nuevos Shapefiles, y confirma la proyección correspondiente.',
     ],
     sections: [
@@ -26,8 +26,8 @@ const instructionsContent = {
         heading: 'Requisitos antes de exportar',
         items: [
           'La capa LOD debe contener exactamente un polígono válido.',
-          'Recorta las Áreas de Drenaje con el polígono LOD y guárdalas como «Drainage Area in LOD», conservando todos los atributos.',
-          'Confirma que cada área de drenaje tenga un valor Land Cover y Housing Soil Group asignado.',
+          'Incluye tanto la capa de Drainage Areas como la de Drainage Subareas. Cada subárea debe referenciar al área general mediante el atributo DA_NAME.',
+          'No recortes las Drainage Areas con el LOD: la aplicación calculará subáreas complementarias para cerrar el balance de área y usará Land Cover y HSG para los cálculos SCS.',
         ],
       },
     ],
@@ -39,9 +39,9 @@ const instructionsContent = {
       'This workspace helps you prepare and review drainage area data before exporting to downstream modeling tools.',
     stepsTitle: 'Getting started',
     steps: [
-      'Upload a Shapefile or GeoPackage from the left panel. Each layer is validated automatically and the activity log will highlight any warnings.',
+      'Upload the Web Soil Survey, LOD, Land Cover, Drainage Areas (general catchments) and Drainage Subareas shapefiles from the left panel. Each layer is validated automatically and the activity log will highlight any warnings.',
       'Review the layer panel to toggle visibility, adjust styles, and choose which layer is currently editable.',
-      'Use the map to inspect geometries. Contextual controls let you edit key attributes like Housing (HSG), Drainage Area name, and Land Cover.',
+      'Use the map to inspect geometries. Contextual controls let you edit key attributes such as Housing (HSG), DA_NAME and SUBAREA_NAME when needed.',
       'When the dataset is ready, open the Export dialog to generate HydroCAD, SWMM, or Shapefile outputs and confirm the desired projection.',
     ],
     sections: [
@@ -58,8 +58,8 @@ const instructionsContent = {
         heading: 'Pre-export checklist',
         items: [
           'The LOD layer must contain exactly one valid polygon.',
-          'Clip the Drainage Areas layer with the LOD polygon and save it as “Drainage Area in LOD” while preserving all original attributes.',
-          'Ensure every drainage area has a Land Cover value and Housing Soil Group assigned.',
+          'Provide both the Drainage Areas layer and the Drainage Subareas layer. Every subarea must reference its parent area via the DA_NAME attribute.',
+          'Do not clip Drainage Areas to the LOD. The application builds complementary subareas to close each drainage area and uses Land Cover and HSG for SCS calculations.',
         ],
       },
     ],
