@@ -26,8 +26,9 @@ const instructionsContent = {
         heading: 'Requisitos antes de exportar',
         items: [
           'La capa LOD debe contener exactamente un polígono válido.',
-          'Recorta las Áreas de Drenaje con el polígono LOD y guárdalas como «Drainage Area in LOD», conservando todos los atributos.',
-          'Confirma que cada área de drenaje tenga un valor Land Cover y Housing Soil Group asignado.',
+          'Carga capas separadas para «Drainage Areas» (generales) y «Drainage Subareas», reutilizando los nombres de discharge point (DP).',
+          'Cada subárea debe indicar su área general en el atributo PARENT_DA; la aplicación generará automáticamente la subárea complementaria para cerrar el balance.',
+          'Confirma que todas las áreas y subáreas tengan Land Cover y Housing Soil Group asignados.',
         ],
       },
     ],
@@ -58,8 +59,9 @@ const instructionsContent = {
         heading: 'Pre-export checklist',
         items: [
           'The LOD layer must contain exactly one valid polygon.',
-          'Clip the Drainage Areas layer with the LOD polygon and save it as “Drainage Area in LOD” while preserving all original attributes.',
-          'Ensure every drainage area has a Land Cover value and Housing Soil Group assigned.',
+          'Upload separate “Drainage Areas” (general) and “Drainage Subareas” layers, keeping discharge point names consistent.',
+          'Each subarea must reference its general drainage area through the PARENT_DA attribute; the tool will compute complementary subareas automatically.',
+          'Ensure every area and subarea has Land Cover and Hydrologic Soil Group values.',
         ],
       },
     ],

@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import type { FeatureCollection, Feature, LineString, Point } from 'geojson';
+import type { FeatureCollection, Feature, LineString, Point, Polygon, MultiPolygon } from 'geojson';
 import type { LayerData, LogEntry } from './types';
 import Header from './components/Header';
 import FileUpload from './components/FileUpload';
@@ -22,12 +22,11 @@ import { transformLayerGeojson } from './utils/layerTransforms';
 
 const DEFAULT_COLORS: Record<string, string> = {
   'Drainage Areas': '#67e8f9',
+  'Drainage Subareas': '#38bdf8',
   'Land Cover': '#22c55e',
   'LOD': '#ef4444',
   'Soil Layer from Web Soil Survey': '#8b4513',
-  'Drainage Area in LOD': '#67e8f9',
-  'Land Cover in LOD': '#22c55e',
-  'WSS in LOD': '#8b4513',
+  'Drainage Subareas (Processed)': '#0ea5e9',
   Overlay: '#f97316',
 };
 const DEFAULT_OPACITY = 0.5;
@@ -71,6 +70,7 @@ const App: React.FC = () => {
 
   const requiredLayers = [
     'Drainage Areas',
+    'Drainage Subareas',
     'LOD',
     'Land Cover',
     'Soil Layer from Web Soil Survey',
@@ -422,6 +422,7 @@ const App: React.FC = () => {
     setComputeSucceeded(false);
     const lod = layers.find(l => l.name === 'LOD');
     const da = layers.find(l => l.name === 'Drainage Areas');
+    const subDa = layers.find(l => l.name === 'Drainage Subareas');
     const wss = layers.find(l => l.name === 'Soil Layer from Web Soil Survey');
     const lc = layers.find(l => l.name === 'Land Cover');
     if (!lod) return;
@@ -429,10 +430,9 @@ const App: React.FC = () => {
     const tasks: ComputeTask[] = [
       { id: 'check_lod', name: 'Check LOD has one polygon', status: 'pending' },
       { id: 'check_attrs', name: 'Validate required attributes', status: 'pending' },
-      { id: 'clip_da', name: 'Create Drainage Area in LOD', status: 'pending' },
-      { id: 'clip_wss', name: 'Create WSS in LOD', status: 'pending' },
-      { id: 'clip_lc', name: 'Create Land Cover in LOD', status: 'pending' },
-      { id: 'overlay', name: 'Overlay processed layers', status: 'pending' }
+      { id: 'validate_sub', name: 'Validate subarea relationships', status: 'pending' },
+      { id: 'build_sub', name: 'Compute complementary subareas', status: 'pending' },
+      { id: 'overlay', name: 'Overlay processed layers', status: 'pending' },
     ];
     setComputeTasks(tasks);
 
@@ -444,133 +444,290 @@ const App: React.FC = () => {
       return;
     }
 
-    setComputeTasks(prev => prev.map(t => t.id === 'check_lod' ? { ...t, status: 'success' } : t));
+    setComputeTasks(prev => prev.map(t => (t.id === 'check_lod' ? { ...t, status: 'success' } : t)));
 
     const missingAttrs: Record<string, string[]> = {};
-    const checkAttr = (layer: typeof da | typeof wss | typeof lc | undefined, layerName: string, attr: string) => {
+    const checkAttr = (layer: LayerData | undefined, layerName: string, attr: string) => {
       if (!layer) return;
-      const hasMissing = layer.geojson.features.some(f => !f.properties || !f.properties[attr]);
+      const hasMissing = layer.geojson.features.some(f => {
+        if (!f.properties) return true;
+        const raw = (f.properties as any)[attr];
+        if (raw === undefined || raw === null) return true;
+        if (typeof raw === 'string' && raw.trim() === '') return true;
+        return false;
+      });
       if (hasMissing) {
         if (!missingAttrs[layerName]) missingAttrs[layerName] = [];
-        missingAttrs[layerName].push(attr);
+        if (!missingAttrs[layerName].includes(attr)) missingAttrs[layerName].push(attr);
       }
     };
 
     checkAttr(da, 'Drainage Areas', 'DA_NAME');
+    checkAttr(subDa, 'Drainage Subareas', 'SUB_DA_NAME');
+    checkAttr(subDa, 'Drainage Subareas', 'PARENT_DA');
     checkAttr(wss, 'Soil Layer from Web Soil Survey', 'HSG');
     checkAttr(lc, 'Land Cover', 'LAND_COVER');
 
     if (Object.keys(missingAttrs).length > 0) {
       const msg = Object.entries(missingAttrs)
-        .map(([layer, attrs]) => `${layer}: ${attrs.join(', ')}`)
+        .map(([layerName, attrs]) => `${layerName}: ${attrs.join(', ')}`)
         .join('; ');
-      setComputeTasks(prev => prev.map(t => t.id === 'check_attrs' ? { ...t, status: 'error' } : t));
+      setComputeTasks(prev => prev.map(t => (t.id === 'check_attrs' ? { ...t, status: 'error' } : t)));
       addLog(`Missing required attributes -> ${msg}`, 'error');
       return;
     }
 
-    setComputeTasks(prev => prev.map(t => t.id === 'check_attrs' ? { ...t, status: 'success' } : t));
+    setComputeTasks(prev => prev.map(t => (t.id === 'check_attrs' ? { ...t, status: 'success' } : t)));
+
+    const generalNames = new Set<string>(
+      (da?.geojson.features || [])
+        .map(f => String((f.properties as any)?.DA_NAME ?? '').trim())
+        .filter(name => name !== '')
+    );
+
+    const invalidParents = new Set<string>();
+    (subDa?.geojson.features || []).forEach(f => {
+      const parent = String((f.properties as any)?.PARENT_DA ?? '').trim();
+      if (!parent || !generalNames.has(parent)) {
+        invalidParents.add(parent || '(empty)');
+      }
+    });
+
+    if (invalidParents.size > 0) {
+      setComputeTasks(prev => prev.map(t => (t.id === 'validate_sub' ? { ...t, status: 'error' } : t)));
+      addLog(`Subareas reference unknown drainage areas -> ${Array.from(invalidParents).join(', ')}`, 'error');
+      return;
+    }
+
+    setComputeTasks(prev => prev.map(t => (t.id === 'validate_sub' ? { ...t, status: 'success' } : t)));
 
     try {
-      const { intersect: turfIntersect } = await import('@turf/turf');
-      const intersect = (a: Feature | any, b: Feature | any) =>
-        turfIntersect({ type: 'FeatureCollection', features: [a, b] } as any);
-      const lodGeom = lod.geojson.features[0];
-
+      const {
+        intersect: turfIntersect,
+        difference,
+        area: turfArea,
+        flattenEach,
+      } = await import('@turf/turf');
 
       const resultLayers: LayerData[] = [];
+      const processedSubareas: Feature[] = [];
 
-      const processLayer = (source: typeof da | typeof wss | typeof lc | undefined, taskId: string, name: string) => {
-        if (!source) return;
-        const clipped: any[] = [];
-        source.geojson.features.forEach(f => {
-          const inter = intersect(f as any, lodGeom as any);
-          if (inter) {
-            inter.properties = { ...(f.properties || {}) };
-            clipped.push(inter);
-          }
+      if (!da) {
+        setComputeTasks(prev => prev.map(t => (t.id === 'build_sub' ? { ...t, status: 'error' } : t)));
+        addLog('Drainage Areas layer not found', 'error');
+        return;
+      }
+
+      const generalPieces = new Map<string, Feature<Polygon>[]>();
+      da.geojson.features.forEach((feature, index) => {
+        if (!feature.geometry) return;
+        const rawName = (feature.properties as any)?.DA_NAME ?? '';
+        const name = String(rawName).trim() || `DA-${index + 1}`;
+        const baseProps = { ...(feature.properties || {}), DA_NAME: name };
+        flattenEach(feature as any, flat => {
+          if (!flat.geometry || flat.geometry.type !== 'Polygon') return;
+          const entry = generalPieces.get(name) ?? [];
+          entry.push({
+            type: 'Feature',
+            geometry: flat.geometry as Polygon,
+            properties: baseProps,
+          } as Feature<Polygon>);
+          generalPieces.set(name, entry);
         });
-        if (clipped.length > 0) {
-          resultLayers.push({
-            id: `${Date.now()}-${name}`,
-            name,
-            geojson: { type: 'FeatureCollection', features: clipped } as FeatureCollection,
-            editable: true,
-            visible: true,
-            fillColor: getDefaultColor(name),
-            fillOpacity: DEFAULT_OPACITY,
-            category: 'Process',
-          });
-          setComputeTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: 'success' } : t));
-          addLog(`${name} created`);
-        } else {
-          setComputeTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: 'error' } : t));
-          addLog(`No features for ${name}`, 'error');
+      });
 
-        }
-      };
+      const subGroups = new Map<string, Feature[]>();
+      (subDa?.geojson.features || []).forEach((feature, index) => {
+        if (!feature.geometry) return;
+        const parentRaw = (feature.properties as any)?.PARENT_DA ?? '';
+        const parent = String(parentRaw).trim();
+        const subRaw = (feature.properties as any)?.SUB_DA_NAME ?? '';
+        const subName = String(subRaw).trim() || `${parent || 'DA'}-SUB-${index + 1}`;
+        const props = {
+          ...(feature.properties || {}),
+          PARENT_DA: parent,
+          DA_NAME: parent,
+          SUB_DA_NAME: subName,
+        };
+        const clone: Feature = {
+          type: 'Feature',
+          geometry: feature.geometry,
+          properties: props,
+        };
+        const arr = subGroups.get(parent) ?? [];
+        arr.push(clone);
+        subGroups.set(parent, arr);
+      });
 
-      processLayer(da, 'clip_da', 'Drainage Area in LOD');
-      processLayer(wss, 'clip_wss', 'WSS in LOD');
-      processLayer(lc, 'clip_lc', 'Land Cover in LOD');
+      const areaSummaries: string[] = [];
 
-      const daLayer = resultLayers.find(l => l.name === 'Drainage Area in LOD');
-      const wssLayer = resultLayers.find(l => l.name === 'WSS in LOD');
-      const lcLayer = resultLayers.find(l => l.name === 'Land Cover in LOD');
-
-      if (daLayer && wssLayer && lcLayer) {
-        const overlay: any[] = [];
-        daLayer.geojson.features.forEach(daF => {
-          wssLayer.geojson.features.forEach(wssF => {
-            const inter1 = intersect(daF as any, wssF as any);
-            if (!inter1) return;
-            lcLayer.geojson.features.forEach(lcF => {
-              const inter2 = intersect(inter1 as any, lcF as any);
-              if (inter2) {
-                inter2.properties = {
-                  ...(daF.properties || {}),
-                  ...(wssF.properties || {}),
-                  ...(lcF.properties || {})
-                };
-                overlay.push(inter2);
+      generalPieces.forEach((pieces, name) => {
+        if (!pieces.length) return;
+        const generalGeom: Feature<Polygon | MultiPolygon> =
+          pieces.length === 1
+            ? {
+                type: 'Feature',
+                geometry: pieces[0].geometry,
+                properties: { ...(pieces[0].properties || {}), DA_NAME: name },
               }
-            });
-          });
-        });
+            : {
+                type: 'Feature',
+                geometry: {
+                  type: 'MultiPolygon',
+                  coordinates: pieces.map(p => (p.geometry as Polygon).coordinates),
+                } as MultiPolygon,
+                properties: { ...(pieces[0].properties || {}), DA_NAME: name },
+              };
 
-        // Load CN values and assign CN attribute
-        const cnRecords = await loadCnValues();
-        const cnMap = new Map(cnRecords.map(r => [r.LandCover, r]));
-        overlay.forEach(f => {
-          const lcName = (f.properties as any)?.LAND_COVER;
-          const hsg = (f.properties as any)?.HSG;
-          const rec = lcName ? cnMap.get(lcName) : undefined;
-          const cnValue = rec ? (rec as any)[hsg as keyof CnRecord] : undefined;
-          if (cnValue !== undefined) {
-            f.properties = { ...(f.properties || {}), CN: cnValue };
+        let remainder: Feature<Polygon | MultiPolygon> | null = JSON.parse(JSON.stringify(generalGeom));
+        const assignedFeatures: Feature[] = [];
+        const subs = subGroups.get(name) ?? [];
+
+        subs.forEach((sub, idx) => {
+          if (!sub.geometry) return;
+          const clipped = turfIntersect(generalGeom as any, sub as any);
+          if (clipped) {
+            flattenEach(clipped as any, flat => {
+              if (!flat.geometry || flat.geometry.type !== 'Polygon') return;
+              const subFeature: Feature = {
+                type: 'Feature',
+                geometry: flat.geometry,
+                properties: {
+                  ...(sub.properties || {}),
+                  DA_NAME: name,
+                  PARENT_DA: name,
+                  SUB_DA_NAME: (sub.properties as any)?.SUB_DA_NAME,
+                  IS_COMPLEMENT: 'no',
+                },
+              };
+              processedSubareas.push(subFeature);
+              assignedFeatures.push(subFeature);
+            });
+          } else {
+            addLog(`Subarea "${(sub.properties as any)?.SUB_DA_NAME ?? `#${idx + 1}`}" does not overlap ${name}`, 'error');
+          }
+
+          if (remainder) {
+            const diff = difference(remainder as any, sub as any);
+            if (diff) {
+              remainder = diff as Feature<Polygon | MultiPolygon>;
+            } else {
+              const interCheck = turfIntersect(remainder as any, sub as any);
+              if (!interCheck) {
+                // no overlap; keep remainder as-is
+              } else {
+                remainder = null;
+              }
+            }
           }
         });
 
-        if (overlay.length > 0) {
-          resultLayers.push({
-            id: `${Date.now()}-Overlay`,
-            name: 'Overlay',
-            geojson: { type: 'FeatureCollection', features: overlay } as FeatureCollection,
-            editable: true,
-            visible: true,
-            fillColor: getDefaultColor('Overlay'),
-            fillOpacity: DEFAULT_OPACITY,
-            category: 'Process',
+        if (remainder) {
+          let complementIndex = 0;
+          flattenEach(remainder as any, flat => {
+            if (!flat.geometry || flat.geometry.type !== 'Polygon') return;
+            complementIndex += 1;
+            const subName = `${name}-COMP${complementIndex > 1 ? `-${complementIndex}` : ''}`;
+            const feature: Feature = {
+              type: 'Feature',
+              geometry: flat.geometry,
+              properties: {
+                ...(generalGeom.properties || {}),
+                DA_NAME: name,
+                PARENT_DA: name,
+                SUB_DA_NAME: subName,
+                IS_COMPLEMENT: 'yes',
+              },
+            };
+            processedSubareas.push(feature);
+            assignedFeatures.push(feature);
           });
-          setComputeTasks(prev => prev.map(t => t.id === 'overlay' ? { ...t, status: 'success' } : t));
-          addLog('Overlay created');
-        } else {
-          setComputeTasks(prev => prev.map(t => t.id === 'overlay' ? { ...t, status: 'error' } : t));
-          addLog('No overlay generated', 'error');
         }
+
+        const parentArea = turfArea(generalGeom as any);
+        const totalAssignedArea = assignedFeatures.reduce((sum, feat) => sum + turfArea(feat as any), 0);
+        const diffArea = Math.abs(parentArea - totalAssignedArea);
+        areaSummaries.push(
+          `${name}: general=${(parentArea / 4046.8564224).toFixed(4)} ac, subareas=${(totalAssignedArea / 4046.8564224).toFixed(4)} ac, diff=${(diffArea / 4046.8564224).toFixed(6)} ac`
+        );
+      });
+
+      if (!processedSubareas.length) {
+        setComputeTasks(prev => prev.map(t => (t.id === 'build_sub' ? { ...t, status: 'error' } : t)));
+        addLog('No drainage subareas were generated', 'error');
+        return;
+      }
+
+      resultLayers.push({
+        id: `${Date.now()}-Drainage Subareas (Processed)`,
+        name: 'Drainage Subareas (Processed)',
+        geojson: { type: 'FeatureCollection', features: processedSubareas } as FeatureCollection,
+        editable: true,
+        visible: true,
+        fillColor: getDefaultColor('Drainage Subareas (Processed)'),
+        fillOpacity: DEFAULT_OPACITY,
+        category: 'Process',
+      });
+
+      setComputeTasks(prev => prev.map(t => (t.id === 'build_sub' ? { ...t, status: 'success' } : t)));
+      areaSummaries.forEach(summary => addLog(`Area balance -> ${summary}`));
+
+      if (!wss || !lc) {
+        setComputeTasks(prev => prev.map(t => (t.id === 'overlay' ? { ...t, status: 'error' } : t)));
+        addLog('Required layers missing for overlay', 'error');
+        return;
+      }
+
+      const intersect = (a: Feature | any, b: Feature | any) =>
+        turfIntersect({ type: 'FeatureCollection', features: [a, b] } as any);
+
+      const overlay: Feature[] = [];
+      processedSubareas.forEach(subFeature => {
+        wss.geojson.features.forEach(wssFeature => {
+          const inter1 = intersect(subFeature as any, wssFeature as any);
+          if (!inter1) return;
+          lc.geojson.features.forEach(lcFeature => {
+            const inter2 = intersect(inter1 as any, lcFeature as any);
+            if (inter2) {
+              inter2.properties = {
+                ...(subFeature.properties || {}),
+                ...(wssFeature.properties || {}),
+                ...(lcFeature.properties || {}),
+              };
+              overlay.push(inter2);
+            }
+          });
+        });
+      });
+
+      const cnRecords = await loadCnValues();
+      const cnMap = new Map(cnRecords.map(r => [r.LandCover, r]));
+      overlay.forEach(f => {
+        const lcName = (f.properties as any)?.LAND_COVER;
+        const hsg = (f.properties as any)?.HSG;
+        const rec = lcName ? cnMap.get(lcName) : undefined;
+        const cnValue = rec ? (rec as any)[hsg as keyof CnRecord] : undefined;
+        if (cnValue !== undefined) {
+          f.properties = { ...(f.properties || {}), CN: cnValue };
+        }
+      });
+
+      if (overlay.length > 0) {
+        resultLayers.push({
+          id: `${Date.now()}-Overlay`,
+          name: 'Overlay',
+          geojson: { type: 'FeatureCollection', features: overlay } as FeatureCollection,
+          editable: true,
+          visible: true,
+          fillColor: getDefaultColor('Overlay'),
+          fillOpacity: DEFAULT_OPACITY,
+          category: 'Process',
+        });
+        setComputeTasks(prev => prev.map(t => (t.id === 'overlay' ? { ...t, status: 'success' } : t)));
+        addLog('Overlay created');
       } else {
-        setComputeTasks(prev => prev.map(t => t.id === 'overlay' ? { ...t, status: 'error' } : t));
-        addLog('Required processed layers missing for overlay', 'error');
+        setComputeTasks(prev => prev.map(t => (t.id === 'overlay' ? { ...t, status: 'error' } : t)));
+        addLog('No overlay generated', 'error');
       }
 
       setLayers(prev => {
@@ -578,17 +735,16 @@ const App: React.FC = () => {
         let finalLayers = [...withoutProcess, ...resultLayers];
         if (finalLayers.some(l => l.name === 'Overlay')) {
           finalLayers = finalLayers.map(l =>
-            l.name === 'Overlay' ? { ...l, visible: true } : { ...l, visible: false }
+            l.name === 'Overlay' ? { ...l, visible: true } : l
           );
         }
         return finalLayers;
       });
     } catch (err) {
-      setComputeTasks(prev => prev.map(t => t.status === 'pending' ? { ...t, status: 'error' } : t));
+      setComputeTasks(prev => prev.map(t => (t.status === 'pending' ? { ...t, status: 'error' } : t)));
       addLog('Processing failed', 'error');
     }
   }, [layers, setLayers, addLog]);
-
   const handleCompute = useCallback(() => {
     runCompute();
   }, [runCompute]);

@@ -24,6 +24,27 @@ const normalizeDrainageAreas = (geojson: FeatureCollection): FeatureCollection =
     }))
   );
 
+const normalizeDrainageSubareas = (geojson: FeatureCollection): FeatureCollection =>
+  cloneGeojson(
+    geojson,
+    geojson.features.map((feature, index) => {
+      const props = feature.properties || {};
+      const parentRaw = (props as any)?.PARENT_DA ?? '';
+      const subRaw = (props as any)?.SUB_DA_NAME ?? (props as any)?.DA_NAME ?? '';
+      const parent = parentRaw == null ? '' : String(parentRaw);
+      const subName = subRaw == null ? '' : String(subRaw);
+      return {
+        ...feature,
+        properties: {
+          ...props,
+          PARENT_DA: parent,
+          SUB_DA_NAME: subName,
+          DA_NAME: (props as any)?.DA_NAME != null ? String((props as any)?.DA_NAME) : parent,
+        },
+      };
+    })
+  );
+
 const normalizeLandCover = (
   geojson: FeatureCollection,
   landCoverOptions: string[]
@@ -279,6 +300,10 @@ export const transformLayerGeojson = (
 ): FeatureCollection => {
   if (name === 'Drainage Areas') {
     return normalizeDrainageAreas(geojson);
+  }
+
+  if (name === 'Drainage Subareas') {
+    return normalizeDrainageSubareas(geojson);
   }
 
   if (name === 'Land Cover') {

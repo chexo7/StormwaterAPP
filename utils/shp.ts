@@ -60,9 +60,8 @@ export function prepareForShapefile(fc: FeatureCollection, layerName: string): F
 function sanitizeProps(props: GeoJsonProperties, layerName: string): GeoJsonProperties {
   // Ajusta esta whitelist si quieres controlar qué va a DBF por capa
   const wlMap: Record<string, string[]> = {
-    'Drainage Area in LOD': ['DA_NAME', 'HSG'],
-    'WSS in LOD': ['MUSYM', 'MUKEY', 'HSG'],
-    'Land Cover in LOD': ['LandCover', 'LC_CLASS', 'HSG']
+    'Drainage Subareas (Processed)': ['DA_NAME', 'SUB_DA_NAME', 'PARENT_DA', 'IS_COMPLEMENT', 'LAND_COVER', 'HSG', 'CN'],
+    'Overlay': ['DA_NAME', 'SUB_DA_NAME', 'PARENT_DA', 'IS_COMPLEMENT', 'LAND_COVER', 'HSG', 'CN'],
   };
 
   const wl = wlMap[layerName] || Object.keys(props || {});
