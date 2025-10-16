@@ -9,7 +9,7 @@ import type {
 } from 'geojson';
 import { area as turfArea, intersect as turfIntersect } from '@turf/turf';
 import type { LayerData, LogEntry } from './types';
-import Header from './components/Header';
+import Header, { ScsStatusIndicator } from './components/Header';
 import FileUpload from './components/FileUpload';
 import InfoPanel from './components/InfoPanel';
 import MapComponent from './components/MapComponent';
@@ -305,14 +305,6 @@ const App: React.FC = () => {
 
   const project = useMemo(() => proj4('EPSG:4326', projection.proj4), [projection]);
 
-  const requiredLayers = [
-    'Drainage Areas',
-    SUBAREA_LAYER_NAME,
-    'LOD',
-    'Land Cover',
-    'Soil Layer from Web Soil Survey',
-  ];
-
   const drainageAreasLayer = useMemo(
     () => layers.find(l => l.name === 'Drainage Areas') ?? null,
     [layers]
@@ -325,6 +317,11 @@ const App: React.FC = () => {
 
   const soilsLayer = useMemo(
     () => layers.find(l => l.name === 'Soil Layer from Web Soil Survey') ?? null,
+    [layers]
+  );
+
+  const landCoverLayer = useMemo(
+    () => layers.find(l => l.name === 'Land Cover') ?? null,
     [layers]
   );
 
@@ -365,6 +362,56 @@ const App: React.FC = () => {
     });
   }, [subareasLayer, assignedDrainagePoints]);
 
+  const soilsConfigured = useMemo(() => {
+    if (!soilsLayer) return false;
+    const { features } = soilsLayer.geojson;
+    if (features.length === 0) return false;
+    return features.every(feature => {
+      const val = feature.properties ? (feature.properties as any)?.HSG : null;
+      return val !== undefined && val !== null && String(val).trim() !== '';
+    });
+  }, [soilsLayer]);
+
+  const landCoverConfigured = useMemo(() => {
+    if (!landCoverLayer) return false;
+    const { features } = landCoverLayer.geojson;
+    if (features.length === 0) return false;
+    return features.every(feature => {
+      const val = feature.properties ? (feature.properties as any)?.LAND_COVER : null;
+      return val !== undefined && val !== null && String(val).trim() !== '';
+    });
+  }, [landCoverLayer]);
+
+  const scsStatuses = useMemo<ScsStatusIndicator[]>(
+    () => [
+      {
+        key: 'drainage-areas',
+        label: 'Drainage Areas con Discharge Point asignado',
+        shortLabel: 'Drainage Areas',
+        ready: drainageAreasAssigned,
+      },
+      {
+        key: 'subareas',
+        label: 'Drainage Subareas con nombre y PARENT_DA válidos',
+        shortLabel: 'Subareas',
+        ready: subareasConfigured,
+      },
+      {
+        key: 'land-cover',
+        label: 'Land Cover con LAND_COVER asignado',
+        shortLabel: 'Land Cover',
+        ready: landCoverConfigured,
+      },
+      {
+        key: 'wss',
+        label: 'Web Soil Survey con HSG asignado',
+        shortLabel: 'WSS',
+        ready: soilsConfigured,
+      },
+    ],
+    [drainageAreasAssigned, landCoverConfigured, soilsConfigured, subareasConfigured]
+  );
+
   const allowedLayerNames = useMemo(() => {
     const names = new Set<string>(['Drainage Areas', 'LOD']);
     if (drainageAreasAssigned) {
@@ -387,8 +434,7 @@ const App: React.FC = () => {
     Array.isArray((lodLayer.geojson.features[0].geometry as any).coordinates)
   );
 
-  const computeEnabled =
-    requiredLayers.every(name => layers.some(l => l.name === name)) && lodValid;
+  const computeEnabled = scsStatuses.every(status => status.ready) && lodValid;
 
   const cbLayer = layers.find(l => l.name === 'Catch Basins / Manholes');
   const pipesLayer = layers.find(l => l.name === 'Pipes');
@@ -2604,6 +2650,7 @@ const App: React.FC = () => {
         onProjectNameChange={setProjectName}
         projectVersion={projectVersion}
         onProjectVersionChange={setProjectVersion}
+        scsStatuses={scsStatuses}
       />
       <div className="flex flex-1 overflow-hidden">
         <aside className="w-72 md:w-96 2xl:w-[32rem] bg-gray-800 p-4 md:p-6 flex flex-col space-y-6 overflow-y-auto shadow-lg border-r border-gray-700">
