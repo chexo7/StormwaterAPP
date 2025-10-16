@@ -48,6 +48,14 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
       let buffer = await file.arrayBuffer();
       const lowerName = file.name.toLowerCase();
       let displayName = ARCHIVE_NAME_MAP[lowerName] ?? file.name;
+      const baseName = lowerName.replace(/\.zip$/i, '');
+      if (!ARCHIVE_NAME_MAP[lowerName]) {
+        if (/^da[-_\s]*to[-_\s]*dp/.test(baseName)) {
+          displayName = 'Drainage Areas';
+        } else if (/^sub[-_\s]*da/.test(baseName)) {
+          displayName = 'Drainage Subareas';
+        }
+      }
       const isWssFile = lowerName.startsWith('wss_aoi_');
 
       // Special handling for Web Soil Survey files
