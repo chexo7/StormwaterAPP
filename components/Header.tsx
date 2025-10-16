@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { MapIcon } from './Icons';
 
 interface HeaderProps {
@@ -30,6 +30,38 @@ const Header: React.FC<HeaderProps> = ({
   projectVersion,
   onProjectVersionChange,
 }) => {
+  const [isHydroCADMenuOpen, setIsHydroCADMenuOpen] = useState(false);
+  const hydroCADMenuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (!hydroCADMenuRef.current) return;
+      if (!hydroCADMenuRef.current.contains(event.target as Node)) {
+        setIsHydroCADMenuOpen(false);
+      }
+    };
+
+    if (isHydroCADMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    } else {
+      document.removeEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isHydroCADMenuOpen]);
+
+  const hydroCADButtonClasses =
+    'font-semibold px-4 py-1 rounded bg-cyan-600 hover:bg-cyan-700 text-white cursor-pointer';
+
+  const handleHydroCADMenuAction = (handler?: () => void) => () => {
+    if (handler) {
+      handler();
+    }
+    setIsHydroCADMenuOpen(false);
+  };
+
   return (
     <header className="relative bg-gray-800/50 backdrop-blur-sm border-b border-gray-700 shadow-md p-4 flex items-center space-x-4 z-10">
       <MapIcon className="w-8 h-8 text-cyan-400" />
@@ -38,42 +70,55 @@ const Header: React.FC<HeaderProps> = ({
         <p className="text-sm text-gray-400">Upload and visualize your geographic data</p>
       </div>
       <div className="absolute left-1/2 -translate-x-1/2 flex space-x-2">
-        <button
-          onClick={onCompute}
-          disabled={!computeEnabled}
-          className={
-            'font-semibold px-4 py-1 rounded ' +
-            (computeEnabled
-              ? 'bg-cyan-600 hover:bg-cyan-700 text-white cursor-pointer'
-              : 'bg-gray-600 text-gray-300 cursor-not-allowed')
-          }
-        >
-          HydroCAD
-        </button>
-        <button
-          onClick={onExport}
-          disabled={!exportEnabled}
-          className={
-            'font-semibold px-4 py-1 rounded ' +
-            (exportEnabled
-              ? 'bg-cyan-600 hover:bg-cyan-700 text-white cursor-pointer'
-              : 'bg-gray-600 text-gray-300 cursor-not-allowed')
-          }
-        >
-          Export 2D SCS
-        </button>
-        <button
-          onClick={onManageCurveNumbers}
-          disabled={curveNumbersEnabled === false}
-          className={
-            'font-semibold px-4 py-1 rounded ' +
-            (curveNumbersEnabled === false
-              ? 'bg-gray-600 text-gray-300 cursor-not-allowed'
-              : 'bg-cyan-600 hover:bg-cyan-700 text-white cursor-pointer')
-          }
-        >
-          Curve Numbers
-        </button>
+        <div className="relative" ref={hydroCADMenuRef}>
+          <button
+            type="button"
+            onClick={() => setIsHydroCADMenuOpen(prev => !prev)}
+            className={hydroCADButtonClasses}
+          >
+            HydroCAD
+          </button>
+          {isHydroCADMenuOpen && (
+            <div className="absolute left-0 mt-2 w-48 rounded border border-gray-700 bg-gray-800/95 shadow-lg backdrop-blur-sm p-2 space-y-2">
+              <button
+                onClick={handleHydroCADMenuAction(onCompute)}
+                disabled={!computeEnabled}
+                className={
+                  'w-full text-left font-semibold px-3 py-2 rounded ' +
+                  (computeEnabled
+                    ? 'bg-cyan-600 hover:bg-cyan-700 text-white cursor-pointer'
+                    : 'bg-gray-600 text-gray-300 cursor-not-allowed')
+                }
+              >
+                Download HydroCAD
+              </button>
+              <button
+                onClick={handleHydroCADMenuAction(onExport)}
+                disabled={!exportEnabled}
+                className={
+                  'w-full text-left font-semibold px-3 py-2 rounded ' +
+                  (exportEnabled
+                    ? 'bg-cyan-600 hover:bg-cyan-700 text-white cursor-pointer'
+                    : 'bg-gray-600 text-gray-300 cursor-not-allowed')
+                }
+              >
+                Export 2D SCS
+              </button>
+              <button
+                onClick={handleHydroCADMenuAction(onManageCurveNumbers)}
+                disabled={curveNumbersEnabled === false}
+                className={
+                  'w-full text-left font-semibold px-3 py-2 rounded ' +
+                  (curveNumbersEnabled === false
+                    ? 'bg-gray-600 text-gray-300 cursor-not-allowed'
+                    : 'bg-cyan-600 hover:bg-cyan-700 text-white cursor-pointer')
+                }
+              >
+                Curve Numbers
+              </button>
+            </div>
+          )}
+        </div>
         <button
           onClick={onView3D}
           disabled={!view3DEnabled}
