@@ -14,7 +14,7 @@ import FileUpload from './components/FileUpload';
 import InfoPanel from './components/InfoPanel';
 import MapComponent from './components/MapComponent';
 import InstructionsPage from './components/InstructionsPage';
-import { KNOWN_LAYER_NAMES } from './utils/constants';
+import { KNOWN_LAYER_NAMES, MAX_DISCHARGE_POINTS } from './utils/constants';
 import LayerPreview from './components/LayerPreview';
 import ComputeModal, { ComputeTask } from './components/ComputeModal';
 import FieldMapModal from './components/FieldMapModal';
@@ -81,6 +81,9 @@ const ensureOverallDrainageAreaLayer = (
     const next = layers.filter(layer => layer.name !== OVERALL_DRAINAGE_LAYER_NAME);
     return next;
   }
+  const baseLayers = layers.filter(layer => layer.name !== OVERALL_DRAINAGE_LAYER_NAME);
+  const drainageAreasIndex = baseLayers.findIndex(layer => layer.name === 'Drainage Areas');
+  const insertionIndex = drainageAreasIndex === -1 ? baseLayers.length : drainageAreasIndex + 1;
 
   if (existingIndex === -1) {
     const newLayer: LayerData = {
@@ -93,15 +96,18 @@ const ensureOverallDrainageAreaLayer = (
       fillOpacity: DEFAULT_OPACITY,
       category: 'Derived',
     };
-    return [...layers, newLayer];
+    const next = [...baseLayers];
+    next.splice(insertionIndex, 0, newLayer);
+    return next;
   }
 
-  const updated = [...layers];
-  updated[existingIndex] = {
-    ...updated[existingIndex],
+  const updatedLayer: LayerData = {
+    ...layers[existingIndex],
     geojson: overallGeojson,
   };
-  return updated;
+  const next = [...baseLayers];
+  next.splice(insertionIndex, 0, updatedLayer);
+  return next;
 };
 
 const isPolygonLike = (
@@ -462,7 +468,8 @@ const buildHydroCADContent = (
   subcatchments.forEach((subcatchment, index) => {
     let outflow = getPrimaryOutflow(subcatchment.parentDa ?? null);
     if (!outflow) {
-      outflow = `DP-${String(index + 1).padStart(2, '0')}`;
+      const fallbackIndex = (index % MAX_DISCHARGE_POINTS) + 1;
+      outflow = `DP-${String(fallbackIndex).padStart(2, '0')}`;
     }
     const rowIndex = resolveRowIndex(outflow);
     const y = rowIndex * rowSpacing;
