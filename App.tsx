@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import type {
   FeatureCollection,
   Feature,
@@ -36,6 +36,7 @@ import ScsStatusPanel, { ScsLayerStatus } from './components/ScsStatusPanel';
 const SUBAREA_LAYER_NAME = 'Drainage Subareas';
 const OVERALL_DRAINAGE_LAYER_NAME = 'Overall Drainage Area';
 const PROCESSED_SUBAREA_LAYER_NAME = 'Drainage Subareas (Computed)';
+const AUTO_OVERLAY_LAYER_NAME = 'SCS Overlay (Auto)';
 const DA_NAME_ATTR = 'DA_NAME';
 const SUBAREA_NAME_ATTR = 'SUBAREA_NAME';
 const SUBAREA_PARENT_ATTR = 'PARENT_DA';
@@ -54,6 +55,7 @@ const DEFAULT_COLORS: Record<string, string> = {
   'Soil Layer from Web Soil Survey': '#8b4513',
   [PROCESSED_SUBAREA_LAYER_NAME]: '#38bdf8',
   Overlay: '#f97316',
+  [AUTO_OVERLAY_LAYER_NAME]: '#fde047',
 };
 const DEFAULT_OPACITY = 0.5;
 
@@ -393,6 +395,7 @@ const App: React.FC = () => {
   const [exportModalOpen, setExportModalOpen] = useState<boolean>(false);
   const [projection, setProjection] = useState<ProjectionOption>(STATE_PLANE_OPTIONS[0]);
   const [projectionConfirmed, setProjectionConfirmed] = useState<boolean>(false);
+  const autoOverlaySignatureRef = useRef<string | null>(null);
 
   const project = useMemo(() => proj4('EPSG:4326', projection.proj4), [projection]);
 
@@ -607,6 +610,171 @@ const App: React.FC = () => {
   useEffect(() => {
     loadLandCoverList().then(list => setLandCoverOptions(list));
   }, []);
+
+  useEffect(() => {
+    if (!scsReady || !soilsLayer || !landCoverLayer || !subareasLayer) {
+      if (!scsReady) {
+        autoOverlaySignatureRef.current = null;
+      }
+      return;
+    }
+
+    const signature = JSON.stringify({
+      soils: soilsLayer.geojson,
+      landCover: landCoverLayer.geojson,
+      subareas: subareasLayer.geojson,
+    });
+
+    if (autoOverlaySignatureRef.current === signature) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const buildAutoOverlay = async () => {
+      const cnRecords = await loadCnValues();
+      if (cancelled) return;
+
+      const cnMap = new Map(cnRecords.map(record => [record.LandCover, record]));
+
+      const wssPolygons = soilsLayer.geojson.features.filter(isPolygonLike) as Feature<
+        Polygon | MultiPolygon
+      >[];
+      const landCoverPolygons = landCoverLayer.geojson.features.filter(isPolygonLike) as Feature<
+        Polygon | MultiPolygon
+      >[];
+      const subareaPolygons = subareasLayer.geojson.features.filter(isPolygonLike) as Feature<
+        Polygon | MultiPolygon
+      >[];
+
+      const intermediate: Feature<Polygon | MultiPolygon>[] = [];
+
+      wssPolygons.forEach(wssFeature => {
+        landCoverPolygons.forEach(lcFeature => {
+          const inter = turfIntersect(wssFeature as any, lcFeature as any);
+          if (!inter || !inter.geometry) return;
+          if (
+            inter.geometry.type !== 'Polygon' &&
+            inter.geometry.type !== 'MultiPolygon'
+          ) {
+            return;
+          }
+
+          const areaSqm = turfArea(inter as any);
+          if (areaSqm <= AREA_TOLERANCE_SQM) return;
+
+          const baseProps = {
+            ...(wssFeature.properties || {}),
+            ...(lcFeature.properties || {}),
+          };
+
+          const landCoverValueRaw = (baseProps as any)?.LAND_COVER;
+          const landCoverValue =
+            landCoverValueRaw == null ? null : String(landCoverValueRaw);
+          const hsgRaw = (baseProps as any)?.HSG;
+          const hsg = hsgRaw == null ? null : String(hsgRaw).toUpperCase();
+          const record = landCoverValue ? cnMap.get(landCoverValue) : undefined;
+          const cnValue = record && hsg ? (record as any)[hsg as keyof CnRecord] : undefined;
+
+          const intermediateFeature: Feature<Polygon | MultiPolygon> = {
+            type: 'Feature',
+            geometry: inter.geometry as Polygon | MultiPolygon,
+            properties: {
+              ...baseProps,
+              ...(cnValue !== undefined ? { CN: cnValue } : {}),
+            },
+          };
+
+          intermediate.push(intermediateFeature);
+        });
+      });
+
+      if (cancelled) return;
+
+      const finalFeatures: Feature<Polygon | MultiPolygon>[] = [];
+
+      intermediate.forEach(intermediateFeature => {
+        subareaPolygons.forEach(subFeature => {
+          const inter = turfIntersect(intermediateFeature as any, subFeature as any);
+          if (!inter || !inter.geometry) return;
+          if (
+            inter.geometry.type !== 'Polygon' &&
+            inter.geometry.type !== 'MultiPolygon'
+          ) {
+            return;
+          }
+
+          const areaSqm = turfArea(inter as any);
+          if (areaSqm <= AREA_TOLERANCE_SQM) return;
+
+          const properties = {
+            ...(subFeature.properties || {}),
+            ...(intermediateFeature.properties || {}),
+            AREA_SF: Number((areaSqm * SQM_TO_SQFT).toFixed(2)),
+            AREA_AC: Number((areaSqm * SQM_TO_ACRES).toFixed(6)),
+          };
+
+          finalFeatures.push({
+            type: 'Feature',
+            geometry: inter.geometry as Polygon | MultiPolygon,
+            properties,
+          });
+        });
+      });
+
+      if (cancelled) return;
+
+      autoOverlaySignatureRef.current = signature;
+
+      if (finalFeatures.length === 0) {
+        setLayers(prev => prev.filter(layer => layer.name !== AUTO_OVERLAY_LAYER_NAME));
+        addLog(
+          'No se generó la capa SCS Overlay (Auto) porque no hay intersecciones válidas.',
+          'warn'
+        );
+        return;
+      }
+
+      const autoLayer: LayerData = {
+        id: `${Date.now()}-${AUTO_OVERLAY_LAYER_NAME}`,
+        name: AUTO_OVERLAY_LAYER_NAME,
+        geojson: {
+          type: 'FeatureCollection',
+          features: finalFeatures,
+        },
+        editable: false,
+        visible: true,
+        fillColor: getDefaultColor(AUTO_OVERLAY_LAYER_NAME),
+        fillOpacity: DEFAULT_OPACITY,
+        category: 'Derived',
+      };
+
+      setLayers(prev => {
+        const withoutAuto = prev.filter(layer => layer.name !== AUTO_OVERLAY_LAYER_NAME);
+        const updated = withoutAuto.map(layer => ({ ...layer, visible: false }));
+        return [...updated, autoLayer];
+      });
+      addLog(
+        `Capa ${AUTO_OVERLAY_LAYER_NAME} generada automáticamente con ${finalFeatures.length} polígonos.`,
+        'info'
+      );
+    };
+
+    buildAutoOverlay().catch(err => {
+      console.error('No se pudo generar la capa SCS Overlay (Auto)', err);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    scsReady,
+    soilsLayer,
+    landCoverLayer,
+    subareasLayer,
+    setLayers,
+    addLog,
+  ]);
 
   useEffect(() => {
     if (!landCoverOptions.length) return;
