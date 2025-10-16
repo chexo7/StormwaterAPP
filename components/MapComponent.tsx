@@ -199,7 +199,7 @@ const ManagedGeoJsonLayer = ({
       if (layerName === 'Drainage Areas') {
         const nameRow = L.DomUtil.create('div', '', propsDiv);
         const nLabel = L.DomUtil.create('b', '', nameRow);
-        nLabel.textContent = 'Name: ';
+        nLabel.textContent = 'Discharge Point #: ';
         const select = L.DomUtil.create('select', '', nameRow) as HTMLSelectElement;
         select.title = 'Seleccionar nombre';
         select.style.marginLeft = '4px';
@@ -209,17 +209,22 @@ const ManagedGeoJsonLayer = ({
         const blank = L.DomUtil.create('option', '', select) as HTMLOptionElement;
         blank.value = '';
         blank.textContent = '--';
-        const allNames = Array.from({ length: 26 }, (_, i) => `DA-${String.fromCharCode(65 + i)}`);
+        const dpOptions = Array.from({ length: 20 }, (_, i) => ({
+          value: `DP-${String(i + 1).padStart(2, '0')}`,
+          label: `${i + 1}`,
+        }));
         const usedNames = data.features
           .filter(f => f !== feature)
           .map(f => (f.properties?.DA_NAME as string))
           .filter(n => n);
-        const availableNames = allNames.filter(n => n === feature.properties!.DA_NAME || !usedNames.includes(n));
-        availableNames.forEach(val => {
+        const availableOptions = dpOptions.filter(
+          opt => opt.value === feature.properties!.DA_NAME || !usedNames.includes(opt.value)
+        );
+        availableOptions.forEach(optDef => {
           const opt = L.DomUtil.create('option', '', select) as HTMLOptionElement;
-          opt.value = val;
-          opt.textContent = val;
-          if (feature.properties!.DA_NAME === val) opt.selected = true;
+          opt.value = optDef.value;
+          opt.textContent = optDef.label;
+          if (feature.properties!.DA_NAME === optDef.value) opt.selected = true;
         });
         if (!feature.properties!.DA_NAME) blank.selected = true;
         select.addEventListener('change', (e) => {
