@@ -26,9 +26,11 @@ import type { ProjectionOption } from './types';
 import { reprojectFeatureCollection } from './utils/reproject';
 import { resolvePrj } from './utils/prj';
 import { transformLayerGeojson, formatDischargePointName } from './utils/layerTransforms';
+import { cleanCoords as turfCleanCoords, dissolve as turfDissolve, union as turfUnion } from '@turf/turf';
 
 const SUBAREA_LAYER_NAME = 'Drainage Subareas';
 const PROCESSED_SUBAREA_LAYER_NAME = 'Drainage Subareas (Computed)';
+const OVERALL_DRAINAGE_LAYER_NAME = 'Overall Drainage Area';
 const DA_NAME_ATTR = 'DA_NAME';
 const SUBAREA_NAME_ATTR = 'SUBAREA_NAME';
 const SUBAREA_PARENT_ATTR = 'PARENT_DA';
@@ -40,6 +42,7 @@ const AREA_TOLERANCE_SQM = 0.01;
 
 const DEFAULT_COLORS: Record<string, string> = {
   'Drainage Areas': '#67e8f9',
+  [OVERALL_DRAINAGE_LAYER_NAME]: '#0ea5e9',
   [SUBAREA_LAYER_NAME]: '#3b82f6',
   'Land Cover': '#22c55e',
   'LOD': '#ef4444',
@@ -50,6 +53,69 @@ const DEFAULT_COLORS: Record<string, string> = {
 const DEFAULT_OPACITY = 0.5;
 
 const getDefaultColor = (name: string) => DEFAULT_COLORS[name] || '#67e8f9';
+
+const isPolygonGeometry = (
+  geometry: Feature['geometry'] | undefined | null
+): geometry is Polygon | MultiPolygon =>
+  Boolean(geometry && (geometry.type === 'Polygon' || geometry.type === 'MultiPolygon'));
+
+const buildOverallDrainageFeature = (
+  geojson: FeatureCollection
+): Feature<Polygon | MultiPolygon> | null => {
+  const polygonFeatures = geojson.features
+    .filter(feature => isPolygonGeometry(feature.geometry))
+    .map(feature => ({
+      type: 'Feature',
+      geometry: feature.geometry as Polygon | MultiPolygon,
+      properties: {},
+    } as Feature<Polygon | MultiPolygon>));
+
+  if (polygonFeatures.length === 0) {
+    return null;
+  }
+
+  const dissolvedResult = turfDissolve({
+    type: 'FeatureCollection',
+    features: polygonFeatures,
+  }) as FeatureCollection | Feature<Polygon | MultiPolygon> | null;
+
+  const dissolvedPolygons: Feature<Polygon | MultiPolygon>[] = [];
+  if (dissolvedResult) {
+    if (dissolvedResult.type === 'FeatureCollection') {
+      dissolvedResult.features.forEach(feature => {
+        if (isPolygonGeometry(feature.geometry)) {
+          dissolvedPolygons.push({
+            type: 'Feature',
+            geometry: feature.geometry as Polygon | MultiPolygon,
+            properties: {},
+          });
+        }
+      });
+    } else if (isPolygonGeometry(dissolvedResult.geometry)) {
+      dissolvedPolygons.push({
+        type: 'Feature',
+        geometry: dissolvedResult.geometry as Polygon | MultiPolygon,
+        properties: {},
+      });
+    }
+  }
+
+  const featuresToMerge = dissolvedPolygons.length > 0 ? dissolvedPolygons : polygonFeatures;
+
+  let merged = featuresToMerge[0];
+  for (let i = 1; i < featuresToMerge.length; i += 1) {
+    const unioned = turfUnion(merged, featuresToMerge[i]);
+    if (!unioned) continue;
+    merged = unioned as Feature<Polygon | MultiPolygon>;
+  }
+
+  const cleaned = turfCleanCoords(merged) as Feature<Polygon | MultiPolygon>;
+
+  return {
+    ...cleaned,
+    properties: { NAME: OVERALL_DRAINAGE_LAYER_NAME },
+  };
+};
 
 type UpdateHsgFn = (layerId: string, featureIndex: number, hsg: string) => void;
 type UpdateDaNameFn = (layerId: string, featureIndex: number, name: string) => void;
@@ -112,6 +178,14 @@ const App: React.FC = () => {
   );
 
   const soilsLoaded = Boolean(soilsLayer);
+
+  const overallDrainageAreaGeojson = useMemo(() => {
+    if (!drainageAreasLayer) return null;
+    if (!drainageAreasLayer.geojson.features.length) return null;
+    const merged = buildOverallDrainageFeature(drainageAreasLayer.geojson);
+    if (!merged) return null;
+    return { type: 'FeatureCollection', features: [merged] } as FeatureCollection;
+  }, [drainageAreasLayer]);
 
   const assignedDrainagePoints = useMemo(() => {
     const assigned = new Set<string>();
@@ -230,6 +304,50 @@ const App: React.FC = () => {
   useEffect(() => {
     loadLandCoverList().then(list => setLandCoverOptions(list));
   }, []);
+
+  useEffect(() => {
+    setLayers(prevLayers => {
+      const existingIndex = prevLayers.findIndex(l => l.name === OVERALL_DRAINAGE_LAYER_NAME);
+
+      if (!overallDrainageAreaGeojson) {
+        if (existingIndex === -1) return prevLayers;
+        const updated = [...prevLayers];
+        updated.splice(existingIndex, 1);
+        return updated;
+      }
+
+      if (existingIndex !== -1) {
+        const existing = prevLayers[existingIndex];
+        if (
+          existing.geojson === overallDrainageAreaGeojson &&
+          existing.editable === false &&
+          existing.category === 'Derived'
+        ) {
+          return prevLayers;
+        }
+        const updated = [...prevLayers];
+        updated[existingIndex] = {
+          ...existing,
+          geojson: overallDrainageAreaGeojson,
+          editable: false,
+          category: 'Derived',
+        };
+        return updated;
+      }
+
+      const newLayer: LayerData = {
+        id: `${Date.now()}-${OVERALL_DRAINAGE_LAYER_NAME}`,
+        name: OVERALL_DRAINAGE_LAYER_NAME,
+        geojson: overallDrainageAreaGeojson,
+        editable: false,
+        visible: true,
+        fillColor: getDefaultColor(OVERALL_DRAINAGE_LAYER_NAME),
+        fillOpacity: DEFAULT_OPACITY,
+        category: 'Derived',
+      };
+      return [...prevLayers, newLayer];
+    });
+  }, [overallDrainageAreaGeojson]);
 
   useEffect(() => {
     if (!landCoverOptions.length) return;
