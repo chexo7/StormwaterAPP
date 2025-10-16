@@ -68,6 +68,17 @@ function sanitizeProps(props: GeoJsonProperties, layerName: string): GeoJsonProp
       'SUBAREA_AC',
     ],
     Overlay: ['DA_NAME', 'SUBAREA_NAME', 'PARENT_DA', 'IS_COMPLEMENT', 'LAND_COVER', 'HSG', 'CN', 'AREA_AC', 'AREA_SF'],
+    'Overlay (Auto)': [
+      'DA_NAME',
+      'SUBAREA_NAME',
+      'PARENT_DA',
+      'IS_COMPLEMENT',
+      'LAND_COVER',
+      'HSG',
+      'CN',
+      'AREA_AC',
+      'AREA_SF',
+    ],
   };
 
   const wl = wlMap[layerName] || Object.keys(props || {});
