@@ -356,23 +356,126 @@ const buildHydroCADContent = (
   projectName: string
 ): string => {
   const headerName = projectName || 'Project';
-  let content = `[HydroCAD]\nFileUnits=English\nCalcUnits=English\nInputUnits=English-LowFlow\nReportUnits=English-LowFlow\nLargeAreas=False\nSource=HydroCAD\u00ae 10.20-6a  s/n 07447  \u00a9 2024 HydroCAD Software Solutions LLC\nName=${headerName}\nPath=\nView=-5.46349942062574 0 15.4634994206257 10\nGridShow=True\nGridSnap=True\nTimeSpan=0 86400\nTimeInc=36\nMaxGraph=0\nRunoffMethod=SCS TR-20\nReachMethod=Stor-Ind+Trans\nPondMethod=Stor-Ind\nUH=SCS\nMinTc=300\nRainEvent=test\n\n[EVENT]\nRainEvent=test\nStormType=Type II 24-hr\nStormDepth=0.0833333333333333\n`;
+  const headerLines = [
+    '[HydroCAD]',
+    'FileUnits=English',
+    'CalcUnits=English',
+    'InputUnits=English',
+    'ReportUnits=English',
+    'Source=HydroCAD® 10.20-6a  s/n 07447  © 2024 HydroCAD Software Solutions LLC',
+    'Source=HydroCAD® 10.20-5b  s/n 07447  © 2023 HydroCAD Software Solutions LLC',
+    'Source=HydroCAD® 10.20-6a  s/n 07447  © 2024 HydroCAD Software Solutions LLC',
+    'Source=HydroCAD® 10.20-5b  s/n 07447  © 2023 HydroCAD Software Solutions LLC',
+    `Name=${headerName}`,
+    'Path=',
+    'View=-15.2200262616452 -7.99592189386307 27.6264488498838 15.015871738455',
+    'GridShow=True',
+    'GridSnap=True',
+    'TimeSpan=0 259200',
+    'TimeInc=36',
+    'SubIntervals=9',
+    'RunoffMethod=SCS TR-20',
+    'ReachMethod=Dyn-Stor-Ind',
+    'PondMethod=Dyn-Stor-Ind',
+    'UH=SCS',
+    'InitialTW=True',
+    'MinTc=300',
+    'RainEvent=100 Year',
+    'P2=0.2475',
+  ];
 
-  let y = 0;
-  subcatchments.forEach(subcatchment => {
-    content += `\n[NODE]\nNumber=${subcatchment.id}\nType=Subcat\nName=${subcatchment.name}\nXYPos=0 ${y}\n`;
-    if (subcatchment.parentDa) {
-      content += `NodeDesc=${subcatchment.parentDa}\n`;
-    }
-    subcatchment.areas.forEach(area => {
-      content += `[AREA]\nArea=${area.area}\nCN=${area.cn}\n`;
-      if (area.desc) content += `Desc=${area.desc}\n`;
-    });
-    content += `[TC]\nMethod=Direct\nTc=300\n`;
-    y += 5;
+  const stormEvents = [
+    { rainEvent: '1 Year', depth: '0.205' },
+    { rainEvent: '2 Year', depth: '0.2475' },
+    { rainEvent: '5 Year', depth: '0.313333333333333' },
+    { rainEvent: '10 Year', depth: '0.371666666666667' },
+    { rainEvent: '25 Year', depth: '0.46' },
+    { rainEvent: '50 Year', depth: '0.538333333333333' },
+    { rainEvent: '100 Year', depth: '0.628333333333333' },
+  ];
+
+  const lines: string[] = [...headerLines, ''];
+
+  stormEvents.forEach(event => {
+    lines.push(
+      '[EVENT]',
+      `RainEvent=${event.rainEvent}`,
+      'StormType=Type II 24-hr',
+      `StormDepth=${event.depth}`,
+      ''
+    );
   });
 
-  return content;
+  const primaryParent = (parentDa?: string | null): string | null => {
+    if (!parentDa) return null;
+    const parts = parentDa
+      .split(',')
+      .map(part => part.trim())
+      .filter(Boolean);
+    return parts.length > 0 ? parts[0] : null;
+  };
+
+  const dpIndices = new Map<string, number>();
+  const assignDpIndex = (name: string) => {
+    if (!dpIndices.has(name)) {
+      dpIndices.set(name, dpIndices.size);
+    }
+    return dpIndices.get(name) ?? 0;
+  };
+
+  const SUBCAT_X = -4;
+  const DP_X = -3;
+  const SUBCAT_BASE_Y = 8;
+  const DP_BASE_Y = 2;
+  const Y_SPACING = 6;
+
+  subcatchments.forEach((subcatchment, index) => {
+    const parent = primaryParent(subcatchment.parentDa);
+    if (parent) assignDpIndex(parent);
+
+    const subcatY = SUBCAT_BASE_Y - index * Y_SPACING;
+    lines.push(
+      '[NODE]',
+      `Number=${subcatchment.id}`,
+      'Type=Subcat',
+      `Name=${subcatchment.name}`,
+      `XYPos=${SUBCAT_X} ${subcatY}`,
+      'LargeAreas=True'
+    );
+    if (parent) {
+      lines.push(`Outflow=${parent}`);
+    }
+    if (subcatchment.parentDa) {
+      lines.push(`NodeDesc=${subcatchment.parentDa}`);
+    }
+
+    subcatchment.areas.forEach(area => {
+      lines.push('[AREA]', `Area=${area.area}`, `CN=${area.cn}`);
+      if (area.desc) {
+        lines.push(`Desc=${area.desc}`);
+      }
+    });
+
+    lines.push('[TC]', 'Method=Direct', 'Desc=Default Tc', 'Tc=300', '');
+  });
+
+  if (dpIndices.size > 0) {
+    Array.from(dpIndices.entries()).forEach(([name, idx]) => {
+      const dpY = DP_BASE_Y - idx * Y_SPACING;
+      lines.push(
+        '[NODE]',
+        `Number=${name}`,
+        'Type=Link',
+        `Name=${name}`,
+        `XYPos=${DP_X} ${dpY}`,
+        'LargeAreas=True',
+        ''
+      );
+    });
+  }
+
+  const trimmedLines = lines[lines.length - 1] === '' ? lines.slice(0, -1) : lines;
+  return `${trimmedLines.join('\n')}\n`;
 };
 
 const triggerHydroCADDownload = (
