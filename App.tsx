@@ -183,6 +183,7 @@ type HydroCADSubcatchment = {
   id: string;
   name: string;
   parentDa?: string | null;
+  parentOutflows: string[];
   areas: HydroCADAreaGroup[];
 };
 
@@ -308,17 +309,15 @@ const aggregateOverlayForHydroCAD = (
   return Array.from(aggregates.values())
     .sort((a, b) => a.order - b.order)
     .map((aggregate, index) => {
-      const parentLabel =
-        aggregate.parents.size > 0
-          ? Array.from(aggregate.parents)
-              .filter(Boolean)
-              .sort((a, b) => a.localeCompare(b))
-              .join(', ')
-          : null;
+      const parentList = Array.from(aggregate.parents)
+        .filter((value): value is string => Boolean(value))
+        .sort((a, b) => a.localeCompare(b));
+      const parentLabel = parentList.length > 0 ? parentList.join(', ') : null;
       return {
         id: sanitizeId(aggregate.name, parentLabel, index),
         name: aggregate.name,
         parentDa: parentLabel,
+        parentOutflows: parentList,
         areas: Array.from(aggregate.groups.values()).map(item => ({
           area: Number(item.area.toFixed(2)),
           cn: item.cn,
@@ -356,21 +355,73 @@ const buildHydroCADContent = (
   projectName: string
 ): string => {
   const headerName = projectName || 'Project';
-  let content = `[HydroCAD]\nFileUnits=English\nCalcUnits=English\nInputUnits=English-LowFlow\nReportUnits=English-LowFlow\nLargeAreas=False\nSource=HydroCAD\u00ae 10.20-6a  s/n 07447  \u00a9 2024 HydroCAD Software Solutions LLC\nName=${headerName}\nPath=\nView=-5.46349942062574 0 15.4634994206257 10\nGridShow=True\nGridSnap=True\nTimeSpan=0 86400\nTimeInc=36\nMaxGraph=0\nRunoffMethod=SCS TR-20\nReachMethod=Stor-Ind+Trans\nPondMethod=Stor-Ind\nUH=SCS\nMinTc=300\nRainEvent=test\n\n[EVENT]\nRainEvent=test\nStormType=Type II 24-hr\nStormDepth=0.0833333333333333\n`;
+  let content =
+    `[HydroCAD]\n` +
+    `FileUnits=English\n` +
+    `CalcUnits=English\n` +
+    `InputUnits=English\n` +
+    `ReportUnits=English\n` +
+    `Source=HydroCAD\u00ae 10.20-6a  s/n 07447  \u00a9 2024 HydroCAD Software Solutions LLC\n` +
+    `Source=HydroCAD\u00ae 10.20-5b  s/n 07447  \u00a9 2023 HydroCAD Software Solutions LLC\n` +
+    `Source=HydroCAD\u00ae 10.20-6a  s/n 07447  \u00a9 2024 HydroCAD Software Solutions LLC\n` +
+    `Source=HydroCAD\u00ae 10.20-5b  s/n 07447  \u00a9 2023 HydroCAD Software Solutions LLC\n` +
+    `Name=${headerName}\n` +
+    `Path=\n` +
+    `View=-15.2200262616452 -7.99592189386307 27.6264488498838 15.015871738455\n` +
+    `GridShow=True\n` +
+    `GridSnap=True\n` +
+    `TimeSpan=0 259200\n` +
+    `TimeInc=36\n` +
+    `SubIntervals=9\n` +
+    `RunoffMethod=SCS TR-20\n` +
+    `ReachMethod=Dyn-Stor-Ind\n` +
+    `PondMethod=Dyn-Stor-Ind\n` +
+    `UH=SCS\n` +
+    `InitialTW=True\n` +
+    `MinTc=300\n` +
+    `RainEvent=100 Year\n` +
+    `P2=0.2475\n` +
+    `\n` +
+    `[EVENT]\nRainEvent=1 Year\nStormType=Type II 24-hr\nStormDepth=0.205\n\n` +
+    `[EVENT]\nRainEvent=2 Year\nStormType=Type II 24-hr\nStormDepth=0.2475\n\n` +
+    `[EVENT]\nRainEvent=5 Year\nStormType=Type II 24-hr\nStormDepth=0.313333333333333\n\n` +
+    `[EVENT]\nRainEvent=10 Year\nStormType=Type II 24-hr\nStormDepth=0.371666666666667\n\n` +
+    `[EVENT]\nRainEvent=25 Year\nStormType=Type II 24-hr\nStormDepth=0.46\n\n` +
+    `[EVENT]\nRainEvent=50 Year\nStormType=Type II 24-hr\nStormDepth=0.538333333333333\n\n` +
+    `[EVENT]\nRainEvent=100 Year\nStormType=Type II 24-hr\nStormDepth=0.628333333333333\n`;
 
-  let y = 0;
-  subcatchments.forEach(subcatchment => {
-    content += `\n[NODE]\nNumber=${subcatchment.id}\nType=Subcat\nName=${subcatchment.name}\nXYPos=0 ${y}\n`;
+  const dischargePoints = new Set<string>();
+  const subcatYStart = 8;
+  const subcatYStep = 6;
+
+  subcatchments.forEach((subcatchment, index) => {
+    const y = subcatYStart + index * subcatYStep;
+    content += `\n[NODE]\nNumber=${subcatchment.id}\nType=Subcat\nName=${subcatchment.name}\nXYPos=-4 ${y}\n`;
+    if (subcatchment.parentOutflows.length > 0) {
+      const outflow = subcatchment.parentOutflows[0];
+      content += `Outflow=${outflow}\n`;
+      dischargePoints.add(outflow);
+    }
     if (subcatchment.parentDa) {
       content += `NodeDesc=${subcatchment.parentDa}\n`;
     }
+    content += `LargeAreas=True\n`;
     subcatchment.areas.forEach(area => {
       content += `[AREA]\nArea=${area.area}\nCN=${area.cn}\n`;
       if (area.desc) content += `Desc=${area.desc}\n`;
     });
-    content += `[TC]\nMethod=Direct\nTc=300\n`;
-    y += 5;
+    content += `[TC]\nMethod=Direct\nDesc=Default\nTc=300\n`;
   });
+
+  const dpYStart = 2;
+  const dpYStep = 6;
+
+  Array.from(dischargePoints)
+    .sort((a, b) => a.localeCompare(b))
+    .forEach((dp, index) => {
+      const y = dpYStart + index * dpYStep;
+      content += `\n[NODE]\nNumber=${dp}\nType=Link\nName=${dp}\nXYPos=2 ${y}\nLargeAreas=True\n`;
+    });
 
   return content;
 };
