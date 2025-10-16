@@ -22,6 +22,9 @@ const loadLayerTransforms = async () => {
   const directionUrl = new URL('../utils/direction.js', import.meta.url);
   outputText = outputText.replace(/from\s+['"]\.\/direction(?:\.js)?['"]/g, `from '${directionUrl.href}'`);
 
+  const turfUrl = new URL('../node_modules/@turf/turf/dist/esm/index.js', import.meta.url);
+  outputText = outputText.replace(/from\s+['"]@turf\/turf['"]/g, `from '${turfUrl.href}'`);
+
   const tmpFile = join(tmpdir(), `layerTransforms-${randomUUID()}.mjs`);
   await writeFile(tmpFile, outputText);
   try {
@@ -67,4 +70,52 @@ test('catch basin retains zero-valued readings after normalization', async () =>
   assert.strictEqual(props['Invert N [ft]'], 0);
   assert.strictEqual(props['Inv Out [ft]'], 0);
   assert.strictEqual(props['Elevation Ground [ft]'], 0);
+});
+
+test('overall drainage area merges polygons into a single feature', async () => {
+  const { createOverallDrainageArea } = await loadLayerTransforms();
+
+  const geojson = {
+    type: 'FeatureCollection',
+    features: [
+      {
+        type: 'Feature',
+        geometry: {
+          type: 'Polygon',
+          coordinates: [
+            [
+              [0, 0],
+              [0, 1],
+              [0.5, 1],
+              [0.5, 0],
+              [0, 0],
+            ],
+          ],
+        },
+        properties: {},
+      },
+      {
+        type: 'Feature',
+        geometry: {
+          type: 'Polygon',
+          coordinates: [
+            [
+              [0.5, -0.0000001],
+              [0.5, 1.0000001],
+              [1, 1],
+              [1, 0],
+              [0.5, -0.0000001],
+            ],
+          ],
+        },
+        properties: {},
+      },
+    ],
+  };
+
+  const merged = createOverallDrainageArea(geojson);
+  assert.strictEqual(merged.type, 'FeatureCollection');
+  assert.strictEqual(merged.features.length, 1);
+  const feature = merged.features[0];
+  assert.ok(feature.geometry.type === 'Polygon' || feature.geometry.type === 'MultiPolygon');
 });

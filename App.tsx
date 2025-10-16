@@ -25,9 +25,14 @@ import { STATE_PLANE_OPTIONS } from './utils/projections';
 import type { ProjectionOption } from './types';
 import { reprojectFeatureCollection } from './utils/reproject';
 import { resolvePrj } from './utils/prj';
-import { transformLayerGeojson, formatDischargePointName } from './utils/layerTransforms';
+import {
+  transformLayerGeojson,
+  formatDischargePointName,
+  createOverallDrainageArea,
+} from './utils/layerTransforms';
 
 const SUBAREA_LAYER_NAME = 'Drainage Subareas';
+const OVERALL_DRAINAGE_LAYER_NAME = 'Overall Drainage Area';
 const PROCESSED_SUBAREA_LAYER_NAME = 'Drainage Subareas (Computed)';
 const DA_NAME_ATTR = 'DA_NAME';
 const SUBAREA_NAME_ATTR = 'SUBAREA_NAME';
@@ -41,6 +46,7 @@ const AREA_TOLERANCE_SQM = 0.01;
 const DEFAULT_COLORS: Record<string, string> = {
   'Drainage Areas': '#67e8f9',
   [SUBAREA_LAYER_NAME]: '#3b82f6',
+  [OVERALL_DRAINAGE_LAYER_NAME]: '#0ea5e9',
   'Land Cover': '#22c55e',
   'LOD': '#ef4444',
   'Soil Layer from Web Soil Survey': '#8b4513',
@@ -50,6 +56,46 @@ const DEFAULT_COLORS: Record<string, string> = {
 const DEFAULT_OPACITY = 0.5;
 
 const getDefaultColor = (name: string) => DEFAULT_COLORS[name] || '#67e8f9';
+
+const ensureOverallDrainageAreaLayer = (
+  layers: LayerData[],
+  baseGeojson: FeatureCollection | null
+): LayerData[] => {
+  const existingIndex = layers.findIndex(
+    layer => layer.name === OVERALL_DRAINAGE_LAYER_NAME
+  );
+
+  const overallGeojson = baseGeojson
+    ? createOverallDrainageArea(baseGeojson)
+    : { type: 'FeatureCollection', features: [] };
+
+  if (!overallGeojson.features.length) {
+    if (existingIndex === -1) return layers;
+    const next = layers.filter(layer => layer.name !== OVERALL_DRAINAGE_LAYER_NAME);
+    return next;
+  }
+
+  if (existingIndex === -1) {
+    const newLayer: LayerData = {
+      id: `${Date.now()}-${OVERALL_DRAINAGE_LAYER_NAME}`,
+      name: OVERALL_DRAINAGE_LAYER_NAME,
+      geojson: overallGeojson,
+      editable: false,
+      visible: true,
+      fillColor: getDefaultColor(OVERALL_DRAINAGE_LAYER_NAME),
+      fillOpacity: DEFAULT_OPACITY,
+      category: 'Derived',
+    };
+    return [...layers, newLayer];
+  }
+
+  const updated = [...layers];
+  updated[existingIndex] = {
+    ...updated[existingIndex],
+    geojson: overallGeojson,
+  };
+  return updated;
+};
 
 type UpdateHsgFn = (layerId: string, featureIndex: number, hsg: string) => void;
 type UpdateDaNameFn = (layerId: string, featureIndex: number, name: string) => void;
@@ -362,31 +408,62 @@ const App: React.FC = () => {
       return;
     }
 
+    let action: 'updated' | 'created' = 'created';
+    let overallChange: 'none' | 'created' | 'updated' | 'removed' = 'none';
+
     setLayers(prevLayers => {
       const existing = prevLayers.find(l => l.name === name);
+      const hadOverall = prevLayers.some(l => l.name === OVERALL_DRAINAGE_LAYER_NAME);
+
+      let nextLayers: LayerData[];
       if (existing) {
-        const updated = prevLayers.map(l =>
+        action = 'updated';
+        nextLayers = prevLayers.map(l =>
           l.name === name
             ? { ...l, geojson: normalizedGeojson, editable, fieldMap: fieldMap ?? l.fieldMap }
             : l
         );
-        addLog(`Updated layer ${name} with uploaded data`);
-        return updated;
+      } else {
+        const newLayer: LayerData = {
+          id: `${Date.now()}-${name}`,
+          name,
+          geojson: normalizedGeojson,
+          editable,
+          visible: true,
+          fillColor: getDefaultColor(name),
+          fillOpacity: DEFAULT_OPACITY,
+          category: 'Original',
+          fieldMap,
+        };
+        nextLayers = [...prevLayers, newLayer];
       }
-      const newLayer: LayerData = {
-        id: `${Date.now()}-${name}`,
-        name,
-        geojson: normalizedGeojson,
-        editable,
-        visible: true,
-        fillColor: getDefaultColor(name),
-        fillOpacity: DEFAULT_OPACITY,
-        category: 'Original',
-        fieldMap,
-      };
-      addLog(`Loaded layer ${name}${editable ? '' : ' (view only)'}`);
-      return [...prevLayers, newLayer];
+
+      if (name === 'Drainage Areas') {
+        nextLayers = ensureOverallDrainageAreaLayer(nextLayers, normalizedGeojson);
+        const hasOverallAfter = nextLayers.some(l => l.name === OVERALL_DRAINAGE_LAYER_NAME);
+        if (!hadOverall && hasOverallAfter) overallChange = 'created';
+        else if (hadOverall && hasOverallAfter) overallChange = 'updated';
+        else if (hadOverall && !hasOverallAfter) overallChange = 'removed';
+      }
+
+      return nextLayers;
     });
+
+    if (action === 'updated') {
+      addLog(`Updated layer ${name} with uploaded data`);
+    } else {
+      addLog(`Loaded layer ${name}${editable ? '' : ' (view only)'}`);
+    }
+
+    if (name === 'Drainage Areas') {
+      if (overallChange === 'created') {
+        addLog('Se generó automáticamente la capa Overall Drainage Area.');
+      } else if (overallChange === 'updated') {
+        addLog('Se actualizó la capa Overall Drainage Area para reflejar los cambios.');
+      } else if (overallChange === 'removed') {
+        addLog('Se eliminó la capa Overall Drainage Area porque no hay geometría disponible.');
+      }
+    }
     if (name === 'Drainage Areas') {
       addLog('Asigna un Discharge Point (DP-##) a cada área de drenaje usando el desplegable del mapa.');
     }
@@ -444,8 +521,25 @@ const App: React.FC = () => {
   }, [addLog]);
 
   const handleRemoveLayer = useCallback((id: string) => {
-    setLayers(prevLayers => prevLayers.filter(layer => layer.id !== id));
+    let overallRemoved = false;
+    setLayers(prevLayers => {
+      const removingDrainageAreas = prevLayers.some(
+        layer => layer.id === id && layer.name === 'Drainage Areas'
+      );
+      let next = prevLayers.filter(layer => layer.id !== id);
+      if (removingDrainageAreas) {
+        const hadOverall = next.some(layer => layer.name === OVERALL_DRAINAGE_LAYER_NAME);
+        if (hadOverall) {
+          overallRemoved = true;
+          next = next.filter(layer => layer.name !== OVERALL_DRAINAGE_LAYER_NAME);
+        }
+      }
+      return next;
+    });
     addLog(`Removed layer ${id}`);
+    if (overallRemoved) {
+      addLog('Se eliminó la capa Overall Drainage Area porque la capa Drainage Areas fue removida.');
+    }
     if (editingTarget.layerId === id) setEditingTarget({ layerId: null, featureIndex: null });
   }, [addLog, editingTarget]);
 
@@ -553,8 +647,30 @@ const App: React.FC = () => {
   }, []);
 
   const handleUpdateLayerGeojson = useCallback((id: string, geojson: FeatureCollection) => {
-    setLayers(prev => prev.map(layer => layer.id === id ? { ...layer, geojson } : layer));
+    let overallChange: 'none' | 'created' | 'updated' | 'removed' = 'none';
+    setLayers(prev => {
+      const target = prev.find(layer => layer.id === id);
+      const hadOverall = prev.some(layer => layer.name === OVERALL_DRAINAGE_LAYER_NAME);
+      let next = prev.map(layer => (layer.id === id ? { ...layer, geojson } : layer));
+
+      if (target?.name === 'Drainage Areas') {
+        next = ensureOverallDrainageAreaLayer(next, geojson);
+        const hasOverallAfter = next.some(layer => layer.name === OVERALL_DRAINAGE_LAYER_NAME);
+        if (!hadOverall && hasOverallAfter) overallChange = 'created';
+        else if (hadOverall && hasOverallAfter) overallChange = 'updated';
+        else if (hadOverall && !hasOverallAfter) overallChange = 'removed';
+      }
+
+      return next;
+    });
     addLog(`Updated geometry for layer ${id}`);
+    if (overallChange === 'created') {
+      addLog('Se generó automáticamente la capa Overall Drainage Area.');
+    } else if (overallChange === 'updated') {
+      addLog('Se actualizó la capa Overall Drainage Area para reflejar los cambios.');
+    } else if (overallChange === 'removed') {
+      addLog('Se eliminó la capa Overall Drainage Area porque no hay geometría disponible.');
+    }
   }, [addLog]);
 
   const handleConfirmPreview = useCallback((name: string, data: FeatureCollection) => {
