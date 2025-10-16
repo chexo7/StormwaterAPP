@@ -7,6 +7,7 @@ import type {
   Polygon,
   MultiPolygon,
 } from 'geojson';
+import { area as turfArea, intersect as turfIntersect } from '@turf/turf';
 import type { LayerData, LogEntry } from './types';
 import Header from './components/Header';
 import FileUpload from './components/FileUpload';
@@ -95,6 +96,81 @@ const ensureOverallDrainageAreaLayer = (
     geojson: overallGeojson,
   };
   return updated;
+};
+
+const isPolygonLike = (
+  feature: Feature
+): feature is Feature<Polygon | MultiPolygon> => {
+  const { geometry } = feature;
+  if (!geometry) return false;
+  return geometry.type === 'Polygon' || geometry.type === 'MultiPolygon';
+};
+
+const computeFeatureAreaSqm = (
+  feature: Feature<Polygon | MultiPolygon> | null
+): number => {
+  if (!feature || !feature.geometry) return 0;
+  try {
+    return turfArea(feature as any);
+  } catch (err) {
+    console.warn('Failed to compute feature area', err);
+    return 0;
+  }
+};
+
+const sumPolygonAreasSqm = (collection: FeatureCollection): number =>
+  collection.features.reduce((sum, feature) => {
+    if (!isPolygonLike(feature)) return sum;
+    return sum + computeFeatureAreaSqm(feature);
+  }, 0);
+
+const getOverallDrainageFeature = (
+  layers: LayerData[]
+): Feature<Polygon | MultiPolygon> | null => {
+  const overallLayer = layers.find(l => l.name === OVERALL_DRAINAGE_LAYER_NAME);
+  if (!overallLayer) return null;
+  const polygonFeature = overallLayer.geojson.features.find(isPolygonLike);
+  if (!polygonFeature || !polygonFeature.geometry) return null;
+  return polygonFeature as Feature<Polygon | MultiPolygon>;
+};
+
+const clipCollectionToOverall = (
+  collection: FeatureCollection,
+  overall: Feature<Polygon | MultiPolygon>
+): FeatureCollection => {
+  const clippedFeatures: Feature[] = [];
+  collection.features.forEach(feature => {
+    if (!feature.geometry) return;
+    if (!isPolygonLike(feature)) {
+      clippedFeatures.push(feature);
+      return;
+    }
+    try {
+      const clipped = turfIntersect({
+        type: 'FeatureCollection',
+        features: [feature as any, overall as any],
+      } as any);
+      if (!clipped || !clipped.geometry) return;
+      if (
+        clipped.geometry.type !== 'Polygon' &&
+        clipped.geometry.type !== 'MultiPolygon'
+      ) {
+        return;
+      }
+      const clippedFeature: Feature<Polygon | MultiPolygon> = {
+        type: 'Feature',
+        geometry: clipped.geometry as Polygon | MultiPolygon,
+        properties: { ...(feature.properties || {}) },
+      };
+      if (feature.id !== undefined) clippedFeature.id = feature.id;
+      const area = computeFeatureAreaSqm(clippedFeature);
+      if (area <= AREA_TOLERANCE_SQM) return;
+      clippedFeatures.push(clippedFeature);
+    } catch (err) {
+      console.warn('Failed to clip feature to Overall Drainage Area', err);
+    }
+  });
+  return { ...collection, features: clippedFeatures };
 };
 
 type UpdateHsgFn = (layerId: string, featureIndex: number, hsg: string) => void;
@@ -269,7 +345,7 @@ const App: React.FC = () => {
     return out;
   };
 
-  const addLog = useCallback((message: string, type: 'info' | 'error' = 'info') => {
+  const addLog = useCallback((message: string, type: 'info' | 'error' | 'warn' = 'info') => {
     setLogs(prev => [...prev, { message, type, source: 'frontend' as const }]);
   }, []);
 
@@ -390,6 +466,8 @@ const App: React.FC = () => {
       }
     }
 
+    const overallDrainageFeature = getOverallDrainageFeature(layers);
+
     const editable = KNOWN_LAYER_NAMES.includes(name);
     const normalizedGeojson = transformLayerGeojson(name, geojson, {
       landCoverOptions,
@@ -397,15 +475,50 @@ const App: React.FC = () => {
       fieldMap,
     });
 
+    let processedGeojson = normalizedGeojson;
+
+    if (name === 'Soil Layer from Web Soil Survey' && overallDrainageFeature) {
+      const clipped = clipCollectionToOverall(normalizedGeojson, overallDrainageFeature);
+      processedGeojson = clipped;
+      if (processedGeojson.features.length === 0) {
+        const msg =
+          'No se encontraron polígonos del WSS dentro del Overall Drainage Area. Verifica los archivos y vuelve a intentarlo.';
+        setError(msg);
+        addLog(msg, 'error');
+        return;
+      }
+    }
+
     if (
       name === 'Soil Layer from Web Soil Survey' &&
-      normalizedGeojson.features.length === 0
+      processedGeojson.features.length === 0
     ) {
       const msg =
         'La capa del Web Soil Survey no contiene polígonos válidos. Revisa el archivo y vuelve a intentarlo.';
       setError(msg);
       addLog(msg, 'error');
       return;
+    }
+
+    if (
+      overallDrainageFeature &&
+      (name === SUBAREA_LAYER_NAME ||
+        name === 'Soil Layer from Web Soil Survey' ||
+        name === 'Land Cover')
+    ) {
+      const layerAreaSqM = sumPolygonAreasSqm(processedGeojson);
+      const overallAreaSqM = computeFeatureAreaSqm(overallDrainageFeature);
+      if (
+        overallAreaSqM > 0 &&
+        overallAreaSqM - layerAreaSqM > AREA_TOLERANCE_SQM
+      ) {
+        const layerAreaAc = Number((layerAreaSqM * SQM_TO_ACRES).toFixed(4));
+        const overallAreaAc = Number((overallAreaSqM * SQM_TO_ACRES).toFixed(4));
+        addLog(
+          `Advertencia: el área total de ${name} (${layerAreaAc} ac) es menor que el Overall Drainage Area (${overallAreaAc} ac). Revisa que los polígonos cubran toda el área de drenaje.`,
+          'warn'
+        );
+      }
     }
 
     let action: 'updated' | 'created' = 'created';
@@ -420,14 +533,14 @@ const App: React.FC = () => {
         action = 'updated';
         nextLayers = prevLayers.map(l =>
           l.name === name
-            ? { ...l, geojson: normalizedGeojson, editable, fieldMap: fieldMap ?? l.fieldMap }
+            ? { ...l, geojson: processedGeojson, editable, fieldMap: fieldMap ?? l.fieldMap }
             : l
         );
       } else {
         const newLayer: LayerData = {
           id: `${Date.now()}-${name}`,
           name,
-          geojson: normalizedGeojson,
+          geojson: processedGeojson,
           editable,
           visible: true,
           fillColor: getDefaultColor(name),
