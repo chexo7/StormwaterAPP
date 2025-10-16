@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 
 interface FieldMapModalProps {
   layerName: string;
@@ -52,8 +52,22 @@ const FieldMapModal: React.FC<FieldMapModalProps> = ({ layerName, properties, on
   }
 
   const handleChange = (key: string, value: string) => {
-    setMapping(prev => ({ ...prev, [key]: value }));
+    setMapping(prev => {
+      const next = { ...prev };
+      if (!value) {
+        delete next[key];
+      } else {
+        next[key] = value;
+      }
+      return next;
+    });
   };
+
+  const selectedValues = useMemo(() => {
+    return new Set(
+      Object.values(mapping).filter((v): v is string => Boolean(v))
+    );
+  }, [mapping]);
 
   const handleSubmit = () => {
     const values = Object.values(mapping).filter((v) => v);
@@ -82,7 +96,13 @@ const FieldMapModal: React.FC<FieldMapModalProps> = ({ layerName, properties, on
             >
               <option value="">-- Select --</option>
               {fields.map(f => (
-                <option key={f} value={f}>{f}</option>
+                <option
+                  key={f}
+                  value={f}
+                  disabled={selectedValues.has(f) && mapping[r.key] !== f}
+                >
+                  {f}
+                </option>
               ))}
             </select>
           </div>
