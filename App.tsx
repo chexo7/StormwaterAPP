@@ -31,6 +31,7 @@ import {
   formatDischargePointName,
   createOverallDrainageArea,
 } from './utils/layerTransforms';
+import ScsStatusPanel, { ScsLayerStatus } from './components/ScsStatusPanel';
 
 const SUBAREA_LAYER_NAME = 'Drainage Subareas';
 const OVERALL_DRAINAGE_LAYER_NAME = 'Overall Drainage Area';
@@ -173,6 +174,191 @@ const clipCollectionToOverall = (
   return { ...collection, features: clippedFeatures };
 };
 
+type HydroCADAreaGroup = { area: number; cn: number; desc?: string };
+
+type HydroCADSubcatchment = {
+  id: string;
+  name: string;
+  parentDa?: string | null;
+  areas: HydroCADAreaGroup[];
+};
+
+const aggregateOverlayForHydroCAD = (
+  features: Feature[],
+  subareas: Feature<Polygon | MultiPolygon>[]
+): HydroCADSubcatchment[] => {
+  type SubareaAggregate = {
+    name: string;
+    parent: string | null;
+    order: number;
+    groups: Map<string, HydroCADAreaGroup>;
+  };
+
+  const aggregates = new Map<string, SubareaAggregate>();
+
+  const normalizeName = (value: string, fallback: string) => {
+    const trimmed = value.trim();
+    return trimmed === '' ? fallback : trimmed;
+  };
+
+  const makeKey = (name: string, parent: string | null) =>
+    `${parent ?? ''}|${name.toLowerCase()}`;
+
+  const ensureAggregate = (
+    rawName: string,
+    fallbackName: string,
+    order: number,
+    parentRaw: string | null
+  ): SubareaAggregate => {
+    const parent = parentRaw ? formatDischargePointName(parentRaw) : null;
+    const name = normalizeName(rawName, fallbackName);
+    const key = makeKey(name, parent);
+    const existing = aggregates.get(key);
+    if (existing) {
+      if (!existing.parent && parent) existing.parent = parent;
+      if (order < existing.order) existing.order = order;
+      return existing;
+    }
+    const aggregate: SubareaAggregate = {
+      name,
+      parent,
+      order,
+      groups: new Map(),
+    };
+    aggregates.set(key, aggregate);
+    return aggregate;
+  };
+
+  subareas.forEach((subFeature, index) => {
+    const props = subFeature.properties || {};
+    const rawName = (props as any)[SUBAREA_NAME_ATTR];
+    const fallback = `Subarea ${index + 1}`;
+    const parentRaw = (props as any)[SUBAREA_PARENT_ATTR] ?? null;
+    ensureAggregate(
+      rawName == null ? '' : String(rawName),
+      fallback,
+      index,
+      parentRaw == null ? null : String(parentRaw)
+    );
+  });
+
+  features.forEach((feature, idx) => {
+    if (!feature.properties) return;
+
+    const rawName = (feature.properties as any)[SUBAREA_NAME_ATTR];
+    const fallback = `Subarea ${subareas.length + idx + 1}`;
+    const parentRaw = (feature.properties as any)[SUBAREA_PARENT_ATTR] ?? null;
+    const aggregate = ensureAggregate(
+      rawName == null ? '' : String(rawName),
+      fallback,
+      subareas.length + idx,
+      parentRaw == null ? null : String(parentRaw)
+    );
+
+    const cnRaw = (feature.properties as any)?.CN;
+    const cnValue = Number(cnRaw);
+    if (!Number.isFinite(cnValue)) return;
+
+    const areaProp = (feature.properties as any)?.AREA_SF;
+    let areaValue = Number(areaProp);
+    if (!Number.isFinite(areaValue) || areaValue <= 0) {
+      if (isPolygonLike(feature)) {
+        const areaSqm = computeFeatureAreaSqm(feature as Feature<Polygon | MultiPolygon>);
+        areaValue = Number((areaSqm * SQM_TO_SQFT).toFixed(2));
+      } else {
+        return;
+      }
+    }
+
+    const lcRaw = (feature.properties as any)?.LAND_COVER;
+    const lcName = lcRaw == null ? null : String(lcRaw);
+    const hsgRaw = (feature.properties as any)?.HSG;
+    const hsg = hsgRaw == null ? null : String(hsgRaw).toUpperCase();
+    const desc = lcName ? `${lcName}${hsg ? `, HSG ${hsg}` : ''}` : undefined;
+
+    const key = `${cnValue}|${desc ?? ''}`;
+    const existing = aggregate.groups.get(key);
+    if (existing) {
+      existing.area += areaValue;
+    } else {
+      aggregate.groups.set(key, { area: areaValue, cn: cnValue, desc });
+    }
+  });
+
+  const usedIds = new Set<string>();
+  const sanitizeId = (name: string, parent: string | null, index: number) => {
+    const source = parent ? `${parent}_${name}` : name;
+    const base = source
+      .replace(/[^A-Za-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .slice(0, 30);
+    let candidate = base || `Subcatch_${index + 1}`;
+    if (!usedIds.has(candidate)) {
+      usedIds.add(candidate);
+      return candidate;
+    }
+    let suffix = 2;
+    while (usedIds.has(`${candidate}_${suffix}`)) {
+      suffix += 1;
+    }
+    const finalId = `${candidate}_${suffix}`;
+    usedIds.add(finalId);
+    return finalId;
+  };
+
+  return Array.from(aggregates.values())
+    .sort((a, b) => a.order - b.order)
+    .map((aggregate, index) => ({
+      id: sanitizeId(aggregate.name, aggregate.parent, index),
+      name: aggregate.name,
+      parentDa: aggregate.parent,
+      areas: Array.from(aggregate.groups.values()).map(item => ({
+        area: Number(item.area.toFixed(2)),
+        cn: item.cn,
+        desc: item.desc,
+      })),
+    }));
+};
+
+const buildHydroCADContent = (
+  subcatchments: HydroCADSubcatchment[],
+  projectName: string
+): string => {
+  const headerName = projectName || 'Project';
+  let content = `[HydroCAD]\nFileUnits=English\nCalcUnits=English\nInputUnits=English-LowFlow\nReportUnits=English-LowFlow\nLargeAreas=False\nSource=HydroCAD\u00ae 10.20-6a  s/n 07447  \u00a9 2024 HydroCAD Software Solutions LLC\nName=${headerName}\nPath=\nView=-5.46349942062574 0 15.4634994206257 10\nGridShow=True\nGridSnap=True\nTimeSpan=0 86400\nTimeInc=36\nMaxGraph=0\nRunoffMethod=SCS TR-20\nReachMethod=Stor-Ind+Trans\nPondMethod=Stor-Ind\nUH=SCS\nMinTc=300\nRainEvent=test\n\n[EVENT]\nRainEvent=test\nStormType=Type II 24-hr\nStormDepth=0.0833333333333333\n`;
+
+  let y = 0;
+  subcatchments.forEach(subcatchment => {
+    content += `\n[NODE]\nNumber=${subcatchment.id}\nType=Subcat\nName=${subcatchment.name}\nXYPos=0 ${y}\n`;
+    if (subcatchment.parentDa) {
+      content += `NodeDesc=${subcatchment.parentDa}\n`;
+    }
+    subcatchment.areas.forEach(area => {
+      content += `[AREA]\nArea=${area.area}\nCN=${area.cn}\n`;
+      if (area.desc) content += `Desc=${area.desc}\n`;
+    });
+    content += `[TC]\nMethod=Direct\nTc=300\n`;
+    y += 5;
+  });
+
+  return content;
+};
+
+const triggerHydroCADDownload = (
+  content: string,
+  projectName: string,
+  projectVersion: string
+) => {
+  const blob = new Blob([content], { type: 'text/plain' });
+  const filename = `${(projectName || 'project')}_${projectVersion}.hcp`;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
 type UpdateHsgFn = (layerId: string, featureIndex: number, hsg: string) => void;
 type UpdateDaNameFn = (layerId: string, featureIndex: number, name: string) => void;
 type UpdateLandCoverFn = (layerId: string, featureIndex: number, value: string) => void;
@@ -210,14 +396,6 @@ const App: React.FC = () => {
 
   const project = useMemo(() => proj4('EPSG:4326', projection.proj4), [projection]);
 
-  const requiredLayers = [
-    'Drainage Areas',
-    SUBAREA_LAYER_NAME,
-    'LOD',
-    'Land Cover',
-    'Soil Layer from Web Soil Survey',
-  ];
-
   const drainageAreasLayer = useMemo(
     () => layers.find(l => l.name === 'Drainage Areas') ?? null,
     [layers]
@@ -228,12 +406,37 @@ const App: React.FC = () => {
     [layers]
   );
 
+  const landCoverLayer = useMemo(
+    () => layers.find(l => l.name === 'Land Cover') ?? null,
+    [layers]
+  );
+
   const soilsLayer = useMemo(
     () => layers.find(l => l.name === 'Soil Layer from Web Soil Survey') ?? null,
     [layers]
   );
 
   const soilsLoaded = Boolean(soilsLayer);
+
+  const landCoverConfigured = useMemo(() => {
+    if (!landCoverLayer) return false;
+    const { features } = landCoverLayer.geojson;
+    if (features.length === 0) return false;
+    return features.every(feature => {
+      const val = feature.properties ? (feature.properties as any).LAND_COVER : null;
+      return val != null && String(val).trim() !== '';
+    });
+  }, [landCoverLayer]);
+
+  const soilsConfigured = useMemo(() => {
+    if (!soilsLayer) return false;
+    const { features } = soilsLayer.geojson;
+    if (features.length === 0) return false;
+    return features.every(feature => {
+      const hsg = feature.properties ? (feature.properties as any).HSG : null;
+      return hsg != null && String(hsg).trim() !== '';
+    });
+  }, [soilsLayer]);
 
   const assignedDrainagePoints = useMemo(() => {
     const assigned = new Set<string>();
@@ -284,16 +487,68 @@ const App: React.FC = () => {
     return Array.from(names);
   }, [drainageAreasAssigned, subareasConfigured, soilsLoaded]);
 
-  const lodLayer = layers.find(l => l.name === 'LOD');
-  const lodValid = !!(
-    lodLayer &&
-    lodLayer.geojson.features.length === 1 &&
-    lodLayer.geojson.features[0].geometry &&
-    Array.isArray((lodLayer.geojson.features[0].geometry as any).coordinates)
+  const scsLayerStatuses = useMemo<ScsLayerStatus[]>(() => {
+    const statuses: ScsLayerStatus[] = [
+      {
+        key: 'drainage-areas',
+        label: 'Drainage Areas',
+        ready: Boolean(drainageAreasLayer) && drainageAreasAssigned,
+        description: !drainageAreasLayer
+          ? 'Carga la capa Drainage Areas.'
+          : drainageAreasAssigned
+          ? 'Todos los polígonos tienen un Discharge Point (DP-##).'
+          : 'Asigna un Discharge Point (DP-##) a cada polígono.',
+      },
+      {
+        key: 'subareas',
+        label: 'Drainage Subareas',
+        ready: Boolean(subareasLayer) && subareasConfigured,
+        description: !subareasLayer
+          ? 'Carga la capa Drainage Subareas.'
+          : subareasConfigured
+          ? 'Cada subárea tiene nombre y DP asociado.'
+          : 'Verifica el nombre y el PARENT_DA de cada subárea.',
+      },
+      {
+        key: 'land-cover',
+        label: 'Land Cover',
+        ready: Boolean(landCoverLayer) && landCoverConfigured,
+        description: !landCoverLayer
+          ? 'Carga la capa Land Cover.'
+          : landCoverConfigured
+          ? 'Cobertura asignada a cada polígono.'
+          : 'Asigna un valor de Land Cover a cada polígono.',
+      },
+      {
+        key: 'wss',
+        label: 'Soil Layer from Web Soil Survey',
+        ready: Boolean(soilsLayer) && soilsConfigured,
+        description: !soilsLayer
+          ? 'Carga la capa WSS.'
+          : soilsConfigured
+          ? 'Todos los polígonos tienen HSG asignado.'
+          : 'Asigna manualmente un HSG (A/B/C/D) a cada polígono.',
+      },
+    ];
+
+    return statuses;
+  }, [
+    drainageAreasLayer,
+    drainageAreasAssigned,
+    subareasLayer,
+    subareasConfigured,
+    landCoverLayer,
+    landCoverConfigured,
+    soilsLayer,
+    soilsConfigured,
+  ]);
+
+  const scsReady = useMemo(
+    () => scsLayerStatuses.every(status => status.ready),
+    [scsLayerStatuses]
   );
 
-  const computeEnabled =
-    requiredLayers.every(name => layers.some(l => l.name === name)) && lodValid;
+  const computeEnabled = scsReady;
 
   const cbLayer = layers.find(l => l.name === 'Catch Basins / Manholes');
   const pipesLayer = layers.find(l => l.name === 'Pipes');
@@ -822,30 +1077,53 @@ const App: React.FC = () => {
 
   const runCompute = useCallback(async () => {
     setComputeSucceeded(false);
-    const lod = layers.find(l => l.name === 'LOD');
     const da = layers.find(l => l.name === 'Drainage Areas');
     const sub = layers.find(l => l.name === SUBAREA_LAYER_NAME);
     const wss = layers.find(l => l.name === 'Soil Layer from Web Soil Survey');
     const lc = layers.find(l => l.name === 'Land Cover');
-    if (!lod) return;
+    const overallDrainageFeature = getOverallDrainageFeature(layers);
 
     const tasks: ComputeTask[] = [
-      { id: 'check_lod', name: 'Check LOD has one polygon', status: 'pending' },
+      { id: 'check_overall', name: 'Validate Overall Drainage Area', status: 'pending' },
       { id: 'check_attrs', name: 'Validate required attributes', status: 'pending' },
       { id: 'prepare_subareas', name: 'Build drainage subareas with complements', status: 'pending' },
-      { id: 'overlay', name: 'Overlay processed layers', status: 'pending' },
+      { id: 'overlay', name: 'Execute SCS overlay analysis', status: 'pending' },
+      { id: 'hydrocad', name: 'Generate HydroCAD file (SCS)', status: 'pending' },
     ];
     setComputeTasks(tasks);
 
     setLayers(prev => prev.filter(l => l.category !== 'Process'));
 
-    if (lod.geojson.features.length !== 1) {
-      setComputeTasks(prev => prev.map(t => ({ ...t, status: 'error' })));
-      addLog('LOD layer must contain exactly one polygon', 'error');
+    if (!overallDrainageFeature || !overallDrainageFeature.geometry) {
+      setComputeTasks(prev =>
+        prev.map(t =>
+          t.id === 'check_overall' || t.status === 'pending'
+            ? { ...t, status: 'error' }
+            : t
+        )
+      );
+      addLog('Overall Drainage Area layer is missing or invalid. Genera la capa antes de ejecutar Compute.', 'error');
       return;
     }
 
-    setComputeTasks(prev => prev.map(t => (t.id === 'check_lod' ? { ...t, status: 'success' } : t)));
+    const overallAreaSqm = computeFeatureAreaSqm(
+      overallDrainageFeature as Feature<Polygon | MultiPolygon>
+    );
+    if (overallAreaSqm <= AREA_TOLERANCE_SQM) {
+      setComputeTasks(prev =>
+        prev.map(t =>
+          t.id === 'check_overall' || t.status === 'pending'
+            ? { ...t, status: 'error' }
+            : t
+        )
+      );
+      addLog('Overall Drainage Area no contiene un polígono válido para el análisis SCS.', 'error');
+      return;
+    }
+
+    setComputeTasks(prev =>
+      prev.map(t => (t.id === 'check_overall' ? { ...t, status: 'success' } : t))
+    );
 
     const missingAttrs: Record<string, string[]> = {};
     const registerMissing = (layerName: string, attr: string) => {
@@ -950,6 +1228,7 @@ const App: React.FC = () => {
       const processedSubareas: Feature<Polygon | MultiPolygon>[] = [];
       let complementCount = 0;
       let skippedSubareas = 0;
+      let skippedDrainageAreas = 0;
 
       const groupedDas = new Map<
         string,
@@ -1011,6 +1290,21 @@ const App: React.FC = () => {
                 properties: baseProps,
               };
 
+        const combinedWithinOverall = intersect(
+          combinedGeometry as any,
+          overallDrainageFeature as any
+        );
+        if (!combinedWithinOverall || !combinedWithinOverall.geometry) {
+          skippedDrainageAreas++;
+          return;
+        }
+
+        const geometryForProcessing: Feature<Polygon | MultiPolygon> = {
+          type: 'Feature',
+          geometry: combinedWithinOverall.geometry as Polygon | MultiPolygon,
+          properties: baseProps,
+        };
+
         const relatedSubareas = subareasByParent.get(daName) || [];
         const normalizedSubs: Feature<Polygon | MultiPolygon>[] = [];
 
@@ -1027,7 +1321,7 @@ const App: React.FC = () => {
             return;
           }
 
-          const clipped = intersect(subFeature as any, combinedGeometry as any);
+          const clipped = intersect(subFeature as any, geometryForProcessing as any);
           if (!clipped || !clipped.geometry) {
             skippedSubareas++;
             return;
@@ -1069,7 +1363,7 @@ const App: React.FC = () => {
 
         let remainderGeom: Feature<Polygon | MultiPolygon> | null = {
           type: 'Feature',
-          geometry: combinedGeometry.geometry as Polygon | MultiPolygon,
+          geometry: geometryForProcessing.geometry as Polygon | MultiPolygon,
           properties: baseProps,
         };
 
@@ -1125,6 +1419,8 @@ const App: React.FC = () => {
         const pieces = [`${processedSubareas.length} processed subareas`];
         if (complementCount > 0) pieces.push(`${complementCount} complement`);
         if (skippedSubareas > 0) pieces.push(`${skippedSubareas} skipped/trimmed`);
+        if (skippedDrainageAreas > 0)
+          pieces.push(`${skippedDrainageAreas} DA outside overall`);
         addLog(`Drainage subareas generated -> ${pieces.join(', ')}`);
       } else {
         setComputeTasks(prev =>
@@ -1134,14 +1430,32 @@ const App: React.FC = () => {
       }
 
       const overlay: Feature[] = [];
+      const clippedWss = clipCollectionToOverall(wss.geojson, overallDrainageFeature);
+      const clippedLc = clipCollectionToOverall(lc.geojson, overallDrainageFeature);
+
+      if (clippedWss.features.length === 0 || clippedLc.features.length === 0) {
+        setComputeTasks(prev =>
+          prev.map(t =>
+            t.id === 'overlay' || t.id === 'hydrocad' || t.status === 'pending'
+              ? { ...t, status: 'error' }
+              : t
+          )
+        );
+        addLog(
+          'No se encontraron datos de WSS o Land Cover dentro del Overall Drainage Area.',
+          'error'
+        );
+        return;
+      }
+
       processedSubareas.forEach(subFeature => {
         if (!subFeature.geometry) return;
-        wss.geojson.features.forEach(wssFeature => {
+        clippedWss.features.forEach(wssFeature => {
           if (!wssFeature.geometry) return;
           const inter1 = intersect(subFeature as any, wssFeature as any);
           if (!inter1 || !inter1.geometry) return;
 
-          lc.geojson.features.forEach(lcFeature => {
+          clippedLc.features.forEach(lcFeature => {
             if (!lcFeature.geometry) return;
             const inter2 = intersect(inter1 as any, lcFeature as any);
             if (!inter2 || !inter2.geometry) return;
@@ -1191,9 +1505,54 @@ const App: React.FC = () => {
           prev.map(t => (t.id === 'overlay' ? { ...t, status: 'success' } : t))
         );
         addLog(`Overlay created with ${overlay.length} features`);
+
+        try {
+          const subcatchments = aggregateOverlayForHydroCAD(overlay, processedSubareas);
+          if (subcatchments.length === 0) {
+            throw new Error('No hay combinaciones válidas de CN para generar HydroCAD.');
+          }
+          const incomplete = subcatchments.filter(sc => sc.areas.length === 0);
+          if (incomplete.length > 0) {
+            const missingNames = incomplete.map(sc => sc.name).join(', ');
+            throw new Error(
+              `Las siguientes subáreas no tienen valores de CN válidos: ${missingNames}.`
+            );
+          }
+          const expectedCount = new Set(
+            processedSubareas.map((subFeature, index) => {
+              const props = subFeature.properties || {};
+              const rawName = (props as any)[SUBAREA_NAME_ATTR];
+              const name = rawName == null ? '' : String(rawName).trim();
+              const parentRaw = (props as any)[SUBAREA_PARENT_ATTR];
+              const parent = parentRaw == null ? '' : formatDischargePointName(parentRaw) || '';
+              const resolvedName = name === '' ? `Subarea ${index + 1}` : name;
+              return `${parent}|${resolvedName}`;
+            })
+          ).size;
+          if (subcatchments.length < expectedCount) {
+            throw new Error('No se generaron todos los subcatchments de HydroCAD para las subáreas.');
+          }
+          const content = buildHydroCADContent(subcatchments, projectName);
+          triggerHydroCADDownload(content, projectName, projectVersion);
+          setComputeTasks(prev =>
+            prev.map(t => (t.id === 'hydrocad' ? { ...t, status: 'success' } : t))
+          );
+          addLog(
+            'Archivo HydroCAD generado utilizando el método SCS dentro del Overall Drainage Area.'
+          );
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : String(error);
+          setComputeTasks(prev =>
+            prev.map(t => (t.id === 'hydrocad' ? { ...t, status: 'error' } : t))
+          );
+          addLog(`No se pudo generar el archivo HydroCAD: ${reason}`, 'error');
+        }
       } else {
         setComputeTasks(prev =>
           prev.map(t => (t.id === 'overlay' ? { ...t, status: 'error' } : t))
+        );
+        setComputeTasks(prev =>
+          prev.map(t => (t.id === 'hydrocad' ? { ...t, status: 'error' } : t))
         );
         addLog('No overlay generated', 'error');
       }
@@ -1217,7 +1576,7 @@ const App: React.FC = () => {
       );
       addLog('Processing failed', 'error');
     }
-  }, [layers, setLayers, addLog]);
+  }, [layers, setLayers, addLog, projectName, projectVersion]);
 
   const handleCompute = useCallback(() => {
     runCompute();
@@ -1229,60 +1588,54 @@ const App: React.FC = () => {
       addLog('Overlay layer not found', 'error');
       return;
     }
-    import('@turf/turf').then(({ area }) => {
-      const nodes: Record<string, { area: number; cn: number; desc?: string }[]> = {};
-      overlayLayer.geojson.features.forEach(f => {
-        const da = (f.properties as any)?.DA_NAME || 'DA';
-        const cn = (f.properties as any)?.CN;
-        const lc = (f.properties as any)?.LAND_COVER;
-        const hsg = (f.properties as any)?.HSG;
-        if (cn === undefined) return;
-        const a = area(f as any) * 10.7639; // square feet
-        if (!nodes[da]) nodes[da] = [];
-        const desc = lc ? `${lc}${hsg ? ", HSG " + hsg : ''}` : undefined;
-        nodes[da].push({ area: a, cn, desc });
-      });
-
-      const groupedNodes: Record<string, { area: number; cn: number; desc?: string }[]> = {};
-      Object.entries(nodes).forEach(([da, entries]) => {
-        const grouped = new Map<string, { area: number; cn: number; desc?: string }>();
-        entries.forEach(({ area: arArea, cn, desc }) => {
-          const key = `${cn}|${desc ?? ''}`;
-          const existing = grouped.get(key);
-          if (existing) {
-            existing.area += arArea;
-          } else {
-            grouped.set(key, { area: arArea, cn, desc });
-          }
-        });
-        groupedNodes[da] = Array.from(grouped.values());
-      });
-
-      let content = `[HydroCAD]\nFileUnits=English\nCalcUnits=English\nInputUnits=English-LowFlow\nReportUnits=English-LowFlow\nLargeAreas=False\nSource=HydroCAD\u00ae 10.20-6a  s/n 07447  \u00a9 2024 HydroCAD Software Solutions LLC\nName=${projectName || 'Project'}\nPath=\nView=-5.46349942062574 0 15.4634994206257 10\nGridShow=True\nGridSnap=True\nTimeSpan=0 86400\nTimeInc=36\nMaxGraph=0\nRunoffMethod=SCS TR-20\nReachMethod=Stor-Ind+Trans\nPondMethod=Stor-Ind\nUH=SCS\nMinTc=300\nRainEvent=test\n\n[EVENT]\nRainEvent=test\nStormType=Type II 24-hr\nStormDepth=0.0833333333333333\n`;
-
-      let y = 0;
-      Object.entries(groupedNodes).forEach(([da, areas]) => {
-        content += `\n[NODE]\nNumber=${da}\nType=Subcat\nName=${da}\nXYPos=0 ${y}\n`;
-        areas.forEach(ar => {
-          content += `[AREA]\nArea=${ar.area}\nCN=${ar.cn}\n`;
-          if (ar.desc) content += `Desc=${ar.desc}\n`;
-        });
-        content += `[TC]\nMethod=Direct\nTc=300\n`;
-        y += 5;
-      });
-
-      const blob = new Blob([content], { type: 'text/plain' });
-      const filename = `${(projectName || 'project')}_${projectVersion}.hcp`;
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(url);
-      addLog('HydroCAD file exported');
-      setExportModalOpen(false);
-    });
-  }, [addLog, layers, projectName, projectVersion, projection]);
+    const processedLayer = layers.find(l => l.name === PROCESSED_SUBAREA_LAYER_NAME);
+    if (!processedLayer) {
+      addLog('Drainage Subareas (Computed) layer not found. Ejecuta "Execute" para generarla.', 'error');
+      return;
+    }
+    const processedSubareas = processedLayer.geojson.features.filter(isPolygonLike) as Feature<
+      Polygon | MultiPolygon
+    >[];
+    const subcatchments = aggregateOverlayForHydroCAD(
+      overlayLayer.geojson.features,
+      processedSubareas
+    );
+    if (subcatchments.length === 0) {
+      addLog('Overlay layer is missing CN data required for HydroCAD export.', 'error');
+      return;
+    }
+    const incomplete = subcatchments.filter(sc => sc.areas.length === 0);
+    if (incomplete.length > 0) {
+      const missingNames = incomplete.map(sc => sc.name).join(', ');
+      addLog(
+        `Las siguientes subáreas no tienen valores de CN válidos: ${missingNames}.`,
+        'error'
+      );
+      return;
+    }
+    const expectedCount = new Set(
+      processedSubareas.map((subFeature, index) => {
+        const props = subFeature.properties || {};
+        const rawName = (props as any)[SUBAREA_NAME_ATTR];
+        const name = rawName == null ? '' : String(rawName).trim();
+        const parentRaw = (props as any)[SUBAREA_PARENT_ATTR];
+        const parent = parentRaw == null ? '' : formatDischargePointName(parentRaw) || '';
+        const resolvedName = name === '' ? `Subarea ${index + 1}` : name;
+        return `${parent}|${resolvedName}`;
+      })
+    ).size;
+    if (subcatchments.length < expectedCount) {
+      addLog(
+        'No se generaron todos los subcatchments de HydroCAD para las subáreas. Ejecuta nuevamente "Execute".',
+        'error'
+      );
+      return;
+    }
+    const content = buildHydroCADContent(subcatchments, projectName);
+    triggerHydroCADDownload(content, projectName, projectVersion);
+    addLog('HydroCAD file exported');
+    setExportModalOpen(false);
+  }, [addLog, layers, projectName, projectVersion]);
 
   const handleExportSWMM = useCallback(async () => {
     const daLayer = layers.find(l => l.name === 'Drainage Areas');
@@ -2482,6 +2835,7 @@ const App: React.FC = () => {
               onCancel={handleCancelPreview}
             />
           )}
+          <ScsStatusPanel statuses={scsLayerStatuses} />
           <InfoPanel
             layers={layers}
             error={error}
