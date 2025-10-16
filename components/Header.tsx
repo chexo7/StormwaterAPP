@@ -7,6 +7,8 @@ interface HeaderProps {
   computeEnabled?: boolean;
   onExport?: () => void;
   exportEnabled?: boolean;
+  onManageCurveNumbers?: () => void;
+  curveNumbersEnabled?: boolean;
   onView3D?: () => void;
   view3DEnabled?: boolean;
   projectName: string;
@@ -19,6 +21,8 @@ const Header: React.FC<HeaderProps> = ({
   computeEnabled,
   onExport,
   exportEnabled,
+  onManageCurveNumbers,
+  curveNumbersEnabled,
   onView3D,
   view3DEnabled,
   projectName,
@@ -57,6 +61,18 @@ const Header: React.FC<HeaderProps> = ({
           }
         >
           Export
+        </button>
+        <button
+          onClick={onManageCurveNumbers}
+          disabled={curveNumbersEnabled === false}
+          className={
+            'font-semibold px-4 py-1 rounded ' +
+            (curveNumbersEnabled === false
+              ? 'bg-gray-600 text-gray-300 cursor-not-allowed'
+              : 'bg-cyan-600 hover:bg-cyan-700 text-white cursor-pointer')
+          }
+        >
+          Curve Numbers
         </button>
         <button
           onClick={onView3D}

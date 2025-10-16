@@ -13,6 +13,8 @@ import processFileMap from './process-file-map.json' assert { type: 'json' };
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+const cnValuesPath = path.join(__dirname, 'public', 'data', 'SCS_CN_VALUES.json');
+
 const app = express();
 app.use(express.json());
 const port = process.env.PORT || 3001;
@@ -51,8 +53,7 @@ app.get('/api/soil-hsg-map', (req, res) => {
 });
 
 app.get('/api/cn-values', (req, res) => {
-  const filePath = path.join(__dirname, 'public', 'data', 'SCS_CN_VALUES.json');
-  fs.readFile(filePath, (err, data) => {
+  fs.readFile(cnValuesPath, (err, data) => {
     if (err) {
       addLog('Error reading CN values', 'error');
       res.status(500).send('Unable to read CN values');
@@ -61,6 +62,60 @@ app.get('/api/cn-values', (req, res) => {
       res.type('application/json').send(data);
     }
   });
+});
+
+app.put('/api/cn-values', async (req, res) => {
+  const payload = req.body;
+  if (!Array.isArray(payload)) {
+    addLog('Invalid CN values payload', 'error');
+    return res.status(400).json({ error: 'Formato inválido para los valores de CN.' });
+  }
+
+  try {
+    const sanitizeNumber = (value, label) => {
+      const num = Number(value);
+      if (!Number.isFinite(num)) {
+        throw new Error(`El valor de ${label} debe ser numérico.`);
+      }
+      if (num < 0 || num > 100) {
+        throw new Error(`El valor de ${label} debe estar entre 0 y 100.`);
+      }
+      return Math.round(num * 100) / 100;
+    };
+
+    const sanitized = payload.map((item, index) => {
+      const rawName = item && typeof item.LandCover === 'string' ? item.LandCover : '';
+      const landCover = rawName.trim();
+      if (!landCover) {
+        throw new Error(`La fila ${index + 1} no tiene Land Cover.`);
+      }
+      return {
+        LandCover: landCover,
+        A: sanitizeNumber(item?.A, `CN-A (fila ${index + 1})`),
+        B: sanitizeNumber(item?.B, `CN-B (fila ${index + 1})`),
+        C: sanitizeNumber(item?.C, `CN-C (fila ${index + 1})`),
+        D: sanitizeNumber(item?.D, `CN-D (fila ${index + 1})`),
+      };
+    });
+
+    const seen = new Set();
+    sanitized.forEach(record => {
+      const key = record.LandCover.toLowerCase();
+      if (seen.has(key)) {
+        throw new Error(`Land Cover duplicado: ${record.LandCover}`);
+      }
+      seen.add(key);
+    });
+
+    await fs.promises.writeFile(cnValuesPath, JSON.stringify(sanitized, null, 2), 'utf8');
+    addLog('Curve Number values updated');
+    res.status(204).send();
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : 'No se pudieron guardar los valores de CN.';
+    addLog(`Error updating CN values: ${message}`, 'error');
+    res.status(400).json({ error: message });
+  }
 });
 
 app.get('/api/logs', (req, res) => {

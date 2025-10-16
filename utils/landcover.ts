@@ -7,23 +7,6 @@ export type CnRecord = {
   D: number;
 };
 
-export async function loadLandCoverList(): Promise<string[]> {
-  const sources = ['/api/cn-values', '/data/SCS_CN_VALUES.json'];
-  for (const url of sources) {
-    try {
-      const res = await fetch(url);
-      if (res.ok) {
-        const data = (await res.json()) as any[];
-        return Array.from(new Set(data.map(d => d?.LandCover).filter(Boolean)));
-      }
-      console.warn(`CN values request to ${url} failed with status ${res.status}`);
-    } catch (err) {
-      console.warn(`CN values request to ${url} failed`, err);
-    }
-  }
-  return [];
-}
-
 export async function loadCnValues(): Promise<CnRecord[]> {
   const sources = ['/api/cn-values', '/data/SCS_CN_VALUES.json'];
   for (const url of sources) {
@@ -38,4 +21,17 @@ export async function loadCnValues(): Promise<CnRecord[]> {
     }
   }
   return [];
+}
+
+export async function saveCnValues(records: CnRecord[]): Promise<void> {
+  const res = await fetch('/api/cn-values', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(records),
+  });
+
+  if (!res.ok) {
+    const message = await res.text().catch(() => '');
+    throw new Error(message || 'Failed to save CN values');
+  }
 }
