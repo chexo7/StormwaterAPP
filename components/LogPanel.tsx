@@ -1,5 +1,5 @@
 import React from 'react';
-import { CheckCircleIcon, XCircleIcon } from './Icons';
+import { AlertTriangleIcon, CheckCircleIcon, XCircleIcon } from './Icons';
 import type { LogEntry } from '../types';
 
 interface LogPanelProps {
@@ -18,6 +18,8 @@ const LogPanel: React.FC<LogPanelProps> = ({ logs }) => {
             <li key={index} className="flex items-start">
               {log.type === 'error' ? (
                 <XCircleIcon className="w-4 h-4 text-red-400 mt-0.5 mr-2 flex-shrink-0" />
+              ) : log.type === 'warn' ? (
+                <AlertTriangleIcon className="w-4 h-4 text-amber-400 mt-0.5 mr-2 flex-shrink-0" />
               ) : (
                 <CheckCircleIcon className="w-4 h-4 text-cyan-400 mt-0.5 mr-2 flex-shrink-0" />
               )}
