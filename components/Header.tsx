@@ -44,7 +44,7 @@ const Header: React.FC<HeaderProps> = ({
               : 'bg-gray-600 text-gray-300 cursor-not-allowed')
           }
         >
-          Compute
+          Execute
         </button>
         <button
           onClick={onExport}
