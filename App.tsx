@@ -45,6 +45,9 @@ const COMPLEMENT_FLAG_ATTR = 'IS_COMPLEMENT';
 const SUBAREA_AREA_ATTR = 'SUBAREA_AC';
 const SQM_TO_ACRES = 0.000247105381;
 const SQM_TO_SQFT = 10.76391041671;
+const ACRES_TO_SQFT = 43560;
+const DP02_COMPLEMENT_NAME = 'DP-02 - Complement';
+const DP02_COMPLEMENT_MIN_AREA_SF = 100;
 const AREA_TOLERANCE_SQM = 0.01;
 
 const DEFAULT_COLORS: Record<string, string> = {
@@ -195,6 +198,9 @@ const resolveSubareaName = (rawName: unknown, fallback: string): string => {
 const getSubareaKey = (rawName: unknown, fallback: string): string =>
   resolveSubareaName(rawName, fallback).toLowerCase();
 
+const isDp02ComplementName = (name: string): boolean =>
+  name.trim().toLowerCase() === DP02_COMPLEMENT_NAME.toLowerCase();
+
 const aggregateOverlayForHydroCAD = (
   features: Feature[],
   subareas: Feature<Polygon | MultiPolygon>[]
@@ -305,9 +311,20 @@ const aggregateOverlayForHydroCAD = (
     return finalId;
   };
 
+  const shouldSkipAggregate = (aggregate: SubareaAggregate): boolean => {
+    if (!isDp02ComplementName(aggregate.name)) return false;
+    const totalArea = Array.from(aggregate.groups.values()).reduce(
+      (sum, group) => sum + group.area,
+      0
+    );
+    return totalArea <= DP02_COMPLEMENT_MIN_AREA_SF;
+  };
+
   return Array.from(aggregates.values())
     .sort((a, b) => a.order - b.order)
-    .map((aggregate, index) => {
+    .reduce<HydroCADSubcatchment[]>((acc, aggregate, index) => {
+      if (shouldSkipAggregate(aggregate)) return acc;
+
       const parentLabel =
         aggregate.parents.size > 0
           ? Array.from(aggregate.parents)
@@ -315,7 +332,8 @@ const aggregateOverlayForHydroCAD = (
               .sort((a, b) => a.localeCompare(b))
               .join(', ')
           : null;
-      return {
+
+      acc.push({
         id: sanitizeId(aggregate.name, parentLabel, index),
         name: aggregate.name,
         parentDa: parentLabel,
@@ -324,8 +342,10 @@ const aggregateOverlayForHydroCAD = (
           cn: item.cn,
           desc: item.desc,
         })),
-      };
-    });
+      });
+
+      return acc;
+    }, []);
 };
 
 const normalizeLandCover = (value: unknown): string => {
@@ -370,6 +390,50 @@ const getPrimaryOutflow = (parent: string | null | undefined): string | null => 
   if (candidates.length === 0) return null;
   const dpCandidate = candidates.find(token => /^DP-\d{2}$/i.test(token));
   return (dpCandidate || candidates[0]) ?? null;
+};
+
+const extractDrainageAreaLabel = (name: string): string | null => {
+  const match = name.match(/DRAINAGE\s*AREA\s*[-#]?\s*(\d+)/i);
+  if (match && match[1]) {
+    return `DA-${match[1]}`.toUpperCase();
+  }
+  return null;
+};
+
+const formatHydroCADNodeNumber = (
+  subcatchment: HydroCADSubcatchment,
+  outflow: string,
+  used: Set<string>
+): string => {
+  const prefixCandidate =
+    extractDrainageAreaLabel(subcatchment.name) ||
+    subcatchment.name
+      .replace(/[^A-Za-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .toUpperCase() ||
+    (subcatchment.id
+      ? subcatchment.id
+          .replace(/[^A-Za-z0-9]+/g, '-')
+          .replace(/^-+|-+$/g, '')
+          .toUpperCase()
+      : 'SUBCAT');
+
+  const normalizedOutflow = outflow.toUpperCase();
+  const baseCandidate = `${prefixCandidate} TO ${normalizedOutflow}`;
+
+  if (!used.has(baseCandidate)) {
+    used.add(baseCandidate);
+    return baseCandidate;
+  }
+
+  let suffix = 2;
+  let candidateWithSuffix = `${baseCandidate} (${suffix})`;
+  while (used.has(candidateWithSuffix)) {
+    suffix += 1;
+    candidateWithSuffix = `${baseCandidate} (${suffix})`;
+  }
+  used.add(candidateWithSuffix);
+  return candidateWithSuffix;
 };
 
 const buildHydroCADContent = (
@@ -422,6 +486,8 @@ const buildHydroCADContent = (
     return dpIndex.get(dpName)!;
   };
 
+  const usedNodeNumbers = new Set<string>();
+
   subcatchments.forEach((subcatchment, index) => {
     let outflow = getPrimaryOutflow(subcatchment.parentDa ?? null);
     if (!outflow) {
@@ -429,7 +495,8 @@ const buildHydroCADContent = (
     }
     const rowIndex = resolveRowIndex(outflow);
     const y = rowIndex * rowSpacing;
-    let nodeBlock = `\n[NODE]\nNumber=${subcatchment.id}\nType=Subcat\nName=${subcatchment.name}\nXYPos=${subcatX} ${y}\n`;
+    const nodeNumber = formatHydroCADNodeNumber(subcatchment, outflow, usedNodeNumbers);
+    let nodeBlock = `\n[NODE]\nNumber=${nodeNumber}\nType=Subcat\nName=${subcatchment.name}\nXYPos=${subcatX} ${y}\n`;
     nodeBlock += `Outflow=${outflow}\n`;
     nodeBlock += 'LargeAreas=True\n';
     subcatchment.areas.forEach(area => {
@@ -1873,14 +1940,33 @@ const App: React.FC = () => {
               `Las siguientes subáreas no tienen valores de CN válidos: ${missingNames}.`
             );
           }
-          const expectedCount = new Set(
-            processedSubareas.map((subFeature, index) => {
-              const props = subFeature.properties || {};
-              const rawName = (props as any)[SUBAREA_NAME_ATTR];
-              const fallback = `Subarea ${index + 1}`;
-              return getSubareaKey(rawName, fallback);
-            })
-          ).size;
+          const expectedKeys = new Set<string>();
+          processedSubareas.forEach((subFeature, index) => {
+            const props = subFeature.properties || {};
+            const rawName = (props as any)[SUBAREA_NAME_ATTR];
+            const fallback = `Subarea ${index + 1}`;
+            const resolvedName = resolveSubareaName(rawName, fallback);
+            if (isDp02ComplementName(resolvedName)) {
+              const areaAcRaw = (props as any)[SUBAREA_AREA_ATTR];
+              let areaAc = Number(areaAcRaw);
+              if (!Number.isFinite(areaAc) || areaAc <= 0) {
+                if (isPolygonLike(subFeature)) {
+                  const areaSqm = computeFeatureAreaSqm(
+                    subFeature as Feature<Polygon | MultiPolygon>
+                  );
+                  areaAc = areaSqm * SQM_TO_ACRES;
+                } else {
+                  areaAc = 0;
+                }
+              }
+              const areaSf = areaAc * ACRES_TO_SQFT;
+              if (areaSf <= DP02_COMPLEMENT_MIN_AREA_SF) {
+                return;
+              }
+            }
+            expectedKeys.add(getSubareaKey(rawName, fallback));
+          });
+          const expectedCount = expectedKeys.size;
           if (subcatchments.length < expectedCount) {
             throw new Error('No se generaron todos los subcatchments de HydroCAD para las subáreas.');
           }
