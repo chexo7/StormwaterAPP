@@ -8,15 +8,16 @@ const instructionsContent = {
     stepsTitle: 'Pasos para comenzar',
     steps: [
       'Carga un archivo Shapefile o GeoPackage desde el panel izquierdo. Cada capa se validará automáticamente y el registro mostrará cualquier advertencia.',
+      'Primero sube las Drainage Areas, asigna un Discharge Point (DP-##) a cada polígono y luego incorpora las Drainage Subareas vinculándolas a esos mismos DP. Al completar esas asociaciones se habilitará la carga de la capa de suelos (WSS); después de cargarla podrás añadir la capa de Land Cover con la detección automática habitual.',
       'Revisa el panel de capas para activar o desactivar la visibilidad, cambiar estilos y seleccionar qué capa editar.',
-      'Usa el mapa para revisar geometrías. Puedes editar atributos clave como Housing (HSG), nombre del área de drenaje y cobertura del suelo desde los controles contextuales.',
+      'Usa el mapa para revisar geometrías. Puedes editar atributos clave como el Discharge Point # (DP-##), la cobertura del suelo y asignar manualmente un HSG (A/B/C/D) en la capa WSS desde los controles contextuales.',
       'Cuando los datos estén listos, utiliza el botón Exportar para generar archivos HydroCAD, SWMM o nuevos Shapefiles, y confirma la proyección correspondiente.',
     ],
     sections: [
       {
         heading: 'Funciones clave',
         items: [
-          'Panel de carga: admite arrastrar y soltar archivos y muestra el progreso de procesamiento.',
+          'Panel de carga: admite arrastrar y soltar archivos, detecta automáticamente archivos con nombre DA-TO-DP.zip o SUB-DA.zip y muestra el progreso de procesamiento.',
           'Registro de eventos: sigue los mensajes de validación, errores y acciones realizadas durante la sesión.',
           'Modal de mapeo de campos: vincula atributos entrantes con los esperados por la aplicación.',
           'Capa en edición: guarda o descarta cambios para mantener la integridad de los datos.',
@@ -26,8 +27,9 @@ const instructionsContent = {
         heading: 'Requisitos antes de exportar',
         items: [
           'La capa LOD debe contener exactamente un polígono válido.',
-          'Recorta las Áreas de Drenaje con el polígono LOD y guárdalas como «Drainage Area in LOD», conservando todos los atributos.',
-          'Confirma que cada área de drenaje tenga un valor Land Cover y Housing Soil Group asignado.',
+          'Carga por separado las Áreas de Drenaje generales (una por punto de descarga) y las Subáreas de Drenaje asociadas mediante el campo PARENT_DA, asegurando que cada área use su Discharge Point numerado (DP-##).',
+          'La aplicación generará la subárea complementaria cuando las subáreas cargadas no cubran el área general; revisa y valida esos resultados.',
+          'Confirma que cada subárea tenga Land Cover y que cada polígono de la capa WSS cuente con un HSG asignado manualmente (A/B/C/D).',
         ],
       },
     ],
@@ -40,15 +42,16 @@ const instructionsContent = {
     stepsTitle: 'Getting started',
     steps: [
       'Upload a Shapefile or GeoPackage from the left panel. Each layer is validated automatically and the activity log will highlight any warnings.',
+      'Load the Drainage Areas first, assign a Discharge Point (DP-##) to every polygon, then import the Drainage Subareas and link them to those discharge points. Once those prerequisites are satisfied the WSS soil layer unlocks, and after it is loaded you can add the Land Cover layer with the usual auto-detection.',
       'Review the layer panel to toggle visibility, adjust styles, and choose which layer is currently editable.',
-      'Use the map to inspect geometries. Contextual controls let you edit key attributes like Housing (HSG), Drainage Area name, and Land Cover.',
+      'Use the map to inspect geometries. Contextual controls let you edit key attributes like the Discharge Point # (DP-##), Land Cover, and manually assign an HSG value (A/B/C/D) on the WSS features.',
       'When the dataset is ready, open the Export dialog to generate HydroCAD, SWMM, or Shapefile outputs and confirm the desired projection.',
     ],
     sections: [
       {
         heading: 'Key features',
         items: [
-          'Upload panel: supports drag and drop and surfaces processing status for each file.',
+          'Upload panel: supports drag and drop, auto-detects archives named DA-TO-DP.zip or SUB-DA.zip, and surfaces processing status for each file.',
           'Log panel: tracks validation messages, errors, and user actions during the session.',
           'Field mapping modal: aligns incoming attributes with those expected by the application.',
           'Editing workflow: save or discard changes to maintain clean and consistent datasets.',
@@ -58,8 +61,9 @@ const instructionsContent = {
         heading: 'Pre-export checklist',
         items: [
           'The LOD layer must contain exactly one valid polygon.',
-          'Clip the Drainage Areas layer with the LOD polygon and save it as “Drainage Area in LOD” while preserving all original attributes.',
-          'Ensure every drainage area has a Land Cover value and Housing Soil Group assigned.',
+          'Upload general Drainage Areas (one per discharge point) and their Drainage Subareas, linking each subarea with the PARENT_DA field and keeping the Discharge Point numbering (DP-##) consistent.',
+          'The application will synthesize a complementary subarea whenever the uploaded subareas do not cover the full drainage area—review those results carefully.',
+          'Ensure every subarea carries Land Cover information and that each WSS polygon receives a manually selected Hydrologic Soil Group (A/B/C/D).',
         ],
       },
     ],
