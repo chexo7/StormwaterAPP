@@ -92,7 +92,7 @@ const Header: React.FC<HeaderProps> = ({
             </svg>
           </button>
           {isHydroCADMenuOpen && (
-            <div className="absolute left-0 mt-2 flex flex-col space-y-2 bg-gray-800 border border-gray-700 rounded shadow-lg p-2 min-w-[12rem]">
+            <div className="absolute left-0 mt-2 z-50 flex flex-col space-y-2 bg-gray-800 border border-gray-700 rounded shadow-lg p-2 min-w-[12rem]">
               <button
                 type="button"
                 onClick={() => {
