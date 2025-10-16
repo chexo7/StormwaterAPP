@@ -19,6 +19,7 @@ const sanitizeText = (value: unknown) =>
   value === undefined || value === null ? '' : String(value).trim();
 
 const DISCHARGE_POINT_PATTERN = /^DP[-_\s]?(\d{1,2})$/i;
+const SUBAREA_NAME_PATTERN = /^DRAINAGE\s*AREA[-_\s]*(\d{1,2})$/i;
 
 export const formatDischargePointName = (value: unknown): string => {
   if (value === undefined || value === null) return '';
@@ -53,6 +54,38 @@ export const formatDischargePointName = (value: unknown): string => {
   return normalized;
 };
 
+export const formatDrainageSubareaLabel = (value: unknown): string => {
+  if (value === undefined || value === null) return '';
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const num = Math.round(value);
+    if (num >= 1 && num <= 20) {
+      return `DRAINAGE AREA - ${num}`;
+    }
+  }
+
+  const sanitized = sanitizeText(value);
+  if (!sanitized) return '';
+
+  const normalized = sanitized.toUpperCase();
+  const patternMatch = normalized.match(SUBAREA_NAME_PATTERN);
+  if (patternMatch) {
+    const num = parseInt(patternMatch[1], 10);
+    if (Number.isFinite(num) && num >= 1 && num <= 20) {
+      return `DRAINAGE AREA - ${num}`;
+    }
+  }
+
+  const trailingDigits = normalized.match(/(\d{1,2})$/);
+  if (trailingDigits) {
+    const num = parseInt(trailingDigits[1], 10);
+    if (Number.isFinite(num) && num >= 1 && num <= 20) {
+      return `DRAINAGE AREA - ${num}`;
+    }
+  }
+
+  return normalized;
+};
+
 const normalizeDrainageAreas = (geojson: FeatureCollection): FeatureCollection =>
   cloneGeojson(
     geojson,
@@ -72,7 +105,7 @@ const normalizeDrainageSubareas = (geojson: FeatureCollection): FeatureCollectio
       ...feature,
       properties: {
         ...(feature.properties || {}),
-        SUBAREA_NAME: sanitizeText((feature.properties as any)?.SUBAREA_NAME),
+        SUBAREA_NAME: formatDrainageSubareaLabel((feature.properties as any)?.SUBAREA_NAME),
         PARENT_DA: formatDischargePointName((feature.properties as any)?.PARENT_DA),
       },
     }))

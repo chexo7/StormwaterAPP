@@ -10,7 +10,7 @@ const instructionsContent = {
       'Carga un archivo Shapefile o GeoPackage desde el panel izquierdo. Cada capa se validará automáticamente y el registro mostrará cualquier advertencia.',
       'Asegúrate de subir las capas LOD, Drainage Areas, Drainage Subareas, Land Cover y Soil Layer from Web Soil Survey para habilitar los cálculos hidrológicos.',
       'Revisa el panel de capas para activar o desactivar la visibilidad, cambiar estilos y seleccionar qué capa editar.',
-      'Usa el mapa para revisar geometrías. Puedes editar atributos clave como Housing (HSG), el Discharge Point # (DP-##) de cada área de drenaje y la cobertura del suelo desde los controles contextuales.',
+      'Usa el mapa para revisar geometrías. Puedes editar atributos clave como Housing (HSG), el Discharge Point # (DP-##) de cada área de drenaje, nombrar las Subáreas como "DRAINAGE AREA - #" y asignarles su DP correspondiente desde los controles contextuales.',
       'Cuando los datos estén listos, utiliza el botón Exportar para generar archivos HydroCAD, SWMM o nuevos Shapefiles, y confirma la proyección correspondiente.',
     ],
     sections: [
@@ -27,7 +27,7 @@ const instructionsContent = {
         heading: 'Requisitos antes de exportar',
         items: [
           'La capa LOD debe contener exactamente un polígono válido.',
-          'Carga por separado las Áreas de Drenaje generales (una por punto de descarga) y las Subáreas de Drenaje asociadas mediante el campo PARENT_DA, asegurando que cada área use su Discharge Point numerado (DP-##).',
+          'Carga por separado las Áreas de Drenaje generales (una por punto de descarga) y las Subáreas de Drenaje asociadas mediante el campo PARENT_DA, asegurando que cada área use su Discharge Point numerado (DP-##) y que cada subárea se nombre "DRAINAGE AREA - #".',
           'La aplicación generará la subárea complementaria cuando las subáreas cargadas no cubran el área general; revisa y valida esos resultados.',
           'Confirma que cada subárea tenga Land Cover y que la capa de suelos (WSS) incluya el grupo hidrológico del suelo (HSG).',
         ],
@@ -44,7 +44,7 @@ const instructionsContent = {
       'Upload a Shapefile or GeoPackage from the left panel. Each layer is validated automatically and the activity log will highlight any warnings.',
       'Provide the LOD, Drainage Areas, Drainage Subareas, Land Cover, and Soil Layer from Web Soil Survey layers to unlock hydrologic computations.',
       'Review the layer panel to toggle visibility, adjust styles, and choose which layer is currently editable.',
-      'Use the map to inspect geometries. Contextual controls let you edit key attributes like Housing (HSG), the Discharge Point # (DP-##) for each drainage area, and Land Cover.',
+      'Use the map to inspect geometries. Contextual controls let you edit key attributes like Housing (HSG), the Discharge Point # (DP-##) for each drainage area, name subareas as "DRAINAGE AREA - #", and assign their matching DP.',
       'When the dataset is ready, open the Export dialog to generate HydroCAD, SWMM, or Shapefile outputs and confirm the desired projection.',
     ],
     sections: [
@@ -61,7 +61,7 @@ const instructionsContent = {
         heading: 'Pre-export checklist',
         items: [
           'The LOD layer must contain exactly one valid polygon.',
-          'Upload general Drainage Areas (one per discharge point) and their Drainage Subareas, linking each subarea with the PARENT_DA field and keeping the Discharge Point numbering (DP-##) consistent.',
+          'Upload general Drainage Areas (one per discharge point) and their Drainage Subareas, linking each subarea with the PARENT_DA field, keeping the Discharge Point numbering (DP-##) consistent, and labeling each subarea as "DRAINAGE AREA - #".',
           'The application will synthesize a complementary subarea whenever the uploaded subareas do not cover the full drainage area—review those results carefully.',
           'Ensure every subarea carries Land Cover information and that the soil layer (WSS) includes a Hydrologic Soil Group (HSG).',
         ],

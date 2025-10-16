@@ -25,7 +25,11 @@ import { STATE_PLANE_OPTIONS } from './utils/projections';
 import type { ProjectionOption } from './types';
 import { reprojectFeatureCollection } from './utils/reproject';
 import { resolvePrj } from './utils/prj';
-import { transformLayerGeojson, formatDischargePointName } from './utils/layerTransforms';
+import {
+  transformLayerGeojson,
+  formatDischargePointName,
+  formatDrainageSubareaLabel,
+} from './utils/layerTransforms';
 
 const SUBAREA_LAYER_NAME = 'Drainage Subareas';
 const PROCESSED_SUBAREA_LAYER_NAME = 'Drainage Subareas (Computed)';
@@ -54,6 +58,8 @@ const getDefaultColor = (name: string) => DEFAULT_COLORS[name] || '#67e8f9';
 type UpdateHsgFn = (layerId: string, featureIndex: number, hsg: string) => void;
 type UpdateDaNameFn = (layerId: string, featureIndex: number, name: string) => void;
 type UpdateLandCoverFn = (layerId: string, featureIndex: number, value: string) => void;
+type UpdateSubareaNameFn = (layerId: string, featureIndex: number, name: string) => void;
+type UpdateSubareaParentFn = (layerId: string, featureIndex: number, dpName: string) => void;
 
 const App: React.FC = () => {
   const [layers, setLayers] = useState<LayerData[]>([]);
@@ -268,7 +274,9 @@ const App: React.FC = () => {
       addLog('Asigna un Discharge Point (DP-##) a cada área de drenaje usando el desplegable del mapa.');
     }
     if (name === SUBAREA_LAYER_NAME) {
-      addLog('Recuerda asociar cada Drainage Subarea a un Discharge Point (DP-##) mediante el campo PARENT_DA.');
+      addLog(
+        'Asigna a cada Drainage Subarea un nombre "DRAINAGE AREA - #" y su Discharge Point (DP-##) usando el popup del mapa.'
+      );
     }
   }, [addLog, landCoverOptions, layers]);
 
@@ -356,6 +364,22 @@ const App: React.FC = () => {
     addLog(`Set Land Cover for feature ${featureIndex} in ${layerId} to ${value}`);
   }, [addLog, updateFeatureProperty]);
 
+  const handleUpdateSubareaName = useCallback<UpdateSubareaNameFn>((layerId, featureIndex, nameVal) => {
+    const formatted = formatDrainageSubareaLabel(nameVal);
+    updateFeatureProperty(layerId, featureIndex, SUBAREA_NAME_ATTR, formatted);
+    addLog(
+      `Set Drainage Subarea name for feature ${featureIndex} in ${layerId} to ${formatted || '--'}`
+    );
+  }, [addLog, updateFeatureProperty]);
+
+  const handleUpdateSubareaParent = useCallback<UpdateSubareaParentFn>((layerId, featureIndex, parentVal) => {
+    const formatted = formatDischargePointName(parentVal);
+    updateFeatureProperty(layerId, featureIndex, SUBAREA_PARENT_ATTR, formatted);
+    addLog(
+      `Set Drainage Subarea DP for feature ${featureIndex} in ${layerId} to ${formatted || '--'}`
+    );
+  }, [addLog, updateFeatureProperty]);
+
   const handleDiscardEditing = useCallback(() => {
     if (!editingTarget.layerId) return;
     const id = editingTarget.layerId;
@@ -423,6 +447,28 @@ const App: React.FC = () => {
       setMappingLayer({ name, data });
     } else if (name === 'Catch Basins / Manholes') {
       setMappingLayer({ name, data });
+    } else if (name === SUBAREA_LAYER_NAME) {
+      const daLayer = layers.find(l => l.name === 'Drainage Areas');
+      if (!daLayer) {
+        const msg =
+          'Primero carga las Drainage Areas generales y asigna un Discharge Point (DP-##) a cada polígono antes de añadir Drainage Subareas.';
+        setError(msg);
+        addLog(msg, 'error');
+        return;
+      }
+      const hasAllDpAssigned = daLayer.geojson.features.every(feature => {
+        const props = feature.properties || {};
+        const formatted = formatDischargePointName((props as any)[DA_NAME_ATTR]);
+        return formatted !== '';
+      });
+      if (!hasAllDpAssigned) {
+        const msg =
+          'Asigna un Discharge Point (DP-##) a todos los polígonos de Drainage Areas antes de cargar Drainage Subareas.';
+        setError(msg);
+        addLog(msg, 'error');
+        return;
+      }
+      handleLayerAdded(data, name);
     } else {
       handleLayerAdded(data, name);
     }
@@ -2125,6 +2171,8 @@ const App: React.FC = () => {
               onUpdateFeatureHsg={handleUpdateFeatureHsg}
               onUpdateFeatureDaName={handleUpdateFeatureDaName}
               onUpdateFeatureLandCover={handleUpdateFeatureLandCover}
+              onUpdateSubareaName={handleUpdateSubareaName}
+              onUpdateSubareaParent={handleUpdateSubareaParent}
               landCoverOptions={landCoverOptions}
               zoomToLayer={zoomToLayer}
               editingTarget={editingTarget}
