@@ -45,6 +45,8 @@ const COMPLEMENT_FLAG_ATTR = 'IS_COMPLEMENT';
 const SUBAREA_AREA_ATTR = 'SUBAREA_AC';
 const SQM_TO_ACRES = 0.000247105381;
 const SQM_TO_SQFT = 10.76391041671;
+const MIN_COMPLEMENT_AREA_SF = 100;
+const MIN_COMPLEMENT_AREA_SQM = MIN_COMPLEMENT_AREA_SF / SQM_TO_SQFT;
 const AREA_TOLERANCE_SQM = 0.01;
 
 const DEFAULT_COLORS: Record<string, string> = {
@@ -328,6 +330,39 @@ const aggregateOverlayForHydroCAD = (
     });
 };
 
+const buildSubcatchmentNodeBase = (name: string, fallbackIndex: number): string => {
+  const trimmed = name.trim();
+  if (!trimmed) return `SUBCATCH-${fallbackIndex + 1}`;
+
+  const upper = trimmed.toUpperCase();
+  const replaced = upper.replace(/\bDRAINAGE\s+AREA\b/g, 'DA');
+  const sanitized = replaced
+    .replace(/[^A-Z0-9]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+
+  return sanitized || `SUBCATCH-${fallbackIndex + 1}`;
+};
+
+const ensureUniqueNodeNumber = (
+  candidate: string,
+  used: Set<string>
+): string => {
+  if (!used.has(candidate)) {
+    used.add(candidate);
+    return candidate;
+  }
+
+  let suffix = 2;
+  let next = `${candidate} (${suffix})`;
+  while (used.has(next)) {
+    suffix += 1;
+    next = `${candidate} (${suffix})`;
+  }
+  used.add(next);
+  return next;
+};
+
 const normalizeLandCover = (value: unknown): string => {
   if (typeof value === 'string') return value.trim();
   if (value === null || value === undefined) return '';
@@ -422,6 +457,8 @@ const buildHydroCADContent = (
     return dpIndex.get(dpName)!;
   };
 
+  const usedNodeNumbers = new Set<string>();
+
   subcatchments.forEach((subcatchment, index) => {
     let outflow = getPrimaryOutflow(subcatchment.parentDa ?? null);
     if (!outflow) {
@@ -429,7 +466,9 @@ const buildHydroCADContent = (
     }
     const rowIndex = resolveRowIndex(outflow);
     const y = rowIndex * rowSpacing;
-    let nodeBlock = `\n[NODE]\nNumber=${subcatchment.id}\nType=Subcat\nName=${subcatchment.name}\nXYPos=${subcatX} ${y}\n`;
+    const base = buildSubcatchmentNodeBase(subcatchment.name, index);
+    const nodeNumber = ensureUniqueNodeNumber(`${base} TO ${outflow}`, usedNodeNumbers);
+    let nodeBlock = `\n[NODE]\nNumber=${nodeNumber}\nType=Subcat\nName=${subcatchment.name}\nXYPos=${subcatX} ${y}\n`;
     nodeBlock += `Outflow=${outflow}\n`;
     nodeBlock += 'LargeAreas=True\n';
     subcatchment.areas.forEach(area => {
@@ -1733,6 +1772,7 @@ const App: React.FC = () => {
             if (!rem || !rem.geometry) return;
             const remArea = turfArea(rem as any);
             if (remArea <= AREA_TOLERANCE_SQM) return;
+            if (remArea <= MIN_COMPLEMENT_AREA_SQM) return;
 
             const complementProps = {
               ...baseProps,
