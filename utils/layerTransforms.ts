@@ -1,6 +1,7 @@
-import type { FeatureCollection, Feature, LineString, Point } from 'geojson';
+import type { FeatureCollection, Feature, LineString, Point, Polygon, MultiPolygon } from 'geojson';
 import type { LayerData } from '../types';
 import { getDir } from './direction';
+import { union as turfUnion, intersect as turfIntersect } from '@turf/turf';
 
 type Dir8 = 'N' | 'NE' | 'E' | 'SE' | 'S' | 'SW' | 'W' | 'NW';
 
@@ -15,12 +16,66 @@ const cloneGeojson = (geojson: FeatureCollection, features: Feature[]): FeatureC
   features,
 });
 
+const sanitizeText = (value: unknown) =>
+  value === undefined || value === null ? '' : String(value).trim();
+
+const DISCHARGE_POINT_PATTERN = /^DP[-_\s]?(\d{1,2})$/i;
+
+export const formatDischargePointName = (value: unknown): string => {
+  if (value === undefined || value === null) return '';
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const num = Math.round(value);
+    if (num >= 1) {
+      const padded = String(num).padStart(2, '0');
+      return `DP-${padded}`;
+    }
+  }
+
+  const sanitized = sanitizeText(value);
+  if (!sanitized) return '';
+
+  const normalized = sanitized.toUpperCase();
+  const dpMatch = normalized.match(DISCHARGE_POINT_PATTERN);
+  if (dpMatch) {
+    const num = parseInt(dpMatch[1], 10);
+    if (Number.isFinite(num) && num >= 1) {
+      return `DP-${num.toString().padStart(2, '0')}`;
+    }
+  }
+
+  const trailingDigits = normalized.match(/(\d{1,2})$/);
+  if (trailingDigits) {
+    const num = parseInt(trailingDigits[1], 10);
+    if (Number.isFinite(num) && num >= 1) {
+      return `DP-${num.toString().padStart(2, '0')}`;
+    }
+  }
+
+  return normalized;
+};
+
 const normalizeDrainageAreas = (geojson: FeatureCollection): FeatureCollection =>
   cloneGeojson(
     geojson,
     geojson.features.map(feature => ({
       ...feature,
-      properties: { ...(feature.properties || {}), DA_NAME: feature.properties?.DA_NAME ?? '' },
+      properties: {
+        ...(feature.properties || {}),
+        DA_NAME: formatDischargePointName(feature.properties?.DA_NAME),
+      },
+    }))
+  );
+
+const normalizeDrainageSubareas = (geojson: FeatureCollection): FeatureCollection =>
+  cloneGeojson(
+    geojson,
+    geojson.features.map(feature => ({
+      ...feature,
+      properties: {
+        ...(feature.properties || {}),
+        SUBAREA_NAME: sanitizeText((feature.properties as any)?.SUBAREA_NAME),
+        PARENT_DA: formatDischargePointName((feature.properties as any)?.PARENT_DA),
+      },
     }))
   );
 
@@ -41,14 +96,85 @@ const normalizeLandCover = (
     })
   );
 
-const normalizeSoils = (geojson: FeatureCollection): FeatureCollection =>
-  cloneGeojson(
-    geojson,
-    geojson.features.map(feature => ({
-      ...feature,
-      properties: { ...(feature.properties || {}), HSG: feature.properties?.HSG ?? '' },
-    }))
-  );
+const extractPolygonFeature = (feature: Feature): Feature<Polygon | MultiPolygon> | null => {
+  if (!feature.geometry) return null;
+  if (feature.geometry.type === 'Polygon' || feature.geometry.type === 'MultiPolygon') {
+    return {
+      type: 'Feature',
+      geometry: feature.geometry as Polygon | MultiPolygon,
+      properties: {},
+    };
+  }
+  return null;
+};
+
+const toMultiPolygon = (geometry: Polygon | MultiPolygon): MultiPolygon =>
+  geometry.type === 'Polygon'
+    ? { type: 'MultiPolygon', coordinates: [geometry.coordinates] }
+    : geometry;
+
+const buildDrainageMask = (layers: LayerData[]): Feature<Polygon | MultiPolygon> | null => {
+  const daLayer = layers.find(l => l.name === 'Drainage Areas');
+  if (!daLayer) return null;
+  const polygons = daLayer.geojson.features
+    .map(extractPolygonFeature)
+    .filter((feature): feature is Feature<Polygon | MultiPolygon> => !!feature);
+  if (polygons.length === 0) return null;
+
+  let mask = polygons[0];
+  for (let i = 1; i < polygons.length; i += 1) {
+    const next = polygons[i];
+    try {
+      const merged = turfUnion(mask as any, next as any);
+      if (merged && merged.geometry && (merged.geometry.type === 'Polygon' || merged.geometry.type === 'MultiPolygon')) {
+        mask = { type: 'Feature', geometry: merged.geometry as Polygon | MultiPolygon, properties: {} };
+        continue;
+      }
+    } catch (err) {
+      console.warn('Failed to dissolve Drainage Areas for WSS mask. Falling back to multi geometry.', err);
+    }
+
+    const combined: MultiPolygon = {
+      type: 'MultiPolygon',
+      coordinates: [
+        ...toMultiPolygon(mask.geometry as Polygon | MultiPolygon).coordinates,
+        ...toMultiPolygon(next.geometry as Polygon | MultiPolygon).coordinates,
+      ],
+    };
+    mask = { type: 'Feature', geometry: combined, properties: {} };
+  }
+
+  return mask;
+};
+
+const normalizeSoils = (geojson: FeatureCollection, layers: LayerData[]): FeatureCollection => {
+  const mask = buildDrainageMask(layers);
+  const features: Feature[] = [];
+
+  geojson.features.forEach(feature => {
+    if (!feature.geometry) return;
+    if (feature.geometry.type !== 'Polygon' && feature.geometry.type !== 'MultiPolygon') return;
+
+    const properties = { ...(feature.properties || {}), HSG: '' };
+    const baseFeature: Feature = { ...feature, properties };
+
+    if (!mask) {
+      features.push(baseFeature);
+      return;
+    }
+
+    try {
+      const clipped = turfIntersect(baseFeature as any, mask as any);
+      if (!clipped || !clipped.geometry) return;
+      if (clipped.geometry.type !== 'Polygon' && clipped.geometry.type !== 'MultiPolygon') return;
+      features.push({ ...clipped, properties });
+    } catch (err) {
+      console.warn('Failed to crop Soil layer feature to Drainage Areas mask', err);
+    }
+  });
+
+  return cloneGeojson(geojson, features);
+};
 
 const preparePipesLayer = (
   geojson: FeatureCollection,
@@ -281,12 +407,16 @@ export const transformLayerGeojson = (
     return normalizeDrainageAreas(geojson);
   }
 
+  if (name === 'Drainage Subareas') {
+    return normalizeDrainageSubareas(geojson);
+  }
+
   if (name === 'Land Cover') {
     return normalizeLandCover(geojson, landCoverOptions);
   }
 
   if (name === 'Soil Layer from Web Soil Survey') {
-    return normalizeSoils(geojson);
+    return normalizeSoils(geojson, layers);
   }
 
   if (name === 'Pipes' && fieldMap) {
