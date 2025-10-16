@@ -18,6 +18,41 @@ const cloneGeojson = (geojson: FeatureCollection, features: Feature[]): FeatureC
 const sanitizeText = (value: unknown) =>
   value === undefined || value === null ? '' : String(value).trim();
 
+const DISCHARGE_POINT_PATTERN = /^DP[-_\s]?(\d{1,2})$/i;
+
+export const formatDischargePointName = (value: unknown): string => {
+  if (value === undefined || value === null) return '';
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const num = Math.round(value);
+    if (num >= 1) {
+      const padded = String(num).padStart(2, '0');
+      return `DP-${padded}`;
+    }
+  }
+
+  const sanitized = sanitizeText(value);
+  if (!sanitized) return '';
+
+  const normalized = sanitized.toUpperCase();
+  const dpMatch = normalized.match(DISCHARGE_POINT_PATTERN);
+  if (dpMatch) {
+    const num = parseInt(dpMatch[1], 10);
+    if (Number.isFinite(num) && num >= 1) {
+      return `DP-${num.toString().padStart(2, '0')}`;
+    }
+  }
+
+  const trailingDigits = normalized.match(/(\d{1,2})$/);
+  if (trailingDigits) {
+    const num = parseInt(trailingDigits[1], 10);
+    if (Number.isFinite(num) && num >= 1) {
+      return `DP-${num.toString().padStart(2, '0')}`;
+    }
+  }
+
+  return normalized;
+};
+
 const normalizeDrainageAreas = (geojson: FeatureCollection): FeatureCollection =>
   cloneGeojson(
     geojson,
@@ -25,7 +60,7 @@ const normalizeDrainageAreas = (geojson: FeatureCollection): FeatureCollection =
       ...feature,
       properties: {
         ...(feature.properties || {}),
-        DA_NAME: sanitizeText(feature.properties?.DA_NAME),
+        DA_NAME: formatDischargePointName(feature.properties?.DA_NAME),
       },
     }))
   );
@@ -38,7 +73,7 @@ const normalizeDrainageSubareas = (geojson: FeatureCollection): FeatureCollectio
       properties: {
         ...(feature.properties || {}),
         SUBAREA_NAME: sanitizeText((feature.properties as any)?.SUBAREA_NAME),
-        PARENT_DA: sanitizeText((feature.properties as any)?.PARENT_DA),
+        PARENT_DA: formatDischargePointName((feature.properties as any)?.PARENT_DA),
       },
     }))
   );

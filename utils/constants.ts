@@ -1,6 +1,10 @@
 export const ARCHIVE_NAME_MAP: Record<string, string> = {
   'da.zip': 'Drainage Areas',
+  'da-to-dp.zip': 'Drainage Areas',
+  'da_to_dp.zip': 'Drainage Areas',
   'subareas.zip': 'Drainage Subareas',
+  'sub-da.zip': 'Drainage Subareas',
+  'sub_da.zip': 'Drainage Subareas',
   'landcover.zip': 'Land Cover',
   'lod.zip': 'LOD',
   'pipes.zip': 'Pipes',

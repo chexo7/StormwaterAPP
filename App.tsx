@@ -25,7 +25,7 @@ import { STATE_PLANE_OPTIONS } from './utils/projections';
 import type { ProjectionOption } from './types';
 import { reprojectFeatureCollection } from './utils/reproject';
 import { resolvePrj } from './utils/prj';
-import { transformLayerGeojson } from './utils/layerTransforms';
+import { transformLayerGeojson, formatDischargePointName } from './utils/layerTransforms';
 
 const SUBAREA_LAYER_NAME = 'Drainage Subareas';
 const PROCESSED_SUBAREA_LAYER_NAME = 'Drainage Subareas (Computed)';
@@ -264,6 +264,12 @@ const App: React.FC = () => {
       addLog(`Loaded layer ${name}${editable ? '' : ' (view only)'}`);
       return [...prevLayers, newLayer];
     });
+    if (name === 'Drainage Areas') {
+      addLog('Asigna un Discharge Point (DP-##) a cada área de drenaje usando el desplegable del mapa.');
+    }
+    if (name === SUBAREA_LAYER_NAME) {
+      addLog('Recuerda asociar cada Drainage Subarea a un Discharge Point (DP-##) mediante el campo PARENT_DA.');
+    }
   }, [addLog, landCoverOptions, layers]);
 
   const handlePreviewReady = useCallback((geojson: FeatureCollection, fileName: string, detectedName: string) => {
@@ -338,8 +344,11 @@ const App: React.FC = () => {
   }, [addLog, updateFeatureProperty]);
 
   const handleUpdateFeatureDaName = useCallback<UpdateDaNameFn>((layerId, featureIndex, nameVal) => {
-    updateFeatureProperty(layerId, featureIndex, 'DA_NAME', nameVal);
-    addLog(`Set Drainage Area name for feature ${featureIndex} in ${layerId} to ${nameVal}`);
+    const formatted = formatDischargePointName(nameVal);
+    updateFeatureProperty(layerId, featureIndex, 'DA_NAME', formatted);
+    addLog(
+      `Set Discharge Point for feature ${featureIndex} in ${layerId} to ${formatted || '--'}`
+    );
   }, [addLog, updateFeatureProperty]);
 
   const handleUpdateFeatureLandCover = useCallback<UpdateLandCoverFn>((layerId, featureIndex, value) => {
@@ -494,11 +503,10 @@ const App: React.FC = () => {
     if (da) {
       da.geojson.features.forEach(f => {
         const raw = f.properties ? (f.properties as any)[DA_NAME_ATTR] : null;
-        if (raw === undefined || raw === null) return;
-        const normalized = String(raw).trim();
-        if (!normalized) return;
-        const key = normalized.toLowerCase();
-        if (!canonicalDaNames.has(key)) canonicalDaNames.set(key, normalized);
+        const formatted = formatDischargePointName(raw);
+        if (!formatted) return;
+        const key = formatted.toLowerCase();
+        if (!canonicalDaNames.has(key)) canonicalDaNames.set(key, formatted);
       });
     }
 
@@ -508,7 +516,7 @@ const App: React.FC = () => {
       sub.geojson.features.forEach(f => {
         const props = f.properties || {};
         const parentRaw = (props as any)[SUBAREA_PARENT_ATTR];
-        const parentName = parentRaw === undefined || parentRaw === null ? '' : String(parentRaw).trim();
+        const parentName = formatDischargePointName(parentRaw);
         if (!parentName) {
           orphanParents.add('(sin valor)');
           return;
@@ -532,8 +540,9 @@ const App: React.FC = () => {
         parts.push(`Missing required attributes -> ${msg}`);
       }
       if (orphanParents.size > 0) {
+        const unknownParentsList = Array.from(orphanParents).join(', ');
         parts.push(
-          `Drainage subareas reference unknown parents -> ${Array.from(orphanParents).join(', ')}`
+          `Drainage subareas reference unknown parents -> ${unknownParentsList}. Asocia cada subárea al Discharge Point correcto (DP-##).`
         );
       }
       setComputeTasks(prev =>
@@ -584,7 +593,7 @@ const App: React.FC = () => {
         const rawName = daFeature.properties
           ? (daFeature.properties as any)[DA_NAME_ATTR]
           : null;
-        const candidateName = rawName === undefined || rawName === null ? '' : String(rawName).trim();
+        const candidateName = formatDischargePointName(rawName);
         const daName = candidateName
           ? canonicalDaNames.get(candidateName.toLowerCase()) || candidateName
           : '';
