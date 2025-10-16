@@ -351,28 +351,101 @@ const normalizeCnRecords = (records: CnRecord[]): CnRecord[] =>
     D: sanitizeCnNumber((record as any)?.D),
   }));
 
+const HYDROCAD_EVENTS = [
+  { rainEvent: '1 Year', stormDepth: '0.205' },
+  { rainEvent: '2 Year', stormDepth: '0.2475' },
+  { rainEvent: '5 Year', stormDepth: '0.313333333333333' },
+  { rainEvent: '10 Year', stormDepth: '0.371666666666667' },
+  { rainEvent: '25 Year', stormDepth: '0.46' },
+  { rainEvent: '50 Year', stormDepth: '0.538333333333333' },
+  { rainEvent: '100 Year', stormDepth: '0.628333333333333' },
+];
+
+const getPrimaryOutflow = (parent: string | null | undefined): string | null => {
+  if (!parent) return null;
+  const candidates = parent
+    .split(',')
+    .map(token => token.trim())
+    .filter(token => token.length > 0);
+  if (candidates.length === 0) return null;
+  const dpCandidate = candidates.find(token => /^DP-\d{2}$/i.test(token));
+  return (dpCandidate || candidates[0]) ?? null;
+};
+
 const buildHydroCADContent = (
   subcatchments: HydroCADSubcatchment[],
   projectName: string
 ): string => {
   const headerName = projectName || 'Project';
-  let content = `[HydroCAD]\nFileUnits=English\nCalcUnits=English\nInputUnits=English-LowFlow\nReportUnits=English-LowFlow\nLargeAreas=False\nSource=HydroCAD\u00ae 10.20-6a  s/n 07447  \u00a9 2024 HydroCAD Software Solutions LLC\nName=${headerName}\nPath=\nView=-5.46349942062574 0 15.4634994206257 10\nGridShow=True\nGridSnap=True\nTimeSpan=0 86400\nTimeInc=36\nMaxGraph=0\nRunoffMethod=SCS TR-20\nReachMethod=Stor-Ind+Trans\nPondMethod=Stor-Ind\nUH=SCS\nMinTc=300\nRainEvent=test\n\n[EVENT]\nRainEvent=test\nStormType=Type II 24-hr\nStormDepth=0.0833333333333333\n`;
+  const headerLines = [
+    '[HydroCAD]',
+    'FileUnits=English',
+    'CalcUnits=English',
+    'InputUnits=English',
+    'ReportUnits=English',
+    'Source=HydroCAD® 10.20-6a  s/n 07447  © 2024 HydroCAD Software Solutions LLC',
+    'Source=HydroCAD® 10.20-5b  s/n 07447  © 2023 HydroCAD Software Solutions LLC',
+    `Name=${headerName}`,
+    'Path=',
+    'View=-15.2200262616452 -7.99592189386307 27.6264488498838 15.015871738455',
+    'GridShow=True',
+    'GridSnap=True',
+    'TimeSpan=0 259200',
+    'TimeInc=36',
+    'SubIntervals=9',
+    'RunoffMethod=SCS TR-20',
+    'ReachMethod=Dyn-Stor-Ind',
+    'PondMethod=Dyn-Stor-Ind',
+    'UH=SCS',
+    'InitialTW=True',
+    'MinTc=300',
+    'RainEvent=100 Year',
+    'P2=0.2475',
+    '',
+  ];
 
-  let y = 0;
-  subcatchments.forEach(subcatchment => {
-    content += `\n[NODE]\nNumber=${subcatchment.id}\nType=Subcat\nName=${subcatchment.name}\nXYPos=0 ${y}\n`;
-    if (subcatchment.parentDa) {
-      content += `NodeDesc=${subcatchment.parentDa}\n`;
-    }
-    subcatchment.areas.forEach(area => {
-      content += `[AREA]\nArea=${area.area}\nCN=${area.cn}\n`;
-      if (area.desc) content += `Desc=${area.desc}\n`;
-    });
-    content += `[TC]\nMethod=Direct\nTc=300\n`;
-    y += 5;
+  let content = `${headerLines.join('\n')}`;
+  HYDROCAD_EVENTS.forEach(event => {
+    content += `\n[EVENT]\nRainEvent=${event.rainEvent}\nStormType=Type II 24-hr\nStormDepth=${event.stormDepth}\n`;
   });
 
-  return content;
+  const rowSpacing = 6;
+  const subcatX = -10;
+  const linkX = 0;
+  const dpOrder: string[] = [];
+  const dpIndex = new Map<string, number>();
+  const resolveRowIndex = (dpName: string): number => {
+    if (!dpIndex.has(dpName)) {
+      dpIndex.set(dpName, dpOrder.length);
+      dpOrder.push(dpName);
+    }
+    return dpIndex.get(dpName)!;
+  };
+
+  subcatchments.forEach((subcatchment, index) => {
+    let outflow = getPrimaryOutflow(subcatchment.parentDa ?? null);
+    if (!outflow) {
+      outflow = `DP-${String(index + 1).padStart(2, '0')}`;
+    }
+    const rowIndex = resolveRowIndex(outflow);
+    const y = rowIndex * rowSpacing;
+    let nodeBlock = `\n[NODE]\nNumber=${subcatchment.id}\nType=Subcat\nName=${subcatchment.name}\nXYPos=${subcatX} ${y}\n`;
+    nodeBlock += `Outflow=${outflow}\n`;
+    nodeBlock += 'LargeAreas=True\n';
+    subcatchment.areas.forEach(area => {
+      nodeBlock += `[AREA]\nArea=${area.area.toFixed(2)}\nCN=${area.cn}\n`;
+      if (area.desc) nodeBlock += `Desc=${area.desc}\n`;
+    });
+    nodeBlock += `[TC]\nMethod=Direct\nTc=300\n`;
+    content += nodeBlock;
+  });
+
+  dpOrder.forEach((dpName, index) => {
+    const y = index * rowSpacing;
+    content += `\n[NODE]\nNumber=${dpName}\nType=Link\nName=${dpName}\nXYPos=${linkX} ${y}\nLargeAreas=True\n`;
+  });
+
+  return content.trimEnd();
 };
 
 const triggerHydroCADDownload = (
