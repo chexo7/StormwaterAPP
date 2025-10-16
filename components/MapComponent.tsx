@@ -7,6 +7,7 @@ import { area as turfArea, intersect as turfIntersect } from '@turf/turf';
 import AddressSearch from './AddressSearch';
 import ReactLeafletGoogleLayer from 'react-leaflet-google-layer';
 import type { LayerData } from '../types';
+import { DISCHARGE_POINT_OPTIONS, normalizeDischargePointName } from '../utils/dp';
 import type { GeoJSON as LeafletGeoJSON, Layer } from 'leaflet';
 
 const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY as string | undefined;
@@ -199,9 +200,9 @@ const ManagedGeoJsonLayer = ({
       if (layerName === 'Drainage Areas') {
         const nameRow = L.DomUtil.create('div', '', propsDiv);
         const nLabel = L.DomUtil.create('b', '', nameRow);
-        nLabel.textContent = 'Name: ';
+        nLabel.textContent = 'Discharge Point #: ';
         const select = L.DomUtil.create('select', '', nameRow) as HTMLSelectElement;
-        select.title = 'Seleccionar nombre';
+        select.title = 'Seleccionar Discharge Point';
         select.style.marginLeft = '4px';
         select.style.border = '2px solid #3b82f6';
         select.style.backgroundColor = '#dbeafe';
@@ -209,19 +210,20 @@ const ManagedGeoJsonLayer = ({
         const blank = L.DomUtil.create('option', '', select) as HTMLOptionElement;
         blank.value = '';
         blank.textContent = '--';
-        const allNames = Array.from({ length: 26 }, (_, i) => `DA-${String.fromCharCode(65 + i)}`);
+        const currentName = normalizeDischargePointName(feature.properties?.DA_NAME);
         const usedNames = data.features
           .filter(f => f !== feature)
-          .map(f => (f.properties?.DA_NAME as string))
+          .map(f => normalizeDischargePointName(f.properties?.DA_NAME))
           .filter(n => n);
-        const availableNames = allNames.filter(n => n === feature.properties!.DA_NAME || !usedNames.includes(n));
-        availableNames.forEach(val => {
+        DISCHARGE_POINT_OPTIONS.filter(({ name }) =>
+          name === currentName || !usedNames.includes(name)
+        ).forEach(({ index, name }) => {
           const opt = L.DomUtil.create('option', '', select) as HTMLOptionElement;
-          opt.value = val;
-          opt.textContent = val;
-          if (feature.properties!.DA_NAME === val) opt.selected = true;
+          opt.value = name;
+          opt.textContent = String(index);
+          if (currentName === name) opt.selected = true;
         });
-        if (!feature.properties!.DA_NAME) blank.selected = true;
+        if (!currentName) blank.selected = true;
         select.addEventListener('change', (e) => {
           const newVal = (e.target as HTMLSelectElement).value;
           const idx = data.features.indexOf(feature);
