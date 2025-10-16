@@ -43,6 +43,7 @@ const COMPLEMENT_FLAG_ATTR = 'IS_COMPLEMENT';
 const SUBAREA_AREA_ATTR = 'SUBAREA_AC';
 const SQM_TO_ACRES = 0.000247105381;
 const SQM_TO_SQFT = 10.76391041671;
+const SQFT_PER_ACRE = 43560;
 const AREA_TOLERANCE_SQM = 0.01;
 
 const DEFAULT_COLORS: Record<string, string> = {
@@ -174,79 +175,179 @@ const clipCollectionToOverall = (
   return { ...collection, features: clippedFeatures };
 };
 
-type HydroCADAreaGroup = { area: number; cn: number; desc?: string };
+type HydroCADSubcatchment = {
+  key: string;
+  name: string;
+  parent: string;
+  areaAc: number;
+  areaSf: number;
+  cn: number;
+};
 
-const aggregateOverlayForHydroCAD = (
-  features: Feature[]
-): Record<string, HydroCADAreaGroup[]> => {
-  const grouped = new Map<string, Map<string, HydroCADAreaGroup>>();
+const aggregateSubcatchmentsForHydroCAD = (
+  subareas: Feature[],
+  overlayFeatures: Feature[]
+): HydroCADSubcatchment[] => {
+  type WorkingEntry = {
+    key: string;
+    name: string;
+    parent: string;
+    complement: boolean;
+    targetAreaAc: number;
+    overlayAreaSf: number;
+    cnAreaSf: number;
+    weightedCn: number;
+  };
 
-  features.forEach(feature => {
+  const entries = new Map<string, WorkingEntry>();
+
+  subareas.forEach(feature => {
     if (!feature.properties) return;
-    const daRaw = (feature.properties as any)[DA_NAME_ATTR];
-    const daName = formatDischargePointName(daRaw) || 'DA';
-    const cnRaw = (feature.properties as any)?.CN;
-    const cnValue = Number(cnRaw);
-    if (!Number.isFinite(cnValue)) return;
+    const props = feature.properties as any;
+    const parent = formatDischargePointName(props[SUBAREA_PARENT_ATTR] ?? props[DA_NAME_ATTR]);
+    const rawName = props[SUBAREA_NAME_ATTR];
+    const name = rawName == null ? '' : String(rawName).trim();
+    if (!parent || !name) return;
+    const complement = Boolean(props[COMPLEMENT_FLAG_ATTR]);
+    const areaAttr = Number(props[SUBAREA_AREA_ATTR]);
+    let targetAreaAc = Number.isFinite(areaAttr) ? areaAttr : NaN;
+    if (!Number.isFinite(targetAreaAc) || targetAreaAc <= 0) {
+      if (isPolygonLike(feature)) {
+        const areaSqm = computeFeatureAreaSqm(feature);
+        targetAreaAc = Number((areaSqm * SQM_TO_ACRES).toFixed(6));
+      } else {
+        targetAreaAc = 0;
+      }
+    }
 
-    const areaProp = (feature.properties as any)?.AREA_SF;
+    const key = `${parent}::${name}`;
+    const existing = entries.get(key);
+    if (existing) {
+      existing.targetAreaAc += targetAreaAc;
+      existing.complement = existing.complement && complement;
+      return;
+    }
+
+    entries.set(key, {
+      key,
+      name,
+      parent,
+      complement,
+      targetAreaAc,
+      overlayAreaSf: 0,
+      cnAreaSf: 0,
+      weightedCn: 0,
+    });
+  });
+
+  overlayFeatures.forEach(feature => {
+    if (!feature.properties) return;
+    const props = feature.properties as any;
+    const parent = formatDischargePointName(props[SUBAREA_PARENT_ATTR] ?? props[DA_NAME_ATTR]);
+    const rawName = props[SUBAREA_NAME_ATTR];
+    const name = rawName == null ? '' : String(rawName).trim();
+    if (!parent || !name) return;
+    const key = `${parent}::${name}`;
+    const entry = entries.get(key);
+    if (!entry) return;
+
+    const areaProp = props.AREA_SF;
     let areaValue = Number(areaProp);
     if (!Number.isFinite(areaValue) || areaValue <= 0) {
       if (isPolygonLike(feature)) {
-        const areaSqm = computeFeatureAreaSqm(feature);
+        const areaSqm = computeFeatureAreaSqm(feature as any);
         areaValue = Number((areaSqm * SQM_TO_SQFT).toFixed(2));
       } else {
         return;
       }
     }
 
-    const lcRaw = (feature.properties as any)?.LAND_COVER;
-    const lcName = lcRaw == null ? null : String(lcRaw);
-    const hsgRaw = (feature.properties as any)?.HSG;
-    const hsg = hsgRaw == null ? null : String(hsgRaw).toUpperCase();
-    const desc = lcName ? `${lcName}${hsg ? `, HSG ${hsg}` : ''}` : undefined;
+    entry.overlayAreaSf += areaValue;
 
-    if (!grouped.has(daName)) {
-      grouped.set(daName, new Map());
-    }
-    const daMap = grouped.get(daName)!;
-    const key = `${cnValue}|${desc ?? ''}`;
-    const existing = daMap.get(key);
-    if (existing) {
-      existing.area += areaValue;
-    } else {
-      daMap.set(key, { area: areaValue, cn: cnValue, desc });
-    }
+    const cnRaw = props.CN;
+    const cnValue = Number(cnRaw);
+    if (!Number.isFinite(cnValue)) return;
+
+    entry.cnAreaSf += areaValue;
+    entry.weightedCn += areaValue * cnValue;
   });
 
-  const result: Record<string, HydroCADAreaGroup[]> = {};
-  Array.from(grouped.entries())
-    .sort(([a], [b]) => a.localeCompare(b))
-    .forEach(([da, entries]) => {
-      result[da] = Array.from(entries.values()).map(item => ({
-        area: Number(item.area.toFixed(2)),
-        cn: item.cn,
-        desc: item.desc,
-      }));
-    });
+  const missing: string[] = [];
+  const results: HydroCADSubcatchment[] = [];
 
-  return result;
+  entries.forEach(entry => {
+    if (entry.complement) {
+      return;
+    }
+
+    const areaSf =
+      entry.cnAreaSf > 0
+        ? entry.cnAreaSf
+        : entry.overlayAreaSf > 0
+        ? entry.overlayAreaSf
+        : entry.targetAreaAc * SQFT_PER_ACRE;
+
+    if (!Number.isFinite(areaSf) || areaSf <= 0) {
+      missing.push(entry.name);
+      return;
+    }
+
+    if (entry.cnAreaSf <= 0 || entry.weightedCn <= 0) {
+      missing.push(entry.name);
+      return;
+    }
+
+    const compositeCn = entry.weightedCn / entry.cnAreaSf;
+    const cnRounded = Number(compositeCn.toFixed(1));
+
+    results.push({
+      key: entry.key,
+      name: entry.name,
+      parent: entry.parent,
+      areaSf: Number(areaSf.toFixed(2)),
+      areaAc: Number((areaSf / SQFT_PER_ACRE).toFixed(4)),
+      cn: cnRounded,
+    });
+  });
+
+  if (missing.length > 0) {
+    throw new Error(
+      `No se pudo calcular el CN compuesto para las subáreas: ${missing.join(', ')}.`
+    );
+  }
+
+  const expected = Array.from(entries.values()).filter(entry => !entry.complement).length;
+  if (results.length !== expected) {
+    throw new Error(
+      `No se generaron todos los subcatchments esperados (${results.length}/${expected}). Verifica los valores de Land Cover y WSS.`
+    );
+  }
+
+  return results.sort((a, b) => {
+    if (a.parent === b.parent) {
+      return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+    }
+    return a.parent.localeCompare(b.parent, undefined, { numeric: true, sensitivity: 'base' });
+  });
+};
+
+const sanitizeNodeId = (value: string): string => {
+  const sanitized = value.replace(/[^0-9A-Za-z_-]+/g, '_').replace(/_+/g, '_');
+  return sanitized.replace(/^_+|_+$/g, '') || 'SUB';
 };
 
 const buildHydroCADContent = (
-  grouped: Record<string, HydroCADAreaGroup[]>,
+  subcatchments: HydroCADSubcatchment[],
   projectName: string
 ): string => {
   const headerName = projectName || 'Project';
   let content = `[HydroCAD]\nFileUnits=English\nCalcUnits=English\nInputUnits=English-LowFlow\nReportUnits=English-LowFlow\nLargeAreas=False\nSource=HydroCAD\u00ae 10.20-6a  s/n 07447  \u00a9 2024 HydroCAD Software Solutions LLC\nName=${headerName}\nPath=\nView=-5.46349942062574 0 15.4634994206257 10\nGridShow=True\nGridSnap=True\nTimeSpan=0 86400\nTimeInc=36\nMaxGraph=0\nRunoffMethod=SCS TR-20\nReachMethod=Stor-Ind+Trans\nPondMethod=Stor-Ind\nUH=SCS\nMinTc=300\nRainEvent=test\n\n[EVENT]\nRainEvent=test\nStormType=Type II 24-hr\nStormDepth=0.0833333333333333\n`;
 
   let y = 0;
-  Object.entries(grouped).forEach(([da, areas]) => {
-    content += `\n[NODE]\nNumber=${da}\nType=Subcat\nName=${da}\nXYPos=0 ${y}\n`;
-    areas.forEach(area => {
-      content += `[AREA]\nArea=${area.area}\nCN=${area.cn}\n`;
-      if (area.desc) content += `Desc=${area.desc}\n`;
-    });
+  subcatchments.forEach(subcatchment => {
+    const nodeId = sanitizeNodeId(`${subcatchment.parent}_${subcatchment.name}`);
+    content += `\n[NODE]\nNumber=${nodeId}\nType=Subcat\nName=${subcatchment.name}\nXYPos=0 ${y}\n`;
+    content += `[AREA]\nArea=${subcatchment.areaAc}\nCN=${subcatchment.cn}\nDesc=DP ${subcatchment.parent}\n`;
     content += `[TC]\nMethod=Direct\nTc=300\n`;
     y += 5;
   });
@@ -1436,11 +1537,14 @@ const App: React.FC = () => {
         addLog(`Overlay created with ${overlay.length} features`);
 
         try {
-          const grouped = aggregateOverlayForHydroCAD(overlay);
-          if (Object.keys(grouped).length === 0) {
-            throw new Error('No hay combinaciones válidas de CN para generar HydroCAD.');
+          const subcatchments = aggregateSubcatchmentsForHydroCAD(
+            processedSubareas,
+            overlay
+          );
+          if (subcatchments.length === 0) {
+            throw new Error('No hay subáreas válidas para generar HydroCAD.');
           }
-          const content = buildHydroCADContent(grouped, projectName);
+          const content = buildHydroCADContent(subcatchments, projectName);
           triggerHydroCADDownload(content, projectName, projectVersion);
           setComputeTasks(prev =>
             prev.map(t => (t.id === 'hydrocad' ? { ...t, status: 'success' } : t))
@@ -1496,12 +1600,36 @@ const App: React.FC = () => {
       addLog('Overlay layer not found', 'error');
       return;
     }
-    const grouped = aggregateOverlayForHydroCAD(overlayLayer.geojson.features);
-    if (Object.keys(grouped).length === 0) {
-      addLog('Overlay layer is missing CN data required for HydroCAD export.', 'error');
+    const processedSubareasLayer = layers.find(
+      l => l.name === PROCESSED_SUBAREA_LAYER_NAME
+    );
+    if (!processedSubareasLayer) {
+      addLog(
+        'No se encontró la capa de subáreas procesadas requerida para HydroCAD.',
+        'error'
+      );
       return;
     }
-    const content = buildHydroCADContent(grouped, projectName);
+
+    let subcatchments: HydroCADSubcatchment[] = [];
+    try {
+      subcatchments = aggregateSubcatchmentsForHydroCAD(
+        processedSubareasLayer.geojson.features,
+        overlayLayer.geojson.features
+      );
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      addLog(`No se pudo preparar la exportación de HydroCAD: ${reason}`, 'error');
+      return;
+    }
+    if (subcatchments.length === 0) {
+      addLog(
+        'No se pudieron generar subcatchments válidos para HydroCAD a partir del overlay.',
+        'error'
+      );
+      return;
+    }
+    const content = buildHydroCADContent(subcatchments, projectName);
     triggerHydroCADDownload(content, projectName, projectVersion);
     addLog('HydroCAD file exported');
     setExportModalOpen(false);
