@@ -19,7 +19,7 @@ import LayerPreview from './components/LayerPreview';
 import ComputeModal, { ComputeTask } from './components/ComputeModal';
 import ExportModal from './components/ExportModal';
 import FieldMapModal from './components/FieldMapModal';
-import { loadLandCoverList, loadCnValues, CnRecord } from './utils/landcover';
+import { loadCnValues, saveCnValues, CnRecord } from './utils/landcover';
 import { prepareForShapefile } from './utils/shp';
 import proj4 from 'proj4';
 import { STATE_PLANE_OPTIONS } from './utils/projections';
@@ -32,6 +32,7 @@ import {
   createOverallDrainageArea,
 } from './utils/layerTransforms';
 import ScsStatusPanel, { ScsLayerStatus } from './components/ScsStatusPanel';
+import CnTableModal from './components/CnTableModal';
 
 const SUBAREA_LAYER_NAME = 'Drainage Subareas';
 const OVERALL_DRAINAGE_LAYER_NAME = 'Overall Drainage Area';
@@ -327,6 +328,29 @@ const aggregateOverlayForHydroCAD = (
     });
 };
 
+const normalizeLandCover = (value: unknown): string => {
+  if (typeof value === 'string') return value.trim();
+  if (value === null || value === undefined) return '';
+  return String(value).trim();
+};
+
+const sanitizeCnNumber = (value: unknown): number => {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : 0;
+  }
+  const num = Number(value);
+  return Number.isFinite(num) ? num : 0;
+};
+
+const normalizeCnRecords = (records: CnRecord[]): CnRecord[] =>
+  records.map(record => ({
+    LandCover: normalizeLandCover(record?.LandCover),
+    A: sanitizeCnNumber((record as any)?.A),
+    B: sanitizeCnNumber((record as any)?.B),
+    C: sanitizeCnNumber((record as any)?.C),
+    D: sanitizeCnNumber((record as any)?.D),
+  }));
+
 const buildHydroCADContent = (
   subcatchments: HydroCADSubcatchment[],
   projectName: string
@@ -384,6 +408,9 @@ const App: React.FC = () => {
   }>({ layerId: null, featureIndex: null });
   const [editingBackup, setEditingBackup] = useState<{ layerId: string; geojson: FeatureCollection } | null>(null);
   const [landCoverOptions, setLandCoverOptions] = useState<string[]>([]);
+  const [cnValues, setCnValues] = useState<CnRecord[]>([]);
+  const [cnValuesLoaded, setCnValuesLoaded] = useState<boolean>(false);
+  const [cnTableOpen, setCnTableOpen] = useState<boolean>(false);
   const [previewLayer, setPreviewLayer] = useState<{
     data: FeatureCollection;
     fileName: string;
@@ -403,6 +430,17 @@ const App: React.FC = () => {
   const autoOverlaySignatureRef = useRef<string | null>(null);
 
   const project = useMemo(() => proj4('EPSG:4326', projection.proj4), [projection]);
+
+  const cnValueIndex = useMemo(() => {
+    const map = new Map<string, CnRecord>();
+    cnValues.forEach(record => {
+      const name = normalizeLandCover(record.LandCover);
+      if (!name) return;
+      map.set(name, record);
+      map.set(name.toLowerCase(), record);
+    });
+    return map;
+  }, [cnValues]);
 
   const drainageAreasLayer = useMemo(
     () => layers.find(l => l.name === 'Drainage Areas') ?? null,
@@ -556,7 +594,7 @@ const App: React.FC = () => {
     [scsLayerStatuses]
   );
 
-  const computeEnabled = scsReady;
+  const computeEnabled = scsReady && cnValueIndex.size > 0;
 
   const cbLayer = layers.find(l => l.name === 'Catch Basins / Manholes');
   const pipesLayer = layers.find(l => l.name === 'Pipes');
@@ -571,6 +609,7 @@ const App: React.FC = () => {
     (computeSucceeded || pipe3DEnabled) && projectionConfirmed;
   const exportSWMMEnabled = (computeSucceeded || pipe3DEnabled) && projectionConfirmed;
   const exportEnabled = computeSucceeded || pipe3DEnabled;
+  const curveNumbersEnabled = cnValuesLoaded;
 
   const splitPipesAtNodes = (
     pipes: Feature<LineString>[],
@@ -613,8 +652,39 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    loadLandCoverList().then(list => setLandCoverOptions(list));
-  }, []);
+    let cancelled = false;
+    (async () => {
+      try {
+        const records = await loadCnValues();
+        if (cancelled) return;
+        setCnValues(normalizeCnRecords(records));
+      } catch (err) {
+        console.error('Failed to load CN values', err);
+        if (!cancelled) {
+          addLog('No se pudieron cargar los valores de Curve Number.', 'error');
+          setCnValues([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setCnValuesLoaded(true);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [addLog]);
+
+  useEffect(() => {
+    const unique = Array.from(
+      new Set(
+        cnValues
+          .map(record => normalizeLandCover(record.LandCover))
+          .filter(name => name !== '')
+      )
+    ).sort((a, b) => a.localeCompare(b));
+    setLandCoverOptions(unique);
+  }, [cnValues]);
 
   useEffect(() => {
     if (!landCoverOptions.length) return;
@@ -689,10 +759,9 @@ const App: React.FC = () => {
 
     const buildOverlay = async () => {
       try {
-        const cnRecords = await loadCnValues();
         if (cancelled) return;
 
-        const cnMap = new Map(cnRecords.map(record => [record.LandCover, record]));
+        const cnMap = cnValueIndex;
         const intersectFeatures = (a: Feature | any, b: Feature | any) =>
           turfIntersect({
             type: 'FeatureCollection',
@@ -826,6 +895,7 @@ const App: React.FC = () => {
     subareasLayer,
     layers,
     addLog,
+    cnValueIndex,
   ]);
 
   useEffect(() => {
@@ -1246,6 +1316,42 @@ const App: React.FC = () => {
     setMappingLayer(null);
   }, []);
 
+  const handleOpenCnTable = useCallback(() => {
+    setCnTableOpen(true);
+  }, []);
+
+  const handleCloseCnTable = useCallback(() => {
+    setCnTableOpen(false);
+  }, []);
+
+  const handleSaveCnTable = useCallback(
+    async (records: CnRecord[]) => {
+      const sanitized = normalizeCnRecords(records);
+      const seen = new Set<string>();
+      const duplicates: string[] = [];
+      sanitized.forEach(record => {
+        const name = normalizeLandCover(record.LandCover);
+        if (!name) return;
+        const key = name.toLowerCase();
+        if (seen.has(key)) {
+          duplicates.push(name);
+        } else {
+          seen.add(key);
+        }
+      });
+      if (duplicates.length > 0) {
+        throw new Error(
+          `Land Cover duplicados detectados: ${Array.from(new Set(duplicates)).join(', ')}`
+        );
+      }
+      await saveCnValues(sanitized);
+      setCnValues(sanitized);
+      addLog('Tabla de Curve Numbers actualizada.');
+      setCnTableOpen(false);
+    },
+    [addLog]
+  );
+
   const runCompute = useCallback(async () => {
     setComputeSucceeded(false);
     const da = layers.find(l => l.name === 'Drainage Areas');
@@ -1647,14 +1753,16 @@ const App: React.FC = () => {
         });
       });
 
-      const cnRecords = await loadCnValues();
-      const cnMap = new Map(cnRecords.map(r => [r.LandCover, r]));
+      const cnMap = cnValueIndex;
+      if (cnMap.size === 0) {
+        throw new Error('No hay valores de Curve Number configurados.');
+      }
       overlay.forEach(f => {
         const lcNameRaw = (f.properties as any)?.LAND_COVER;
-        const lcName = lcNameRaw == null ? null : String(lcNameRaw);
+        const lcName = normalizeLandCover(lcNameRaw);
         const hsgRaw = (f.properties as any)?.HSG;
         const hsg = hsgRaw == null ? null : String(hsgRaw).toUpperCase();
-        const rec = lcName ? cnMap.get(lcName) : undefined;
+        const rec = lcName ? cnMap.get(lcName) ?? cnMap.get(lcName.toLowerCase()) : undefined;
         const cnValue = rec && hsg ? (rec as any)[hsg as keyof CnRecord] : undefined;
         if (cnValue !== undefined) {
           f.properties = { ...(f.properties || {}), CN: cnValue };
@@ -1744,7 +1852,7 @@ const App: React.FC = () => {
       );
       addLog('Processing failed', 'error');
     }
-  }, [layers, setLayers, addLog, projectName, projectVersion]);
+  }, [layers, setLayers, addLog, projectName, projectVersion, cnValueIndex]);
 
   const handleCompute = useCallback(() => {
     runCompute();
@@ -2971,6 +3079,8 @@ const App: React.FC = () => {
         onCompute={handleCompute}
         exportEnabled={exportEnabled}
         onExport={() => setExportModalOpen(true)}
+        onManageCurveNumbers={handleOpenCnTable}
+        curveNumbersEnabled={curveNumbersEnabled}
         onView3D={handleView3D}
         view3DEnabled={pipe3DEnabled}
         projectName={projectName}
@@ -3058,6 +3168,13 @@ const App: React.FC = () => {
           }}
           onProjectionConfirm={() => setProjectionConfirmed(true)}
           projectionConfirmed={projectionConfirmed}
+        />
+      )}
+      {cnTableOpen && (
+        <CnTableModal
+          records={cnValues}
+          onClose={handleCloseCnTable}
+          onSave={handleSaveCnTable}
         />
       )}
       {mappingLayer && (
