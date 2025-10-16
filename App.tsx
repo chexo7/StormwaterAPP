@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import type {
   FeatureCollection,
   Feature,
@@ -36,6 +36,7 @@ import ScsStatusPanel, { ScsLayerStatus } from './components/ScsStatusPanel';
 const SUBAREA_LAYER_NAME = 'Drainage Subareas';
 const OVERALL_DRAINAGE_LAYER_NAME = 'Overall Drainage Area';
 const PROCESSED_SUBAREA_LAYER_NAME = 'Drainage Subareas (Computed)';
+const AUTO_OVERLAY_LAYER_NAME = 'Overlay (Auto)';
 const DA_NAME_ATTR = 'DA_NAME';
 const SUBAREA_NAME_ATTR = 'SUBAREA_NAME';
 const SUBAREA_PARENT_ATTR = 'PARENT_DA';
@@ -54,6 +55,7 @@ const DEFAULT_COLORS: Record<string, string> = {
   'Soil Layer from Web Soil Survey': '#8b4513',
   [PROCESSED_SUBAREA_LAYER_NAME]: '#38bdf8',
   Overlay: '#f97316',
+  [AUTO_OVERLAY_LAYER_NAME]: '#f97316',
 };
 const DEFAULT_OPACITY = 0.5;
 
@@ -393,6 +395,7 @@ const App: React.FC = () => {
   const [exportModalOpen, setExportModalOpen] = useState<boolean>(false);
   const [projection, setProjection] = useState<ProjectionOption>(STATE_PLANE_OPTIONS[0]);
   const [projectionConfirmed, setProjectionConfirmed] = useState<boolean>(false);
+  const autoOverlaySignatureRef = useRef<string | null>(null);
 
   const project = useMemo(() => proj4('EPSG:4326', projection.proj4), [projection]);
 
@@ -656,6 +659,169 @@ const App: React.FC = () => {
     const interval = setInterval(fetchBackendLogs, 3000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (!scsReady) {
+      if (
+        autoOverlaySignatureRef.current !== null ||
+        layers.some(l => l.name === AUTO_OVERLAY_LAYER_NAME)
+      ) {
+        autoOverlaySignatureRef.current = null;
+        setLayers(prev => {
+          const hasAuto = prev.some(l => l.name === AUTO_OVERLAY_LAYER_NAME);
+          if (!hasAuto) return prev;
+          return prev.filter(l => l.name !== AUTO_OVERLAY_LAYER_NAME);
+        });
+      }
+      return;
+    }
+
+    if (!soilsLayer || !landCoverLayer || !subareasLayer) return;
+    const overallFeature = getOverallDrainageFeature(layers);
+    if (!overallFeature) return;
+
+    let cancelled = false;
+
+    const buildOverlay = async () => {
+      try {
+        const cnRecords = await loadCnValues();
+        if (cancelled) return;
+
+        const cnMap = new Map(cnRecords.map(record => [record.LandCover, record]));
+        const intersectFeatures = (a: Feature | any, b: Feature | any) =>
+          turfIntersect({
+            type: 'FeatureCollection',
+            features: [a, b],
+          } as any);
+
+        const clippedWss = clipCollectionToOverall(soilsLayer.geojson, overallFeature);
+        const clippedLc = clipCollectionToOverall(landCoverLayer.geojson, overallFeature);
+        const clippedSub = clipCollectionToOverall(subareasLayer.geojson, overallFeature);
+
+        const overlayFeatures: Feature[] = [];
+
+        clippedWss.features.forEach(wssFeature => {
+          if (!wssFeature.geometry || !isPolygonLike(wssFeature as Feature)) return;
+
+          clippedLc.features.forEach(lcFeature => {
+            if (!lcFeature.geometry || !isPolygonLike(lcFeature as Feature)) return;
+
+            const inter1 = intersectFeatures(wssFeature as any, lcFeature as any);
+            if (!inter1 || !inter1.geometry || !isPolygonLike(inter1 as Feature)) return;
+
+            const baseProps: Record<string, unknown> = {
+              ...(wssFeature.properties || {}),
+              ...(lcFeature.properties || {}),
+            };
+
+            const lcNameRaw = (baseProps as any).LAND_COVER;
+            const hsgRaw = (baseProps as any).HSG ?? (wssFeature.properties as any)?.HSG;
+            if (lcNameRaw != null) {
+              const lcName = String(lcNameRaw);
+              const rec = cnMap.get(lcName);
+              if (rec && hsgRaw != null) {
+                const hsg = String(hsgRaw).trim().toUpperCase();
+                if (hsg === 'A' || hsg === 'B' || hsg === 'C' || hsg === 'D') {
+                  const cnValue = rec[hsg as keyof CnRecord];
+                  if (typeof cnValue === 'number' && Number.isFinite(cnValue)) {
+                    (baseProps as any).CN = cnValue;
+                  }
+                }
+              }
+            }
+
+            clippedSub.features.forEach(subFeature => {
+              if (!subFeature.geometry || !isPolygonLike(subFeature as Feature)) return;
+              const inter2 = intersectFeatures(inter1 as any, subFeature as any);
+              if (!inter2 || !inter2.geometry || !isPolygonLike(inter2 as Feature)) return;
+
+              const areaSqM = turfArea(inter2 as any);
+              if (!Number.isFinite(areaSqM) || areaSqM <= AREA_TOLERANCE_SQM) return;
+
+              inter2.properties = {
+                ...baseProps,
+                ...(subFeature.properties || {}),
+                AREA_SF: Number((areaSqM * SQM_TO_SQFT).toFixed(2)),
+                AREA_AC: Number((areaSqM * SQM_TO_ACRES).toFixed(6)),
+              };
+
+              overlayFeatures.push(inter2 as Feature);
+            });
+          });
+        });
+
+        if (cancelled) return;
+
+        if (overlayFeatures.length === 0) {
+          if (
+            autoOverlaySignatureRef.current !== null ||
+            layers.some(l => l.name === AUTO_OVERLAY_LAYER_NAME)
+          ) {
+            autoOverlaySignatureRef.current = null;
+            setLayers(prev => prev.filter(l => l.name !== AUTO_OVERLAY_LAYER_NAME));
+            addLog('No se generaron intersecciones SCS automáticamente.', 'warn');
+          }
+          return;
+        }
+
+        const signature = JSON.stringify(
+          overlayFeatures.map(feature => ({
+            geometry: feature.geometry,
+            properties: feature.properties,
+          }))
+        );
+
+        const existingAuto = layers.find(l => l.name === AUTO_OVERLAY_LAYER_NAME);
+        if (existingAuto && autoOverlaySignatureRef.current === signature) {
+          return;
+        }
+
+        autoOverlaySignatureRef.current = signature;
+        const overlayGeojson: FeatureCollection = {
+          type: 'FeatureCollection',
+          features: overlayFeatures,
+        };
+
+        setLayers(prev => {
+          const withoutAuto = prev.filter(l => l.name !== AUTO_OVERLAY_LAYER_NAME);
+          const hidden = withoutAuto.map(layer =>
+            layer.visible ? { ...layer, visible: false } : layer
+          );
+          const overlayLayer: LayerData = {
+            id: `${Date.now()}-${AUTO_OVERLAY_LAYER_NAME}`,
+            name: AUTO_OVERLAY_LAYER_NAME,
+            geojson: overlayGeojson,
+            editable: false,
+            visible: true,
+            fillColor: getDefaultColor(AUTO_OVERLAY_LAYER_NAME),
+            fillOpacity: DEFAULT_OPACITY,
+            category: 'Process',
+          };
+          return [...hidden, overlayLayer];
+        });
+
+        addLog(
+          `Capa ${AUTO_OVERLAY_LAYER_NAME} generada con ${overlayFeatures.length} polígonos.`,
+          'info'
+        );
+      } catch (error) {
+        console.error('Failed to generar la intersección automática SCS', error);
+      }
+    };
+
+    buildOverlay();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    scsReady,
+    soilsLayer,
+    landCoverLayer,
+    subareasLayer,
+    layers,
+    addLog,
+  ]);
 
   useEffect(() => {
     if (!computeTasks) return;
