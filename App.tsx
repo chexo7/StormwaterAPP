@@ -78,30 +78,40 @@ const ensureOverallDrainageAreaLayer = (
 
   if (!overallGeojson.features.length) {
     if (existingIndex === -1) return layers;
-    const next = layers.filter(layer => layer.name !== OVERALL_DRAINAGE_LAYER_NAME);
-    return next;
+    return layers.filter(layer => layer.name !== OVERALL_DRAINAGE_LAYER_NAME);
   }
 
-  if (existingIndex === -1) {
-    const newLayer: LayerData = {
-      id: `${Date.now()}-${OVERALL_DRAINAGE_LAYER_NAME}`,
-      name: OVERALL_DRAINAGE_LAYER_NAME,
-      geojson: overallGeojson,
-      editable: false,
-      visible: true,
-      fillColor: getDefaultColor(OVERALL_DRAINAGE_LAYER_NAME),
-      fillOpacity: DEFAULT_OPACITY,
-      category: 'Derived',
-    };
-    return [...layers, newLayer];
+  const withoutOverall = layers.filter(
+    layer => layer.name !== OVERALL_DRAINAGE_LAYER_NAME
+  );
+  const daIndex = withoutOverall.findIndex(layer => layer.name === 'Drainage Areas');
+
+  const existingLayer =
+    existingIndex !== -1 ? layers[existingIndex] : null;
+
+  const nextLayer: LayerData = existingLayer
+    ? {
+        ...existingLayer,
+        geojson: overallGeojson,
+      }
+    : {
+        id: `${Date.now()}-${OVERALL_DRAINAGE_LAYER_NAME}`,
+        name: OVERALL_DRAINAGE_LAYER_NAME,
+        geojson: overallGeojson,
+        editable: false,
+        visible: true,
+        fillColor: getDefaultColor(OVERALL_DRAINAGE_LAYER_NAME),
+        fillOpacity: DEFAULT_OPACITY,
+        category: 'Derived',
+      };
+
+  if (daIndex === -1) {
+    return [...withoutOverall, nextLayer];
   }
 
-  const updated = [...layers];
-  updated[existingIndex] = {
-    ...updated[existingIndex],
-    geojson: overallGeojson,
-  };
-  return updated;
+  const nextLayers = [...withoutOverall];
+  nextLayers.splice(daIndex + 1, 0, nextLayer);
+  return nextLayers;
 };
 
 const isPolygonLike = (

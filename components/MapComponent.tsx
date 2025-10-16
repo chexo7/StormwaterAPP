@@ -103,6 +103,11 @@ const appendSmartSelect = ({
     onChange(newVal);
   });
 
+  L.DomEvent.disableClickPropagation(row);
+  L.DomEvent.disableScrollPropagation(row);
+  L.DomEvent.disableClickPropagation(select);
+  L.DomEvent.disableScrollPropagation(select);
+
   return select;
 };
 
@@ -303,7 +308,7 @@ const ManagedGeoJsonLayer = ({
             .map(f => formatDischargePointName((f.properties as any)?.DA_NAME))
             .filter(n => n && n !== currentValue)
         );
-        const dpOptions = Array.from({ length: 20 }, (_, i) => i + 1).map(num => ({
+        const dpOptions = Array.from({ length: 10 }, (_, i) => i + 1).map(num => ({
           value: formatDischargePointName(num),
           label: String(num),
         }));
@@ -343,6 +348,19 @@ const ManagedGeoJsonLayer = ({
             })
             .filter(name => name && name !== currentSubName)
         );
+        const maybeClosePopup = () => {
+          const nameFilled = (feature.properties!.SUBAREA_NAME || '').trim() !== '';
+          const parentFilled = (feature.properties!.PARENT_DA || '').trim() !== '';
+          if (nameFilled && parentFilled) {
+            setTimeout(() => {
+              const leafletLayer = layer as any;
+              if (leafletLayer && typeof leafletLayer.closePopup === 'function') {
+                leafletLayer.closePopup();
+              }
+            }, 0);
+          }
+        };
+
         appendSmartSelect({
           parent: propsDiv,
           label: 'Drainage Area Nombre:',
@@ -356,6 +374,7 @@ const ManagedGeoJsonLayer = ({
             const idx = data.features.indexOf(feature);
             onUpdateFeatureSubareaName?.(id, idx, newVal);
             feature.properties!.SUBAREA_NAME = newVal;
+            maybeClosePopup();
           },
         });
 
@@ -373,6 +392,7 @@ const ManagedGeoJsonLayer = ({
             const idx = data.features.indexOf(feature);
             onUpdateFeatureSubareaParent?.(id, idx, newVal);
             feature.properties!.PARENT_DA = newVal;
+            maybeClosePopup();
           },
         });
       }
@@ -622,7 +642,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
   const mapRef = useRef<L.Map | null>(null);
 
   const subareaNameOptions = useMemo(
-    () => Array.from({ length: 20 }, (_, i) => `DRAINAGE AREA - ${i + 1}`),
+    () => Array.from({ length: 10 }, (_, i) => `DRAINAGE AREA - ${i + 1}`),
     []
   );
 
@@ -640,7 +660,9 @@ const MapComponent: React.FC<MapComponentProps> = ({
       options.push({ value: formatted, label: `${num} (${formatted})`, num });
     });
     options.sort((a, b) => a.num - b.num);
-    return options.map(({ value, label }) => ({ value, label }));
+    return options
+      .slice(0, 10)
+      .map(({ value, label }) => ({ value, label }));
   }, [layers]);
 
   useEffect(() => {
