@@ -1646,7 +1646,10 @@ const App: React.FC = () => {
 
         normalizedSubs.forEach(subFeature => {
           if (!remainderGeom) return;
-          const diff = turfDifference(remainderGeom as any, subFeature as any);
+          const diff = turfDifference({
+            type: 'FeatureCollection',
+            features: [remainderGeom as any, subFeature as any],
+          } as FeatureCollection);
           remainderGeom = diff && diff.geometry
             ? (diff as Feature<Polygon | MultiPolygon>)
             : null;
