@@ -19,7 +19,9 @@ import LayerPreview from './components/LayerPreview';
 import ComputeModal, { ComputeTask } from './components/ComputeModal';
 import ExportModal from './components/ExportModal';
 import FieldMapModal from './components/FieldMapModal';
-import { loadLandCoverList, loadCnValues, CnRecord } from './utils/landcover';
+import CnTableModal from './components/CnTableModal';
+import type { CnRecord } from './utils/landcover';
+import { createCnLookup, extractLandCoverOptions } from './utils/landcover';
 import { prepareForShapefile } from './utils/shp';
 import proj4 from 'proj4';
 import { STATE_PLANE_OPTIONS } from './utils/projections';
@@ -185,46 +187,47 @@ type HydroCADSubcatchment = {
   areas: HydroCADAreaGroup[];
 };
 
+const resolveSubareaName = (rawName: unknown, fallback: string): string => {
+  if (rawName === undefined || rawName === null) return fallback;
+  const value = String(rawName).trim();
+  return value === '' ? fallback : value;
+};
+
+const getSubareaKey = (rawName: unknown, fallback: string): string =>
+  resolveSubareaName(rawName, fallback).toLowerCase();
+
 const aggregateOverlayForHydroCAD = (
   features: Feature[],
   subareas: Feature<Polygon | MultiPolygon>[]
 ): HydroCADSubcatchment[] => {
   type SubareaAggregate = {
     name: string;
-    parent: string | null;
     order: number;
+    parents: Set<string>;
     groups: Map<string, HydroCADAreaGroup>;
   };
 
   const aggregates = new Map<string, SubareaAggregate>();
 
-  const normalizeName = (value: string, fallback: string) => {
-    const trimmed = value.trim();
-    return trimmed === '' ? fallback : trimmed;
-  };
-
-  const makeKey = (name: string, parent: string | null) =>
-    `${parent ?? ''}|${name.toLowerCase()}`;
-
   const ensureAggregate = (
-    rawName: string,
+    rawName: unknown,
     fallbackName: string,
     order: number,
-    parentRaw: string | null
+    parentRaw: unknown
   ): SubareaAggregate => {
-    const parent = parentRaw ? formatDischargePointName(parentRaw) : null;
-    const name = normalizeName(rawName, fallbackName);
-    const key = makeKey(name, parent);
+    const name = resolveSubareaName(rawName, fallbackName);
+    const key = name.toLowerCase();
+    const parentValue = parentRaw ? formatDischargePointName(parentRaw) : '';
     const existing = aggregates.get(key);
     if (existing) {
-      if (!existing.parent && parent) existing.parent = parent;
+      if (parentValue) existing.parents.add(parentValue);
       if (order < existing.order) existing.order = order;
       return existing;
     }
     const aggregate: SubareaAggregate = {
       name,
-      parent,
       order,
+      parents: parentValue ? new Set([parentValue]) : new Set(),
       groups: new Map(),
     };
     aggregates.set(key, aggregate);
@@ -236,12 +239,7 @@ const aggregateOverlayForHydroCAD = (
     const rawName = (props as any)[SUBAREA_NAME_ATTR];
     const fallback = `Subarea ${index + 1}`;
     const parentRaw = (props as any)[SUBAREA_PARENT_ATTR] ?? null;
-    ensureAggregate(
-      rawName == null ? '' : String(rawName),
-      fallback,
-      index,
-      parentRaw == null ? null : String(parentRaw)
-    );
+    ensureAggregate(rawName, fallback, index, parentRaw);
   });
 
   features.forEach((feature, idx) => {
@@ -251,10 +249,10 @@ const aggregateOverlayForHydroCAD = (
     const fallback = `Subarea ${subareas.length + idx + 1}`;
     const parentRaw = (feature.properties as any)[SUBAREA_PARENT_ATTR] ?? null;
     const aggregate = ensureAggregate(
-      rawName == null ? '' : String(rawName),
+      rawName,
       fallback,
       subareas.length + idx,
-      parentRaw == null ? null : String(parentRaw)
+      parentRaw
     );
 
     const cnRaw = (feature.properties as any)?.CN;
@@ -310,16 +308,25 @@ const aggregateOverlayForHydroCAD = (
 
   return Array.from(aggregates.values())
     .sort((a, b) => a.order - b.order)
-    .map((aggregate, index) => ({
-      id: sanitizeId(aggregate.name, aggregate.parent, index),
-      name: aggregate.name,
-      parentDa: aggregate.parent,
-      areas: Array.from(aggregate.groups.values()).map(item => ({
-        area: Number(item.area.toFixed(2)),
-        cn: item.cn,
-        desc: item.desc,
-      })),
-    }));
+    .map((aggregate, index) => {
+      const parentLabel =
+        aggregate.parents.size > 0
+          ? Array.from(aggregate.parents)
+              .filter(Boolean)
+              .sort((a, b) => a.localeCompare(b))
+              .join(', ')
+          : null;
+      return {
+        id: sanitizeId(aggregate.name, parentLabel, index),
+        name: aggregate.name,
+        parentDa: parentLabel,
+        areas: Array.from(aggregate.groups.values()).map(item => ({
+          area: Number(item.area.toFixed(2)),
+          cn: item.cn,
+          desc: item.desc,
+        })),
+      };
+    });
 };
 
 const buildHydroCADContent = (
@@ -378,7 +385,8 @@ const App: React.FC = () => {
     featureIndex: number | null;
   }>({ layerId: null, featureIndex: null });
   const [editingBackup, setEditingBackup] = useState<{ layerId: string; geojson: FeatureCollection } | null>(null);
-  const [landCoverOptions, setLandCoverOptions] = useState<string[]>([]);
+  const [cnRecords, setCnRecords] = useState<CnRecord[]>([]);
+  const [cnTableOpen, setCnTableOpen] = useState(false);
   const [previewLayer, setPreviewLayer] = useState<{
     data: FeatureCollection;
     fileName: string;
@@ -608,8 +616,37 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    loadLandCoverList().then(list => setLandCoverOptions(list));
-  }, []);
+    let cancelled = false;
+    const fetchCnTable = async () => {
+      try {
+        const res = await fetch('/api/cn-table');
+        if (!res.ok) {
+          throw new Error(`status ${res.status}`);
+        }
+        const data = (await res.json()) as CnRecord[];
+        if (!cancelled) {
+          setCnRecords(data);
+        }
+      } catch (err) {
+        console.error('Failed to load CN table', err);
+        if (!cancelled) {
+          addLog('No se pudo cargar la tabla de Curve Numbers desde el servidor.', 'warn');
+        }
+      }
+    };
+
+    fetchCnTable();
+    return () => {
+      cancelled = true;
+    };
+  }, [addLog]);
+
+  const landCoverOptions = useMemo(
+    () => extractLandCoverOptions(cnRecords),
+    [cnRecords]
+  );
+
+  const cnLookup = useMemo(() => createCnLookup(cnRecords), [cnRecords]);
 
   useEffect(() => {
     if (!landCoverOptions.length) return;
@@ -682,12 +719,20 @@ const App: React.FC = () => {
 
     let cancelled = false;
 
-    const buildOverlay = async () => {
+    const buildOverlay = () => {
       try {
-        const cnRecords = await loadCnValues();
-        if (cancelled) return;
+        if (cnRecords.length === 0) {
+          if (
+            autoOverlaySignatureRef.current !== null ||
+            layers.some(l => l.name === AUTO_OVERLAY_LAYER_NAME)
+          ) {
+            autoOverlaySignatureRef.current = null;
+            setLayers(prev => prev.filter(l => l.name !== AUTO_OVERLAY_LAYER_NAME));
+          }
+          return;
+        }
 
-        const cnMap = new Map(cnRecords.map(record => [record.LandCover, record]));
+        const cnMap = cnLookup;
         const intersectFeatures = (a: Feature | any, b: Feature | any) =>
           turfIntersect({
             type: 'FeatureCollection',
@@ -718,7 +763,7 @@ const App: React.FC = () => {
             const hsgRaw = (baseProps as any).HSG ?? (wssFeature.properties as any)?.HSG;
             if (lcNameRaw != null) {
               const lcName = String(lcNameRaw);
-              const rec = cnMap.get(lcName);
+              const rec = cnMap.get(lcName.trim().toLowerCase());
               if (rec && hsgRaw != null) {
                 const hsg = String(hsgRaw).trim().toUpperCase();
                 if (hsg === 'A' || hsg === 'B' || hsg === 'C' || hsg === 'D') {
@@ -821,6 +866,8 @@ const App: React.FC = () => {
     subareasLayer,
     layers,
     addLog,
+    cnRecords,
+    cnLookup,
   ]);
 
   useEffect(() => {
@@ -1241,6 +1288,53 @@ const App: React.FC = () => {
     setMappingLayer(null);
   }, []);
 
+  const handleOpenCnTable = useCallback(() => {
+    setCnTableOpen(true);
+  }, []);
+
+  const handleCloseCnTable = useCallback(() => {
+    setCnTableOpen(false);
+  }, []);
+
+  const handleSaveCnTable = useCallback(
+    async (records: CnRecord[]) => {
+      let response: Response;
+      try {
+        response = await fetch('/api/cn-table', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(records),
+        });
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        throw new Error(`No se pudo guardar la tabla de Curve Numbers: ${reason}`);
+      }
+
+      if (!response.ok) {
+        const raw = await response.text();
+        let message = raw.trim();
+        if (message) {
+          try {
+            const parsed = JSON.parse(message);
+            if (parsed && typeof parsed.error === 'string') {
+              message = parsed.error;
+            }
+          } catch {
+            // keep raw message
+          }
+        } else {
+          message = `Estado ${response.status}`;
+        }
+        throw new Error(`No se pudo guardar la tabla de Curve Numbers: ${message}`);
+      }
+
+      const updated = (await response.json()) as CnRecord[];
+      setCnRecords(updated);
+      addLog('Tabla de Curve Number actualizada correctamente.', 'info');
+    },
+    [addLog]
+  );
+
   const runCompute = useCallback(async () => {
     setComputeSucceeded(false);
     const da = layers.find(l => l.name === 'Drainage Areas');
@@ -1376,6 +1470,21 @@ const App: React.FC = () => {
     if (!da || !sub || !wss || !lc) {
       setComputeTasks(prev => prev.map(t => ({ ...t, status: 'error' })));
       addLog('Required layers are missing for computation', 'error');
+      return;
+    }
+
+    if (cnRecords.length === 0) {
+      setComputeTasks(prev =>
+        prev.map(t =>
+          t.id === 'prepare_subareas' || t.id === 'overlay' || t.id === 'hydrocad'
+            ? { ...t, status: 'error' }
+            : t
+        )
+      );
+      addLog(
+        'No hay valores de Curve Number configurados. Ajusta la tabla de CN antes de ejecutar.',
+        'error'
+      );
       return;
     }
 
@@ -1642,14 +1751,12 @@ const App: React.FC = () => {
         });
       });
 
-      const cnRecords = await loadCnValues();
-      const cnMap = new Map(cnRecords.map(r => [r.LandCover, r]));
       overlay.forEach(f => {
         const lcNameRaw = (f.properties as any)?.LAND_COVER;
         const lcName = lcNameRaw == null ? null : String(lcNameRaw);
         const hsgRaw = (f.properties as any)?.HSG;
         const hsg = hsgRaw == null ? null : String(hsgRaw).toUpperCase();
-        const rec = lcName ? cnMap.get(lcName) : undefined;
+        const rec = lcName ? cnLookup.get(lcName.trim().toLowerCase()) : undefined;
         const cnValue = rec && hsg ? (rec as any)[hsg as keyof CnRecord] : undefined;
         if (cnValue !== undefined) {
           f.properties = { ...(f.properties || {}), CN: cnValue };
@@ -1688,11 +1795,8 @@ const App: React.FC = () => {
             processedSubareas.map((subFeature, index) => {
               const props = subFeature.properties || {};
               const rawName = (props as any)[SUBAREA_NAME_ATTR];
-              const name = rawName == null ? '' : String(rawName).trim();
-              const parentRaw = (props as any)[SUBAREA_PARENT_ATTR];
-              const parent = parentRaw == null ? '' : formatDischargePointName(parentRaw) || '';
-              const resolvedName = name === '' ? `Subarea ${index + 1}` : name;
-              return `${parent}|${resolvedName}`;
+              const fallback = `Subarea ${index + 1}`;
+              return getSubareaKey(rawName, fallback);
             })
           ).size;
           if (subcatchments.length < expectedCount) {
@@ -1742,7 +1846,15 @@ const App: React.FC = () => {
       );
       addLog('Processing failed', 'error');
     }
-  }, [layers, setLayers, addLog, projectName, projectVersion]);
+  }, [
+    layers,
+    setLayers,
+    addLog,
+    projectName,
+    projectVersion,
+    cnRecords,
+    cnLookup,
+  ]);
 
   const handleCompute = useCallback(() => {
     runCompute();
@@ -1783,11 +1895,8 @@ const App: React.FC = () => {
       processedSubareas.map((subFeature, index) => {
         const props = subFeature.properties || {};
         const rawName = (props as any)[SUBAREA_NAME_ATTR];
-        const name = rawName == null ? '' : String(rawName).trim();
-        const parentRaw = (props as any)[SUBAREA_PARENT_ATTR];
-        const parent = parentRaw == null ? '' : formatDischargePointName(parentRaw) || '';
-        const resolvedName = name === '' ? `Subarea ${index + 1}` : name;
-        return `${parent}|${resolvedName}`;
+        const fallback = `Subarea ${index + 1}`;
+        return getSubareaKey(rawName, fallback);
       })
     ).size;
     if (subcatchments.length < expectedCount) {
@@ -2972,6 +3081,7 @@ const App: React.FC = () => {
         onCompute={handleCompute}
         exportEnabled={exportEnabled}
         onExport={() => setExportModalOpen(true)}
+        onManageCnTable={handleOpenCnTable}
         onView3D={handleView3D}
         view3DEnabled={pipe3DEnabled}
         projectName={projectName}
@@ -3059,6 +3169,13 @@ const App: React.FC = () => {
           }}
           onProjectionConfirm={() => setProjectionConfirmed(true)}
           projectionConfirmed={projectionConfirmed}
+        />
+      )}
+      {cnTableOpen && (
+        <CnTableModal
+          records={cnRecords}
+          onClose={handleCloseCnTable}
+          onSave={handleSaveCnTable}
         />
       )}
       {mappingLayer && (

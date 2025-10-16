@@ -7,6 +7,8 @@ interface HeaderProps {
   computeEnabled?: boolean;
   onExport?: () => void;
   exportEnabled?: boolean;
+  onManageCnTable?: () => void;
+  manageCnEnabled?: boolean;
   onView3D?: () => void;
   view3DEnabled?: boolean;
   projectName: string;
@@ -19,6 +21,8 @@ const Header: React.FC<HeaderProps> = ({
   computeEnabled,
   onExport,
   exportEnabled,
+  onManageCnTable,
+  manageCnEnabled = true,
   onView3D,
   view3DEnabled,
   projectName,
@@ -59,17 +63,29 @@ const Header: React.FC<HeaderProps> = ({
           Export
         </button>
         <button
+          onClick={onManageCnTable}
+          disabled={!manageCnEnabled}
+          className={
+            'font-semibold px-4 py-1 rounded ' +
+            (manageCnEnabled
+              ? 'bg-cyan-600 hover:bg-cyan-700 text-white cursor-pointer'
+              : 'bg-gray-600 text-gray-300 cursor-not-allowed')
+          }
+        >
+          Curve Numbers
+        </button>
+        <button
           onClick={onView3D}
           disabled={!view3DEnabled}
-        className={
-          'font-semibold px-4 py-1 rounded ' +
-          (view3DEnabled
-            ? 'bg-cyan-600 hover:bg-cyan-700 text-white cursor-pointer'
-            : 'bg-gray-600 text-gray-300 cursor-not-allowed')
-        }
-      >
-        3D Pipe Network
-      </button>
+          className={
+            'font-semibold px-4 py-1 rounded ' +
+            (view3DEnabled
+              ? 'bg-cyan-600 hover:bg-cyan-700 text-white cursor-pointer'
+              : 'bg-gray-600 text-gray-300 cursor-not-allowed')
+          }
+        >
+          3D Pipe Network
+        </button>
     </div>
       <div className="absolute right-4 flex items-center space-x-2">
         <input
