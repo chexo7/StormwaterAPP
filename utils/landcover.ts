@@ -7,6 +7,25 @@ export type CnRecord = {
   D: number;
 };
 
+export function normalizeLandCover(value: unknown): string {
+  if (typeof value === 'string') return value.trim();
+  if (value === null || value === undefined) return '';
+  return String(value).trim();
+}
+
+export function createLandCoverKey(value: unknown): string {
+  const normalized = normalizeLandCover(value);
+  if (!normalized) return '';
+  const withoutAccents = normalized
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '');
+  return withoutAccents
+    .replace(/[-\u2010-\u2015]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
 export async function loadCnValues(): Promise<CnRecord[]> {
   const sources = ['/api/cn-values', '/data/SCS_CN_VALUES.json'];
   for (const url of sources) {
