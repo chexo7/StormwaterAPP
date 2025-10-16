@@ -1,6 +1,12 @@
 import type { FeatureCollection, Feature, LineString, Point, Polygon, MultiPolygon } from 'geojson';
 import type { LayerData } from '../types';
 import { getDir } from './direction';
+import {
+  buffer as turfBuffer,
+  cleanCoords as turfCleanCoords,
+  featureCollection as turfFeatureCollection,
+  union as turfUnion,
+} from '@turf/turf';
 
 type Dir8 = 'N' | 'NE' | 'E' | 'SE' | 'S' | 'SW' | 'W' | 'NW';
 
@@ -64,6 +70,87 @@ const normalizeDrainageAreas = (geojson: FeatureCollection): FeatureCollection =
       },
     }))
   );
+
+const isPolygonFeature = (
+  feature: Feature
+): feature is Feature<Polygon | MultiPolygon> => {
+  const { geometry } = feature;
+  return (
+    Boolean(geometry) &&
+    (geometry.type === 'Polygon' || geometry.type === 'MultiPolygon')
+  );
+};
+
+const sanitizeMergedGeometry = (
+  feature: Feature<Polygon | MultiPolygon> | null
+): Feature<Polygon | MultiPolygon> | null => {
+  if (!feature) return null;
+  let cleaned: Feature<Polygon | MultiPolygon> | null = feature;
+  try {
+    cleaned = turfCleanCoords(feature) as Feature<Polygon | MultiPolygon>;
+  } catch (err) {
+    console.warn('Failed to clean coordinates for merged drainage area', err);
+  }
+
+  try {
+    const buffered = turfBuffer(cleaned, 0, { units: 'meters' });
+    if (
+      buffered &&
+      buffered.geometry &&
+      (buffered.geometry.type === 'Polygon' ||
+        buffered.geometry.type === 'MultiPolygon')
+    ) {
+      cleaned = {
+        type: 'Feature',
+        geometry: buffered.geometry,
+        properties: cleaned?.properties || {},
+      } as Feature<Polygon | MultiPolygon>;
+    }
+  } catch (err) {
+    console.warn('Failed to buffer merged drainage area for cleanup', err);
+  }
+
+  return cleaned;
+};
+
+export const createOverallDrainageArea = (
+  geojson: FeatureCollection
+): FeatureCollection => {
+  const polygonFeatures = geojson.features.filter(isPolygonFeature);
+  if (polygonFeatures.length === 0) {
+    return { type: 'FeatureCollection', features: [] };
+  }
+
+  let merged: Feature<Polygon | MultiPolygon> | null = polygonFeatures[0];
+  for (let i = 1; i < polygonFeatures.length; i += 1) {
+    try {
+      const unioned = turfUnion(
+        turfFeatureCollection([
+          merged as Feature<Polygon | MultiPolygon>,
+          polygonFeatures[i] as Feature<Polygon | MultiPolygon>,
+        ])
+      );
+      if (unioned && (unioned.geometry.type === 'Polygon' || unioned.geometry.type === 'MultiPolygon')) {
+        merged = unioned as Feature<Polygon | MultiPolygon>;
+      }
+    } catch (err) {
+      console.warn('Failed to union drainage area polygon', err);
+    }
+  }
+
+  const cleaned = sanitizeMergedGeometry(merged);
+  if (!cleaned || !cleaned.geometry) {
+    return { type: 'FeatureCollection', features: [] };
+  }
+
+  const resultFeature: Feature<Polygon | MultiPolygon> = {
+    type: 'Feature',
+    geometry: cleaned.geometry,
+    properties: {},
+  };
+
+  return { type: 'FeatureCollection', features: [resultFeature] };
+};
 
 const normalizeDrainageSubareas = (geojson: FeatureCollection): FeatureCollection =>
   cloneGeojson(
