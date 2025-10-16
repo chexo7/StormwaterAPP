@@ -1728,12 +1728,12 @@ const App: React.FC = () => {
       processedSubareas.forEach(subFeature => {
         if (!subFeature.geometry) return;
         clippedWss.features.forEach(wssFeature => {
-          if (!wssFeature.geometry) return;
+          if (!wssFeature.geometry || !isPolygonLike(wssFeature)) return;
           const inter1 = intersect(subFeature as any, wssFeature as any);
           if (!inter1 || !inter1.geometry) return;
 
           clippedLc.features.forEach(lcFeature => {
-            if (!lcFeature.geometry) return;
+            if (!lcFeature.geometry || !isPolygonLike(lcFeature)) return;
             const inter2 = intersect(inter1 as any, lcFeature as any);
             if (!inter2 || !inter2.geometry) return;
 
