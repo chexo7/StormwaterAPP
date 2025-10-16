@@ -197,11 +197,15 @@ const ManagedGeoJsonLayer = ({
 
       // Editable name for Drainage Areas
       if (layerName === 'Drainage Areas') {
+        feature.properties = {
+          ...(feature.properties || {}),
+          DA_NAME: feature.properties?.DA_NAME ?? '',
+        };
         const nameRow = L.DomUtil.create('div', '', propsDiv);
         const nLabel = L.DomUtil.create('b', '', nameRow);
-        nLabel.textContent = 'Name: ';
+        nLabel.textContent = 'Discharge Point #: ';
         const select = L.DomUtil.create('select', '', nameRow) as HTMLSelectElement;
-        select.title = 'Seleccionar nombre';
+        select.title = 'Seleccionar Discharge Point';
         select.style.marginLeft = '4px';
         select.style.border = '2px solid #3b82f6';
         select.style.backgroundColor = '#dbeafe';
@@ -209,19 +213,32 @@ const ManagedGeoJsonLayer = ({
         const blank = L.DomUtil.create('option', '', select) as HTMLOptionElement;
         blank.value = '';
         blank.textContent = '--';
-        const allNames = Array.from({ length: 26 }, (_, i) => `DA-${String.fromCharCode(65 + i)}`);
-        const usedNames = data.features
-          .filter(f => f !== feature)
-          .map(f => (f.properties?.DA_NAME as string))
-          .filter(n => n);
-        const availableNames = allNames.filter(n => n === feature.properties!.DA_NAME || !usedNames.includes(n));
-        availableNames.forEach(val => {
+        const currentValue = feature.properties!.DA_NAME as string;
+        const usedNames = new Set(
+          data.features
+            .map(f => (f.properties?.DA_NAME as string))
+            .filter(n => n && n !== currentValue)
+        );
+        const dpOptions = Array.from({ length: 20 }, (_, i) => i + 1).map(num => ({
+          num,
+          dpName: `DP-${num.toString().padStart(2, '0')}`,
+        }));
+        const availableNames = dpOptions.filter(
+          ({ dpName }) => dpName === currentValue || !usedNames.has(dpName)
+        );
+        availableNames.forEach(({ num, dpName }) => {
           const opt = L.DomUtil.create('option', '', select) as HTMLOptionElement;
-          opt.value = val;
-          opt.textContent = val;
-          if (feature.properties!.DA_NAME === val) opt.selected = true;
+          opt.value = dpName;
+          opt.textContent = String(num);
+          if (currentValue === dpName) opt.selected = true;
         });
-        if (!feature.properties!.DA_NAME) blank.selected = true;
+        if (currentValue && !availableNames.some(({ dpName }) => dpName === currentValue)) {
+          const opt = L.DomUtil.create('option', '', select) as HTMLOptionElement;
+          opt.value = currentValue;
+          opt.textContent = currentValue;
+          opt.selected = true;
+        }
+        if (!currentValue) blank.selected = true;
         select.addEventListener('change', (e) => {
           const newVal = (e.target as HTMLSelectElement).value;
           const idx = data.features.indexOf(feature);
