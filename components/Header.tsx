@@ -48,7 +48,7 @@ const Header: React.FC<HeaderProps> = ({
               : 'bg-gray-600 text-gray-300 cursor-not-allowed')
           }
         >
-          Execute
+          HydroCAD
         </button>
         <button
           onClick={onExport}
@@ -60,7 +60,7 @@ const Header: React.FC<HeaderProps> = ({
               : 'bg-gray-600 text-gray-300 cursor-not-allowed')
           }
         >
-          Export
+          Export 2D SCS
         </button>
         <button
           onClick={onManageCurveNumbers}
@@ -77,15 +77,15 @@ const Header: React.FC<HeaderProps> = ({
         <button
           onClick={onView3D}
           disabled={!view3DEnabled}
-        className={
-          'font-semibold px-4 py-1 rounded ' +
-          (view3DEnabled
-            ? 'bg-cyan-600 hover:bg-cyan-700 text-white cursor-pointer'
-            : 'bg-gray-600 text-gray-300 cursor-not-allowed')
-        }
-      >
-        3D Pipe Network
-      </button>
+          className={
+            'font-semibold px-4 py-1 rounded ' +
+            (view3DEnabled
+              ? 'bg-cyan-600 hover:bg-cyan-700 text-white cursor-pointer'
+              : 'bg-gray-600 text-gray-300 cursor-not-allowed')
+          }
+        >
+          3D Pipe Network
+        </button>
     </div>
       <div className="absolute right-4 flex items-center space-x-2">
         <input

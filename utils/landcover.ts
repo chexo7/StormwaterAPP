@@ -23,15 +23,3 @@ export async function loadCnValues(): Promise<CnRecord[]> {
   return [];
 }
 
-export async function saveCnValues(records: CnRecord[]): Promise<void> {
-  const res = await fetch('/api/cn-values', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(records),
-  });
-
-  if (!res.ok) {
-    const message = await res.text().catch(() => '');
-    throw new Error(message || 'Failed to save CN values');
-  }
-}
