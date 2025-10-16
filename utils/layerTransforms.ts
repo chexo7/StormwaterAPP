@@ -1,6 +1,15 @@
-import type { FeatureCollection, Feature, LineString, Point } from 'geojson';
+import type {
+  FeatureCollection,
+  Feature,
+  LineString,
+  Point,
+  Polygon,
+  MultiPolygon,
+  Geometry,
+} from 'geojson';
 import type { LayerData } from '../types';
 import { getDir } from './direction';
+import { combine, intersect, area } from '@turf/turf';
 
 type Dir8 = 'N' | 'NE' | 'E' | 'SE' | 'S' | 'SW' | 'W' | 'NW';
 
@@ -15,14 +24,121 @@ const cloneGeojson = (geojson: FeatureCollection, features: Feature[]): FeatureC
   features,
 });
 
+const sanitizeText = (value: unknown) =>
+  value === undefined || value === null ? '' : String(value).trim();
+
+const DISCHARGE_POINT_PATTERN = /^DP[-_\s]?(\d{1,2})$/i;
+
+export const formatDischargePointName = (value: unknown): string => {
+  if (value === undefined || value === null) return '';
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const num = Math.round(value);
+    if (num >= 1) {
+      const padded = String(num).padStart(2, '0');
+      return `DP-${padded}`;
+    }
+  }
+
+  const sanitized = sanitizeText(value);
+  if (!sanitized) return '';
+
+  const normalized = sanitized.toUpperCase();
+  const dpMatch = normalized.match(DISCHARGE_POINT_PATTERN);
+  if (dpMatch) {
+    const num = parseInt(dpMatch[1], 10);
+    if (Number.isFinite(num) && num >= 1) {
+      return `DP-${num.toString().padStart(2, '0')}`;
+    }
+  }
+
+  const trailingDigits = normalized.match(/(\d{1,2})$/);
+  if (trailingDigits) {
+    const num = parseInt(trailingDigits[1], 10);
+    if (Number.isFinite(num) && num >= 1) {
+      return `DP-${num.toString().padStart(2, '0')}`;
+    }
+  }
+
+  return normalized;
+};
+
 const normalizeDrainageAreas = (geojson: FeatureCollection): FeatureCollection =>
   cloneGeojson(
     geojson,
     geojson.features.map(feature => ({
       ...feature,
-      properties: { ...(feature.properties || {}), DA_NAME: feature.properties?.DA_NAME ?? '' },
+      properties: {
+        ...(feature.properties || {}),
+        DA_NAME: formatDischargePointName(feature.properties?.DA_NAME),
+      },
     }))
   );
+
+const normalizeDrainageSubareas = (geojson: FeatureCollection): FeatureCollection =>
+  cloneGeojson(
+    geojson,
+    geojson.features.map(feature => ({
+      ...feature,
+      properties: {
+        ...(feature.properties || {}),
+        SUBAREA_NAME: sanitizeText((feature.properties as any)?.SUBAREA_NAME),
+        PARENT_DA: formatDischargePointName((feature.properties as any)?.PARENT_DA),
+      },
+    }))
+  );
+
+const CLIP_AREA_TOLERANCE_SQM = 0.01;
+
+const extractPolygonGeometries = (geometry: Geometry): (Polygon | MultiPolygon)[] => {
+  if (!geometry) return [];
+  if (geometry.type === 'Polygon') return [geometry];
+  if (geometry.type === 'MultiPolygon') return [geometry];
+  if (geometry.type === 'GeometryCollection') {
+    return geometry.geometries.flatMap(g => extractPolygonGeometries(g as Geometry));
+  }
+  return [];
+};
+
+const buildDrainageMask = (layers: LayerData[]): Feature<Polygon | MultiPolygon> | null => {
+  const daLayer = layers.find(l => l.name === 'Drainage Areas');
+  if (!daLayer) return null;
+
+  const polygonalFeatures: Feature<Polygon | MultiPolygon>[] = [];
+  daLayer.geojson.features.forEach(feature => {
+    if (!feature.geometry) return;
+    if (feature.geometry.type !== 'Polygon' && feature.geometry.type !== 'MultiPolygon') return;
+    polygonalFeatures.push({
+      type: 'Feature',
+      geometry: feature.geometry as Polygon | MultiPolygon,
+      properties: {},
+    });
+  });
+
+  if (polygonalFeatures.length === 0) return null;
+  if (polygonalFeatures.length === 1) return polygonalFeatures[0];
+
+  try {
+    const fc: FeatureCollection = {
+      type: 'FeatureCollection',
+      features: polygonalFeatures as Feature[],
+    };
+    const combined = combine(fc as any);
+    const maskFeature = combined.features.find(
+      f => f.geometry && (f.geometry.type === 'Polygon' || f.geometry.type === 'MultiPolygon')
+    );
+    if (maskFeature && maskFeature.geometry) {
+      return {
+        type: 'Feature',
+        geometry: maskFeature.geometry as Polygon | MultiPolygon,
+        properties: {},
+      };
+    }
+  } catch (err) {
+    console.warn('Failed to combine drainage areas for soil clipping', err);
+  }
+
+  return polygonalFeatures[0];
+};
 
 const normalizeLandCover = (
   geojson: FeatureCollection,
@@ -41,14 +157,50 @@ const normalizeLandCover = (
     })
   );
 
-const normalizeSoils = (geojson: FeatureCollection): FeatureCollection =>
-  cloneGeojson(
-    geojson,
-    geojson.features.map(feature => ({
-      ...feature,
-      properties: { ...(feature.properties || {}), HSG: feature.properties?.HSG ?? '' },
-    }))
-  );
+const normalizeSoils = (
+  geojson: FeatureCollection,
+  mask?: Feature<Polygon | MultiPolygon> | null
+): FeatureCollection => {
+  if (!mask) {
+    return cloneGeojson(
+      geojson,
+      geojson.features.map(feature => ({
+        ...feature,
+        properties: { ...(feature.properties || {}), HSG: feature.properties?.HSG ?? '' },
+      }))
+    );
+  }
+
+  const clipped: Feature<Polygon | MultiPolygon>[] = [];
+  geojson.features.forEach(feature => {
+    if (!feature.geometry) return;
+    if (feature.geometry.type !== 'Polygon' && feature.geometry.type !== 'MultiPolygon') return;
+
+    const baseProps = { ...(feature.properties || {}), HSG: feature.properties?.HSG ?? '' };
+    try {
+      const intersection = intersect(feature as any, mask as any);
+      if (!intersection || !intersection.geometry) return;
+      const geometries = extractPolygonGeometries(intersection.geometry);
+      geometries.forEach(geometry => {
+        const clipArea = area({
+          type: 'Feature',
+          geometry,
+          properties: {},
+        } as Feature<Polygon | MultiPolygon>);
+        if (clipArea <= CLIP_AREA_TOLERANCE_SQM) return;
+        clipped.push({
+          type: 'Feature',
+          geometry,
+          properties: baseProps,
+        });
+      });
+    } catch (err) {
+      console.warn('Failed to intersect soil polygon with drainage mask', err);
+    }
+  });
+
+  return cloneGeojson(geojson, clipped);
+};
 
 const preparePipesLayer = (
   geojson: FeatureCollection,
@@ -281,12 +433,17 @@ export const transformLayerGeojson = (
     return normalizeDrainageAreas(geojson);
   }
 
+  if (name === 'Drainage Subareas') {
+    return normalizeDrainageSubareas(geojson);
+  }
+
   if (name === 'Land Cover') {
     return normalizeLandCover(geojson, landCoverOptions);
   }
 
   if (name === 'Soil Layer from Web Soil Survey') {
-    return normalizeSoils(geojson);
+    const mask = buildDrainageMask(layers);
+    return normalizeSoils(geojson, mask);
   }
 
   if (name === 'Pipes' && fieldMap) {

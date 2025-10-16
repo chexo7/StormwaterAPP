@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { MapContainer, TileLayer, GeoJSON, useMap, LayersControl, LayerGroup } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet-draw';
@@ -7,15 +7,112 @@ import { area as turfArea, intersect as turfIntersect } from '@turf/turf';
 import AddressSearch from './AddressSearch';
 import ReactLeafletGoogleLayer from 'react-leaflet-google-layer';
 import type { LayerData } from '../types';
+import { formatDischargePointName } from '../utils/layerTransforms';
 import type { GeoJSON as LeafletGeoJSON, Layer } from 'leaflet';
 
 const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY as string | undefined;
+
+interface SmartSelectOption {
+  value: string;
+  label: string;
+}
+
+interface SmartSelectStyles {
+  borderColor?: string;
+  backgroundColor?: string;
+  fontWeight?: string;
+  marginLeft?: string;
+  width?: string;
+}
+
+interface SmartSelectConfig {
+  parent: HTMLElement;
+  label: string;
+  title?: string;
+  value: string;
+  options: SmartSelectOption[];
+  placeholder?: string;
+  usedValues?: Set<string>;
+  onChange: (value: string) => void;
+  styles?: SmartSelectStyles;
+  keepCurrentValue?: boolean;
+}
+
+const appendSmartSelect = ({
+  parent,
+  label,
+  title,
+  value,
+  options,
+  placeholder = '--',
+  usedValues,
+  onChange,
+  styles,
+  keepCurrentValue = true,
+}: SmartSelectConfig): HTMLSelectElement => {
+  const row = L.DomUtil.create('div', '', parent);
+  const labelEl = L.DomUtil.create('b', '', row);
+  labelEl.textContent = label;
+  const select = L.DomUtil.create('select', '', row) as HTMLSelectElement;
+  select.title = title ?? label;
+  select.style.marginLeft = styles?.marginLeft ?? '4px';
+  if (styles?.borderColor) {
+    select.style.border = `2px solid ${styles.borderColor}`;
+  }
+  if (styles?.backgroundColor) {
+    select.style.backgroundColor = styles.backgroundColor;
+  }
+  if (styles?.fontWeight) {
+    select.style.fontWeight = styles.fontWeight;
+  }
+  if (styles?.width) {
+    select.style.width = styles.width;
+  }
+
+  const blank = L.DomUtil.create('option', '', select) as HTMLOptionElement;
+  blank.value = '';
+  blank.textContent = placeholder;
+
+  let hasCurrent = false;
+  options.forEach(option => {
+    const opt = L.DomUtil.create('option', '', select) as HTMLOptionElement;
+    opt.value = option.value;
+    opt.textContent = option.label;
+    if (usedValues && usedValues.has(option.value) && option.value !== value) {
+      opt.disabled = true;
+    }
+    if (option.value === value) {
+      opt.selected = true;
+      hasCurrent = true;
+    }
+  });
+
+  if (value && keepCurrentValue && !hasCurrent) {
+    const opt = L.DomUtil.create('option', '', select) as HTMLOptionElement;
+    opt.value = value;
+    opt.textContent = value;
+    opt.selected = true;
+  }
+
+  if (!value) {
+    blank.selected = true;
+  }
+
+  select.addEventListener('change', e => {
+    const newVal = (e.target as HTMLSelectElement).value;
+    onChange(newVal);
+  });
+
+  return select;
+};
 
 interface MapComponentProps {
   layers: LayerData[];
   onUpdateFeatureHsg: (layerId: string, featureIndex: number, hsg: string) => void;
   onUpdateFeatureDaName: (layerId: string, featureIndex: number, name: string) => void;
   onUpdateFeatureLandCover: (layerId: string, featureIndex: number, value: string) => void;
+  onUpdateFeatureSubareaName?: (layerId: string, featureIndex: number, value: string) => void;
+  onUpdateFeatureSubareaParent?: (layerId: string, featureIndex: number, value: string) => void;
   landCoverOptions: string[];
   zoomToLayer?: { id: string; ts: number } | null;
   editingTarget?: { layerId: string | null; featureIndex: number | null };
@@ -35,6 +132,8 @@ const ManagedGeoJsonLayer = ({
   onUpdateFeatureHsg,
   onUpdateFeatureDaName,
   onUpdateFeatureLandCover,
+  onUpdateFeatureSubareaName,
+  onUpdateFeatureSubareaParent,
   landCoverOptions,
   layerName,
   isEditingLayer,
@@ -44,6 +143,8 @@ const ManagedGeoJsonLayer = ({
   layerRef,
   fillColor,
   fillOpacity,
+  subareaNameOptions,
+  subareaDpOptions,
 }: {
   id: string;
   data: LayerData['geojson'];
@@ -51,6 +152,8 @@ const ManagedGeoJsonLayer = ({
   onUpdateFeatureHsg: (layerId: string, featureIndex: number, hsg: string) => void;
   onUpdateFeatureDaName: (layerId: string, featureIndex: number, name: string) => void;
   onUpdateFeatureLandCover: (layerId: string, featureIndex: number, value: string) => void;
+  onUpdateFeatureSubareaName?: (layerId: string, featureIndex: number, value: string) => void;
+  onUpdateFeatureSubareaParent?: (layerId: string, featureIndex: number, value: string) => void;
   landCoverOptions: string[];
   layerName: string;
   isEditingLayer: boolean;
@@ -60,6 +163,8 @@ const ManagedGeoJsonLayer = ({
   layerRef?: (ref: LeafletGeoJSON | null) => void;
   fillColor: string;
   fillOpacity: number;
+  subareaNameOptions?: string[];
+  subareaDpOptions?: { value: string; label: string }[];
 }) => {
   const geoJsonRef = useRef<LeafletGeoJSON | null>(null);
   const map = useMap();
@@ -164,31 +269,21 @@ const ManagedGeoJsonLayer = ({
 
       // Special editable field for HSG
       if (layerName === 'Soil Layer from Web Soil Survey') {
-        feature.properties = { ...(feature.properties || {}), HSG: feature.properties?.HSG ?? '' };
-        const hsgRow = L.DomUtil.create('div', '', propsDiv);
-        const label = L.DomUtil.create('b', '', hsgRow);
-        label.textContent = 'HSG: ';
-        const select = L.DomUtil.create('select', '', hsgRow) as HTMLSelectElement;
-        select.title = 'Cambiar HSG';
-        select.style.marginLeft = '4px';
-        select.style.border = '2px solid #f59e0b';
-        select.style.backgroundColor = '#fef3c7';
-        select.style.fontWeight = 'bold';
-        const blank = L.DomUtil.create('option', '', select) as HTMLOptionElement;
-        blank.value = '';
-        blank.textContent = '-';
-        ['A', 'B', 'C', 'D'].forEach(val => {
-          const opt = L.DomUtil.create('option', '', select) as HTMLOptionElement;
-          opt.value = val;
-          opt.textContent = val;
-          if (feature.properties!.HSG === val) opt.selected = true;
-        });
-        if (!feature.properties!.HSG) blank.selected = true;
-        select.addEventListener('change', (e) => {
-          const newVal = (e.target as HTMLSelectElement).value;
-          const idx = data.features.indexOf(feature);
-          onUpdateFeatureHsg(id, idx, newVal);
-          feature.properties!.HSG = newVal;
+        const currentHsg = feature.properties?.HSG == null ? '' : String(feature.properties?.HSG);
+        feature.properties = { ...(feature.properties || {}), HSG: currentHsg };
+        appendSmartSelect({
+          parent: propsDiv,
+          label: 'HSG:',
+          title: 'Cambiar HSG',
+          value: currentHsg,
+          options: ['A', 'B', 'C', 'D'].map(val => ({ value: val, label: val })),
+          placeholder: '-',
+          styles: { borderColor: '#f59e0b', backgroundColor: '#fef3c7', fontWeight: 'bold' },
+          onChange: newVal => {
+            const idx = data.features.indexOf(feature);
+            onUpdateFeatureHsg(id, idx, newVal);
+            feature.properties!.HSG = newVal;
+          },
         });
       } else if ('HSG' in feature.properties) {
         const hsgRow = L.DomUtil.create('div', '', propsDiv);
@@ -197,66 +292,113 @@ const ManagedGeoJsonLayer = ({
 
       // Editable name for Drainage Areas
       if (layerName === 'Drainage Areas') {
-        const nameRow = L.DomUtil.create('div', '', propsDiv);
-        const nLabel = L.DomUtil.create('b', '', nameRow);
-        nLabel.textContent = 'Name: ';
-        const select = L.DomUtil.create('select', '', nameRow) as HTMLSelectElement;
-        select.title = 'Seleccionar nombre';
-        select.style.marginLeft = '4px';
-        select.style.border = '2px solid #3b82f6';
-        select.style.backgroundColor = '#dbeafe';
-        select.style.fontWeight = 'bold';
-        const blank = L.DomUtil.create('option', '', select) as HTMLOptionElement;
-        blank.value = '';
-        blank.textContent = '--';
-        const allNames = Array.from({ length: 26 }, (_, i) => `DA-${String.fromCharCode(65 + i)}`);
-        const usedNames = data.features
-          .filter(f => f !== feature)
-          .map(f => (f.properties?.DA_NAME as string))
-          .filter(n => n);
-        const availableNames = allNames.filter(n => n === feature.properties!.DA_NAME || !usedNames.includes(n));
-        availableNames.forEach(val => {
-          const opt = L.DomUtil.create('option', '', select) as HTMLOptionElement;
-          opt.value = val;
-          opt.textContent = val;
-          if (feature.properties!.DA_NAME === val) opt.selected = true;
+        const formatted = formatDischargePointName((feature.properties as any)?.DA_NAME);
+        feature.properties = {
+          ...(feature.properties || {}),
+          DA_NAME: formatted,
+        };
+        const currentValue = formatted;
+        const usedNames = new Set(
+          data.features
+            .map(f => formatDischargePointName((f.properties as any)?.DA_NAME))
+            .filter(n => n && n !== currentValue)
+        );
+        const dpOptions = Array.from({ length: 20 }, (_, i) => i + 1).map(num => ({
+          value: formatDischargePointName(num),
+          label: String(num),
+        }));
+        appendSmartSelect({
+          parent: propsDiv,
+          label: 'Discharge Point #:',
+          title: 'Seleccionar Discharge Point',
+          value: currentValue,
+          options: dpOptions,
+          placeholder: '--',
+          usedValues: usedNames,
+          styles: { borderColor: '#3b82f6', backgroundColor: '#dbeafe', fontWeight: 'bold' },
+          onChange: newVal => {
+            const idx = data.features.indexOf(feature);
+            onUpdateFeatureDaName(id, idx, newVal);
+            feature.properties!.DA_NAME = newVal;
+          },
         });
-        if (!feature.properties!.DA_NAME) blank.selected = true;
-        select.addEventListener('change', (e) => {
-          const newVal = (e.target as HTMLSelectElement).value;
-          const idx = data.features.indexOf(feature);
-          onUpdateFeatureDaName(id, idx, newVal);
-          feature.properties!.DA_NAME = newVal;
+      }
+
+      if (layerName === 'Drainage Subareas') {
+        feature.properties = {
+          ...(feature.properties || {}),
+          SUBAREA_NAME: feature.properties?.SUBAREA_NAME ?? '',
+          PARENT_DA: feature.properties?.PARENT_DA ?? '',
+        };
+
+        const currentSubName = feature.properties!.SUBAREA_NAME
+          ? String(feature.properties!.SUBAREA_NAME).trim()
+          : '';
+        feature.properties!.SUBAREA_NAME = currentSubName;
+        const usedSubNames = new Set(
+          data.features
+            .map(f => {
+              const raw = (f.properties as any)?.SUBAREA_NAME;
+              return raw == null ? '' : String(raw).trim();
+            })
+            .filter(name => name && name !== currentSubName)
+        );
+        appendSmartSelect({
+          parent: propsDiv,
+          label: 'Drainage Area Nombre:',
+          title: 'Seleccionar nombre de Drainage Area',
+          value: currentSubName,
+          options: (subareaNameOptions || []).map(option => ({ value: option, label: option })),
+          placeholder: '--',
+          usedValues: usedSubNames,
+          styles: { borderColor: '#2563eb', backgroundColor: '#dbeafe', fontWeight: 'bold' },
+          onChange: newVal => {
+            const idx = data.features.indexOf(feature);
+            onUpdateFeatureSubareaName?.(id, idx, newVal);
+            feature.properties!.SUBAREA_NAME = newVal;
+          },
+        });
+
+        const currentParent = formatDischargePointName(feature.properties!.PARENT_DA);
+        feature.properties!.PARENT_DA = currentParent;
+        appendSmartSelect({
+          parent: propsDiv,
+          label: 'Discharge Point asociado:',
+          title: 'Seleccionar Discharge Point para la Subarea',
+          value: currentParent,
+          options: (subareaDpOptions || []).map(option => ({ value: option.value, label: option.label })),
+          placeholder: '--',
+          styles: { borderColor: '#0ea5e9', backgroundColor: '#cffafe', fontWeight: 'bold' },
+          onChange: newVal => {
+            const idx = data.features.indexOf(feature);
+            onUpdateFeatureSubareaParent?.(id, idx, newVal);
+            feature.properties!.PARENT_DA = newVal;
+          },
         });
       }
 
       // Editable land cover for Land Cover layers
       if (layerName === 'Land Cover') {
-        const lcRow = L.DomUtil.create('div', '', propsDiv);
-        const lcLabel = L.DomUtil.create('b', '', lcRow);
-        lcLabel.textContent = 'Land Cover: ';
-        const select = L.DomUtil.create('select', '', lcRow) as HTMLSelectElement;
-        select.title = 'Seleccionar Land Cover';
-        select.style.marginLeft = '4px';
-        select.style.border = '2px solid #f97316';
-        select.style.backgroundColor = '#ffedd5';
-        select.style.fontWeight = 'bold';
-        select.style.width = '280px';
-        const blank = L.DomUtil.create('option', '', select) as HTMLOptionElement;
-        blank.value = '';
-        blank.textContent = '--';
-        landCoverOptions.forEach(val => {
-          const opt = L.DomUtil.create('option', '', select) as HTMLOptionElement;
-          opt.value = val;
-          opt.textContent = val;
-          if (feature.properties!.LAND_COVER === val) opt.selected = true;
-        });
-        if (!feature.properties!.LAND_COVER) blank.selected = true;
-        select.addEventListener('change', (e) => {
-          const newVal = (e.target as HTMLSelectElement).value;
-          const idx = data.features.indexOf(feature);
-          onUpdateFeatureLandCover(id, idx, newVal);
-          feature.properties!.LAND_COVER = newVal;
+        const currentLandCover = feature.properties!.LAND_COVER as string;
+        appendSmartSelect({
+          parent: propsDiv,
+          label: 'Land Cover:',
+          title: 'Seleccionar Land Cover',
+          value: currentLandCover || '',
+          options: landCoverOptions.map(val => ({ value: val, label: val })),
+          placeholder: '--',
+          styles: {
+            borderColor: '#f97316',
+            backgroundColor: '#ffedd5',
+            fontWeight: 'bold',
+            marginLeft: '4px',
+            width: '280px',
+          },
+          onChange: newVal => {
+            const idx = data.features.indexOf(feature);
+            onUpdateFeatureLandCover(id, idx, newVal);
+            feature.properties!.LAND_COVER = newVal;
+          },
         });
       }
 
@@ -465,6 +607,8 @@ const MapComponent: React.FC<MapComponentProps> = ({
   onUpdateFeatureHsg,
   onUpdateFeatureDaName,
   onUpdateFeatureLandCover,
+  onUpdateFeatureSubareaName,
+  onUpdateFeatureSubareaParent,
   landCoverOptions,
   zoomToLayer,
   editingTarget,
@@ -476,6 +620,28 @@ const MapComponent: React.FC<MapComponentProps> = ({
 }) => {
   const layerRefs = useRef<Record<string, L.GeoJSON | null>>({});
   const mapRef = useRef<L.Map | null>(null);
+
+  const subareaNameOptions = useMemo(
+    () => Array.from({ length: 20 }, (_, i) => `DRAINAGE AREA - ${i + 1}`),
+    []
+  );
+
+  const subareaDpOptions = useMemo(() => {
+    const daLayer = layers.find(l => l.name === 'Drainage Areas');
+    if (!daLayer) return [] as { value: string; label: string }[];
+    const options: { value: string; label: string; num: number }[] = [];
+    daLayer.geojson.features.forEach(feature => {
+      const raw = feature.properties ? (feature.properties as any).DA_NAME : null;
+      const formatted = formatDischargePointName(raw);
+      if (!formatted) return;
+      const num = parseInt(formatted.replace(/[^0-9]/g, ''), 10);
+      if (!Number.isFinite(num)) return;
+      if (options.some(opt => opt.value === formatted)) return;
+      options.push({ value: formatted, label: `${num} (${formatted})`, num });
+    });
+    options.sort((a, b) => a.num - b.num);
+    return options.map(({ value, label }) => ({ value, label }));
+  }, [layers]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -600,6 +766,8 @@ const MapComponent: React.FC<MapComponentProps> = ({
                 onUpdateFeatureHsg={onUpdateFeatureHsg}
                 onUpdateFeatureDaName={onUpdateFeatureDaName}
                 onUpdateFeatureLandCover={onUpdateFeatureLandCover}
+                onUpdateFeatureSubareaName={onUpdateFeatureSubareaName}
+                onUpdateFeatureSubareaParent={onUpdateFeatureSubareaParent}
                 landCoverOptions={landCoverOptions}
                 layerName={layer.name}
                 isEditingLayer={editingTarget?.layerId === layer.id}
@@ -607,6 +775,8 @@ const MapComponent: React.FC<MapComponentProps> = ({
                 onSelectFeature={idx => onSelectFeatureForEditing && onSelectFeatureForEditing(layer.id, idx)}
                 onUpdateLayerGeojson={onUpdateLayerGeojson}
                 layerRef={ref => { layerRefs.current[layer.id] = ref; }}
+                subareaNameOptions={subareaNameOptions}
+                subareaDpOptions={subareaDpOptions}
              />
           </LayersControl.Overlay>
         ))}
