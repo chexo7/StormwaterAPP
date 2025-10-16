@@ -1,6 +1,12 @@
 import type { FeatureCollection, Feature, LineString, Point } from 'geojson';
 import type { LayerData } from '../types';
 import { getDir } from './direction';
+import {
+  DA_NAME_ATTR,
+  SUBAREA_NAME_ATTR,
+  SUBAREA_PARENT_ATTR,
+  parseDischargePointId,
+} from './drainage';
 
 type Dir8 = 'N' | 'NE' | 'E' | 'SE' | 'S' | 'SW' | 'W' | 'NW';
 
@@ -15,13 +21,42 @@ const cloneGeojson = (geojson: FeatureCollection, features: Feature[]): FeatureC
   features,
 });
 
+const sanitizeText = (value: unknown) =>
+  value === undefined || value === null ? '' : String(value).trim();
+
 const normalizeDrainageAreas = (geojson: FeatureCollection): FeatureCollection =>
   cloneGeojson(
     geojson,
-    geojson.features.map(feature => ({
-      ...feature,
-      properties: { ...(feature.properties || {}), DA_NAME: feature.properties?.DA_NAME ?? '' },
-    }))
+    geojson.features.map(feature => {
+      const props = { ...(feature.properties || {}) } as Record<string, unknown>;
+      const formatted = parseDischargePointId(props[DA_NAME_ATTR]) ?? sanitizeText(props[DA_NAME_ATTR]);
+      return {
+        ...feature,
+        properties: {
+          ...props,
+          [DA_NAME_ATTR]: formatted,
+        },
+      };
+    })
+  );
+
+const normalizeDrainageSubareas = (geojson: FeatureCollection): FeatureCollection =>
+  cloneGeojson(
+    geojson,
+    geojson.features.map(feature => {
+      const props = { ...(feature.properties || {}) } as Record<string, unknown>;
+      const parent = parseDischargePointId(props[SUBAREA_PARENT_ATTR]) ?? sanitizeText(props[SUBAREA_PARENT_ATTR]);
+      const daName = parseDischargePointId(props[DA_NAME_ATTR]) ?? sanitizeText(props[DA_NAME_ATTR]);
+      return {
+        ...feature,
+        properties: {
+          ...props,
+          [SUBAREA_NAME_ATTR]: sanitizeText(props[SUBAREA_NAME_ATTR]),
+          [SUBAREA_PARENT_ATTR]: parent,
+          [DA_NAME_ATTR]: daName || parent,
+        },
+      };
+    })
   );
 
 const normalizeLandCover = (
@@ -279,6 +314,10 @@ export const transformLayerGeojson = (
 ): FeatureCollection => {
   if (name === 'Drainage Areas') {
     return normalizeDrainageAreas(geojson);
+  }
+
+  if (name === 'Drainage Subareas') {
+    return normalizeDrainageSubareas(geojson);
   }
 
   if (name === 'Land Cover') {
