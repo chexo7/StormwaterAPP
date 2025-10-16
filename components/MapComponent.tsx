@@ -214,16 +214,17 @@ const ManagedGeoJsonLayer = ({
         blank.value = '';
         blank.textContent = '--';
         const currentValue = feature.properties!.DA_NAME as string;
-        const usedNames = data.features
-          .filter(f => f !== feature)
-          .map(f => (f.properties?.DA_NAME as string))
-          .filter(n => n);
+        const usedNames = new Set(
+          data.features
+            .map(f => (f.properties?.DA_NAME as string))
+            .filter(n => n && n !== currentValue)
+        );
         const dpOptions = Array.from({ length: 20 }, (_, i) => i + 1).map(num => ({
           num,
           dpName: `DP-${num.toString().padStart(2, '0')}`,
         }));
         const availableNames = dpOptions.filter(
-          ({ dpName }) => dpName === currentValue || !usedNames.includes(dpName)
+          ({ dpName }) => dpName === currentValue || !usedNames.has(dpName)
         );
         availableNames.forEach(({ num, dpName }) => {
           const opt = L.DomUtil.create('option', '', select) as HTMLOptionElement;
