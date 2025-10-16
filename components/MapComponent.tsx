@@ -8,6 +8,12 @@ import AddressSearch from './AddressSearch';
 import ReactLeafletGoogleLayer from 'react-leaflet-google-layer';
 import type { LayerData } from '../types';
 import type { GeoJSON as LeafletGeoJSON, Layer } from 'leaflet';
+import {
+  SUBAREA_LAYER_NAME,
+  DISCHARGE_POINT_OPTIONS,
+  DA_NAME_ATTR,
+  SUBAREA_PARENT_ATTR,
+} from '../utils/drainage';
 
 const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY as string | undefined;
 
@@ -196,38 +202,55 @@ const ManagedGeoJsonLayer = ({
       }
 
       // Editable name for Drainage Areas
-      if (layerName === 'Drainage Areas') {
+      if (layerName === 'Drainage Areas' || layerName === SUBAREA_LAYER_NAME) {
         const nameRow = L.DomUtil.create('div', '', propsDiv);
         const nLabel = L.DomUtil.create('b', '', nameRow);
-        nLabel.textContent = 'Name: ';
+        nLabel.textContent = 'Discharge Point #: ';
         const select = L.DomUtil.create('select', '', nameRow) as HTMLSelectElement;
-        select.title = 'Seleccionar nombre';
+        select.title = 'Seleccionar Discharge Point';
         select.style.marginLeft = '4px';
         select.style.border = '2px solid #3b82f6';
         select.style.backgroundColor = '#dbeafe';
         select.style.fontWeight = 'bold';
+        select.style.minWidth = '120px';
         const blank = L.DomUtil.create('option', '', select) as HTMLOptionElement;
         blank.value = '';
         blank.textContent = '--';
-        const allNames = Array.from({ length: 26 }, (_, i) => `DA-${String.fromCharCode(65 + i)}`);
-        const usedNames = data.features
-          .filter(f => f !== feature)
-          .map(f => (f.properties?.DA_NAME as string))
-          .filter(n => n);
-        const availableNames = allNames.filter(n => n === feature.properties!.DA_NAME || !usedNames.includes(n));
-        availableNames.forEach(val => {
+        const currentValue = (feature.properties &&
+          (layerName === SUBAREA_LAYER_NAME
+            ? (feature.properties as any)[SUBAREA_PARENT_ATTR] ?? (feature.properties as any)[DA_NAME_ATTR]
+            : (feature.properties as any)[DA_NAME_ATTR])) as string | undefined;
+        DISCHARGE_POINT_OPTIONS.forEach(({ value, label }) => {
           const opt = L.DomUtil.create('option', '', select) as HTMLOptionElement;
-          opt.value = val;
-          opt.textContent = val;
-          if (feature.properties!.DA_NAME === val) opt.selected = true;
+          opt.value = value;
+          opt.textContent = label;
+          if (currentValue === value) opt.selected = true;
         });
-        if (!feature.properties!.DA_NAME) blank.selected = true;
+        if (!currentValue) blank.selected = true;
         select.addEventListener('change', (e) => {
           const newVal = (e.target as HTMLSelectElement).value;
           const idx = data.features.indexOf(feature);
           onUpdateFeatureDaName(id, idx, newVal);
-          feature.properties!.DA_NAME = newVal;
+          if (!feature.properties) feature.properties = {};
+          if (newVal) {
+            feature.properties![DA_NAME_ATTR] = newVal;
+            if (layerName === SUBAREA_LAYER_NAME) {
+              feature.properties![SUBAREA_PARENT_ATTR] = newVal;
+            }
+          } else {
+            delete (feature.properties as any)[DA_NAME_ATTR];
+            if (layerName === SUBAREA_LAYER_NAME) {
+              delete (feature.properties as any)[SUBAREA_PARENT_ATTR];
+            }
+          }
         });
+        if (layerName === SUBAREA_LAYER_NAME) {
+          const helper = L.DomUtil.create('div', '', propsDiv);
+          helper.textContent = 'Recuerda asociar esta subárea al punto de descarga correcto.';
+          helper.style.fontSize = '0.8rem';
+          helper.style.color = '#0ea5e9';
+          helper.style.marginTop = '4px';
+        }
       }
 
       // Editable land cover for Land Cover layers

@@ -5,6 +5,13 @@ import type { FeatureCollection } from 'geojson';
 import { UploadIcon } from './Icons';
 import { loadHsgMap } from '../utils/soil';
 import { ARCHIVE_NAME_MAP, KNOWN_LAYER_NAMES } from '../utils/constants';
+import {
+  detectDrainageAreaFromFilename,
+  detectDrainageSubareaFromFilename,
+  DA_NAME_ATTR,
+  SUBAREA_PARENT_ATTR,
+  SUBAREA_LAYER_NAME,
+} from '../utils/drainage';
 
 interface FileUploadProps {
   onLayerAdded: (data: FeatureCollection, fileName: string) => void;
@@ -47,7 +54,13 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
     try {
       let buffer = await file.arrayBuffer();
       const lowerName = file.name.toLowerCase();
-      let displayName = ARCHIVE_NAME_MAP[lowerName] ?? file.name;
+      const drainageAreaDetection = detectDrainageAreaFromFilename(file.name);
+      const drainageSubareaDetection = detectDrainageSubareaFromFilename(file.name);
+      let displayName = drainageAreaDetection
+        ? drainageAreaDetection.layerName
+        : drainageSubareaDetection
+        ? drainageSubareaDetection.layerName
+        : ARCHIVE_NAME_MAP[lowerName] ?? file.name;
       const isWssFile = lowerName.startsWith('wss_aoi_');
 
       // Special handling for Web Soil Survey files
@@ -75,6 +88,45 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
       }
 
       let geojson = await shp.parseZip(buffer) as FeatureCollection;
+
+      if (drainageAreaDetection?.dischargePointId) {
+        const dp = drainageAreaDetection.dischargePointId;
+        geojson = {
+          ...geojson,
+          features: geojson.features.map(feature => {
+            const properties = { ...(feature.properties || {}) };
+            if (!properties[DA_NAME_ATTR]) {
+              properties[DA_NAME_ATTR] = dp;
+            }
+            return { ...feature, properties };
+          }),
+        };
+        onLog(`Asociado automáticamente a ${dp} a partir del nombre del archivo.`);
+      }
+
+      if (drainageSubareaDetection) {
+        const dp = drainageSubareaDetection.dischargePointId;
+        geojson = {
+          ...geojson,
+          features: geojson.features.map(feature => {
+            const properties = { ...(feature.properties || {}) };
+            if (dp && !properties[SUBAREA_PARENT_ATTR]) {
+              properties[SUBAREA_PARENT_ATTR] = dp;
+            }
+            if (dp && !properties[DA_NAME_ATTR]) {
+              properties[DA_NAME_ATTR] = dp;
+            }
+            return { ...feature, properties };
+          }),
+        };
+        if (dp) {
+          onLog(`Subáreas vinculadas automáticamente a ${dp} según el nombre del archivo.`);
+        }
+      }
+
+      if (displayName === SUBAREA_LAYER_NAME) {
+        onLog('Recuerda asociar cada Drainage Subarea a un Discharge Point # desde el mapa.');
+      }
 
       // --- DATA ENRICHMENT FOR WSS FILES ---
       if (isWssFile && geojson.features.length > 0) {
