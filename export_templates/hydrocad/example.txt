@@ -1,1 +1,82 @@
-Placeholder for HydroCAD export template.
+[HydroCAD]
+FileUnits=English
+CalcUnits=English
+InputUnits=English
+ReportUnits=English
+Source=HydroCAD® 10.20-6a  s/n 07447  © 2024 HydroCAD Software Solutions LLC
+Source=HydroCAD® 10.20-5b  s/n 07447  © 2023 HydroCAD Software Solutions LLC
+Name=PROJECT NAME
+Path=
+View=-15.2200262616452 -7.99592189386307 27.6264488498838 15.015871738455
+GridShow=True
+GridSnap=True
+TimeSpan=0 259200
+TimeInc=36
+SubIntervals=9
+RunoffMethod=SCS TR-20
+ReachMethod=Dyn-Stor-Ind
+PondMethod=Dyn-Stor-Ind
+UH=SCS
+InitialTW=True
+MinTc=300
+RainEvent=100 Year
+P2=0.2475
+
+[EVENT]
+RainEvent=1 Year
+StormType=Type II 24-hr
+StormDepth=0.205
+
+[EVENT]
+RainEvent=2 Year
+StormType=Type II 24-hr
+StormDepth=0.2475
+
+[EVENT]
+RainEvent=5 Year
+StormType=Type II 24-hr
+StormDepth=0.313333333333333
+
+[EVENT]
+RainEvent=10 Year
+StormType=Type II 24-hr
+StormDepth=0.371666666666667
+
+[EVENT]
+RainEvent=25 Year
+StormType=Type II 24-hr
+StormDepth=0.46
+
+[EVENT]
+RainEvent=50 Year
+StormType=Type II 24-hr
+StormDepth=0.538333333333333
+
+[EVENT]
+RainEvent=100 Year
+StormType=Type II 24-hr
+StormDepth=0.628333333333333
+
+[NODE]
+Number=3S
+Type=Subcat
+Name=SUB DRAINAGE AREA EXAMPLE
+XYPos=-4 8
+Outflow=DP-01
+Note=NOTES EXAMPLE
+LargeAreas=True
+[AREA]
+Area=43560
+CN=98
+Desc=DESCRIPTION EXAMPLE
+[TC]
+Method=Direct
+Desc=TC EXAMPLE
+Tc=300
+
+[NODE]
+Number=DP-01
+Type=Link
+Name=DP-01
+XYPos=-3 2
+LargeAreas=True
