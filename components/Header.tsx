@@ -48,7 +48,7 @@ const Header: React.FC<HeaderProps> = ({
               : 'bg-gray-600 text-gray-300 cursor-not-allowed')
           }
         >
-          Execute
+          HydroCAD
         </button>
         <button
           onClick={onExport}
@@ -60,7 +60,7 @@ const Header: React.FC<HeaderProps> = ({
               : 'bg-gray-600 text-gray-300 cursor-not-allowed')
           }
         >
-          Export
+          Export 2D SCS
         </button>
         <button
           onClick={onManageCurveNumbers}

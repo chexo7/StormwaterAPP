@@ -121,8 +121,8 @@ const CnTableModal: React.FC<CnTableModalProps> = ({ records, onClose, onSave })
           <div>
             <h2 className="text-xl font-semibold text-white">Curve Number Table</h2>
             <p className="text-sm text-gray-300 mt-1">
-              Edita los valores de Curve Number (CN) para cada Land Cover. Los cambios se guardan en el
-              servidor y se usarán en la siguiente ejecución de "Execute".
+              Edita los valores de Curve Number (CN) para cada Land Cover. Los cambios se aplican solo en
+              esta sesión y se usarán inmediatamente al ejecutar "HydroCAD".
             </p>
           </div>
           <button
