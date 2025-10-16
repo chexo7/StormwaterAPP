@@ -1,0 +1,149 @@
+[
+  {
+    "LandCover": "Open Space Poor condition (grass cover < 50%)",
+    "A": 68,
+    "B": 79,
+    "C": 86,
+    "D": 89
+  },
+  {
+    "LandCover": "Open Space Fair condition (grass cover 50% to 75%)",
+    "A": 49,
+    "B": 69,
+    "C": 79,
+    "D": 84
+  },
+  {
+    "LandCover": "Open Space Good condition (grass cover > 75%)",
+    "A": 39,
+    "B": 61,
+    "C": 74,
+    "D": 80
+  },
+  {
+    "LandCover": "Impervious",
+    "A": 98,
+    "B": 98,
+    "C": 98,
+    "D": 98
+  },
+  {
+    "LandCover": "Gravel",
+    "A": 76,
+    "B": 85,
+    "C": 89,
+    "D": 91
+  },
+  {
+    "LandCover": "Dirt",
+    "A": 72,
+    "B": 82,
+    "C": 87,
+    "D": 89
+  },
+  {
+    "LandCover": "Pasture, grassland, or range - Poor",
+    "A": 68,
+    "B": 79,
+    "C": 86,
+    "D": 89
+  },
+  {
+    "LandCover": "Pasture, grassland, or range - Fair",
+    "A": 49,
+    "B": 69,
+    "C": 79,
+    "D": 84
+  },
+  {
+    "LandCover": "Pasture, grassland, or range - Good",
+    "A": 39,
+    "B": 61,
+    "C": 74,
+    "D": 80
+  },
+  {
+    "LandCover": "Meadow",
+    "A": 30,
+    "B": 58,
+    "C": 71,
+    "D": 78
+  },
+  {
+    "LandCover": "Brush - Poor",
+    "A": 48,
+    "B": 67,
+    "C": 77,
+    "D": 83
+  },
+  {
+    "LandCover": "Brush - Fair",
+    "A": 35,
+    "B": 56,
+    "C": 70,
+    "D": 77
+  },
+  {
+    "LandCover": "Brush - Good",
+    "A": 30,
+    "B": 48,
+    "C": 65,
+    "D": 73
+  },
+  {
+    "LandCover": "Woods Grass Combination - Poor",
+    "A": 57,
+    "B": 73,
+    "C": 82,
+    "D": 86
+  },
+  {
+    "LandCover": "Woods Grass Combination - Fair",
+    "A": 43,
+    "B": 65,
+    "C": 76,
+    "D": 82
+  },
+  {
+    "LandCover": "Woods Grass Combination - Good",
+    "A": 32,
+    "B": 58,
+    "C": 72,
+    "D": 79
+  },
+  {
+    "LandCover": "Woods - Poor",
+    "A": 45,
+    "B": 66,
+    "C": 77,
+    "D": 83
+  },
+  {
+    "LandCover": "Woods - Fair",
+    "A": 36,
+    "B": 60,
+    "C": 73,
+    "D": 79
+  },
+  {
+    "LandCover": "Woods - Good",
+    "A": 30,
+    "B": 55,
+    "C": 70,
+    "D": 77
+  },
+  {
+    "LandCover": "Water",
+    "A": 98,
+    "B": 98,
+    "C": 98,
+    "D": 98
+  },
+  {
+    "LandCover": "Water - Process",
+    "A": 98,
+    "B": 98,
+    "C": 98,
+    "D": 98
+  }
+]

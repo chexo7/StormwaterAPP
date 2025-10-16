@@ -18,6 +18,83 @@ app.use(express.json());
 const port = process.env.PORT || 3001;
 const logLimit = parseInt(process.env.LOG_LIMIT || '100', 10);
 
+const cnDataDir = path.join(__dirname, 'data');
+const cnDataPath = path.join(cnDataDir, 'cn-table.json');
+const defaultCnPath = path.join(
+  __dirname,
+  'public',
+  'data',
+  'SCS_CN_VALUES.json'
+);
+
+const CN_GROUPS = ['A', 'B', 'C', 'D'];
+
+function normalizeCnRecord(raw, index) {
+  if (!raw || typeof raw !== 'object') {
+    throw new Error(`Invalid CN record at index ${index}`);
+  }
+
+  const name = typeof raw.LandCover === 'string' ? raw.LandCover.trim() : '';
+  if (!name) {
+    throw new Error(`CN record at index ${index} is missing a LandCover name`);
+  }
+
+  const record = { LandCover: name }; // values assigned below
+  CN_GROUPS.forEach(group => {
+    const value = Number(raw[group]);
+    if (!Number.isFinite(value)) {
+      throw new Error(
+        `CN record "${name}" has an invalid value for group ${group}`
+      );
+    }
+    record[group] = value;
+  });
+
+  return record;
+}
+
+function loadCnTableFromDisk() {
+  try {
+    if (fs.existsSync(cnDataPath)) {
+      const file = fs.readFileSync(cnDataPath, 'utf-8');
+      const parsed = JSON.parse(file);
+      return Array.isArray(parsed)
+        ? parsed.map(normalizeCnRecord)
+        : [];
+    }
+  } catch (err) {
+    console.warn('Failed to load CN table from disk', err);
+  }
+
+  try {
+    const fallback = fs.readFileSync(defaultCnPath, 'utf-8');
+    const parsed = JSON.parse(fallback);
+    return Array.isArray(parsed)
+      ? parsed.map(normalizeCnRecord)
+      : [];
+  } catch (err) {
+    console.warn('Failed to load default CN table', err);
+  }
+  return [];
+}
+
+let cnTable = loadCnTableFromDisk();
+
+function persistCnTable(records) {
+  try {
+    if (!fs.existsSync(cnDataDir)) {
+      fs.mkdirSync(cnDataDir, { recursive: true });
+    }
+    fs.writeFileSync(cnDataPath, JSON.stringify(records, null, 2));
+  } catch (err) {
+    console.error('Failed to persist CN table', err);
+  }
+}
+
+if (!fs.existsSync(cnDataPath)) {
+  persistCnTable(cnTable);
+}
+
 const logs = [];
 const toFeature = (poly) =>
   poly.type === 'Feature' ? poly : { type: 'Feature', properties: {}, geometry: poly };
@@ -50,17 +127,38 @@ app.get('/api/soil-hsg-map', (req, res) => {
   });
 });
 
-app.get('/api/cn-values', (req, res) => {
-  const filePath = path.join(__dirname, 'public', 'data', 'SCS_CN_VALUES.json');
-  fs.readFile(filePath, (err, data) => {
-    if (err) {
-      addLog('Error reading CN values', 'error');
-      res.status(500).send('Unable to read CN values');
-    } else {
-      addLog('Curve Number values served');
-      res.type('application/json').send(data);
-    }
-  });
+app.get('/api/cn-table', (req, res) => {
+  addLog('Curve Number table served');
+  res.json(cnTable);
+});
+
+app.put('/api/cn-table', (req, res) => {
+  const payload = req.body && req.body.records !== undefined ? req.body.records : req.body;
+  if (!Array.isArray(payload)) {
+    addLog('Invalid CN table update payload', 'error');
+    return res.status(400).json({ error: 'records must be an array' });
+  }
+
+  try {
+    const seen = new Map();
+    const orderedKeys = [];
+    payload.forEach((raw, idx) => {
+      const normalized = normalizeCnRecord(raw, idx);
+      const key = normalized.LandCover.toLowerCase();
+      if (!seen.has(key)) {
+        orderedKeys.push(key);
+      }
+      seen.set(key, normalized);
+    });
+    cnTable = orderedKeys.map(key => seen.get(key));
+    persistCnTable(cnTable);
+    addLog(`Curve Number table updated with ${cnTable.length} records`);
+    res.json({ ok: true, records: cnTable });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Invalid CN table';
+    addLog(`Failed to update CN table: ${message}`, 'error');
+    res.status(400).json({ error: message });
+  }
 });
 
 app.get('/api/logs', (req, res) => {
