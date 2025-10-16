@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { CnRecord } from '../utils/landcover';
+import { CnRecord, createLandCoverKey } from '../utils/landcover';
 
 interface CnTableModalProps {
   records: CnRecord[];
@@ -90,7 +90,7 @@ const CnTableModal: React.FC<CnTableModalProps> = ({ records, onClose, onSave })
       });
       const seen = new Set<string>();
       sanitized.forEach(record => {
-        const key = record.LandCover.toLowerCase();
+        const key = createLandCoverKey(record.LandCover);
         if (seen.has(key)) {
           throw new Error(`El valor "${record.LandCover}" está duplicado.`);
         }

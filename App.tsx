@@ -19,7 +19,13 @@ import LayerPreview from './components/LayerPreview';
 import ComputeModal, { ComputeTask } from './components/ComputeModal';
 import ExportModal from './components/ExportModal';
 import FieldMapModal from './components/FieldMapModal';
-import { loadCnValues, saveCnValues, CnRecord } from './utils/landcover';
+import {
+  loadCnValues,
+  saveCnValues,
+  CnRecord,
+  normalizeLandCover,
+  createLandCoverKey,
+} from './utils/landcover';
 import { prepareForShapefile } from './utils/shp';
 import proj4 from 'proj4';
 import { STATE_PLANE_OPTIONS } from './utils/projections';
@@ -328,12 +334,6 @@ const aggregateOverlayForHydroCAD = (
     });
 };
 
-const normalizeLandCover = (value: unknown): string => {
-  if (typeof value === 'string') return value.trim();
-  if (value === null || value === undefined) return '';
-  return String(value).trim();
-};
-
 const sanitizeCnNumber = (value: unknown): number => {
   if (typeof value === 'number') {
     return Number.isFinite(value) ? value : 0;
@@ -434,10 +434,11 @@ const App: React.FC = () => {
   const cnValueIndex = useMemo(() => {
     const map = new Map<string, CnRecord>();
     cnValues.forEach(record => {
-      const name = normalizeLandCover(record.LandCover);
-      if (!name) return;
-      map.set(name, record);
-      map.set(name.toLowerCase(), record);
+      const key = createLandCoverKey(record.LandCover);
+      if (!key) return;
+      if (!map.has(key)) {
+        map.set(key, record);
+      }
     });
     return map;
   }, [cnValues]);
@@ -791,8 +792,8 @@ const App: React.FC = () => {
             const lcNameRaw = (baseProps as any).LAND_COVER;
             const hsgRaw = (baseProps as any).HSG ?? (wssFeature.properties as any)?.HSG;
             if (lcNameRaw != null) {
-              const lcName = String(lcNameRaw);
-              const rec = cnMap.get(lcName);
+              const lcKey = createLandCoverKey(lcNameRaw);
+              const rec = lcKey ? cnMap.get(lcKey) : undefined;
               if (rec && hsgRaw != null) {
                 const hsg = String(hsgRaw).trim().toUpperCase();
                 if (hsg === 'A' || hsg === 'B' || hsg === 'C' || hsg === 'D') {
@@ -1331,8 +1332,8 @@ const App: React.FC = () => {
       const duplicates: string[] = [];
       sanitized.forEach(record => {
         const name = normalizeLandCover(record.LandCover);
-        if (!name) return;
-        const key = name.toLowerCase();
+        const key = createLandCoverKey(record.LandCover);
+        if (!key) return;
         if (seen.has(key)) {
           duplicates.push(name);
         } else {
@@ -1760,9 +1761,10 @@ const App: React.FC = () => {
       overlay.forEach(f => {
         const lcNameRaw = (f.properties as any)?.LAND_COVER;
         const lcName = normalizeLandCover(lcNameRaw);
+        const lcKey = createLandCoverKey(lcNameRaw);
         const hsgRaw = (f.properties as any)?.HSG;
         const hsg = hsgRaw == null ? null : String(hsgRaw).toUpperCase();
-        const rec = lcName ? cnMap.get(lcName) ?? cnMap.get(lcName.toLowerCase()) : undefined;
+        const rec = lcKey ? cnMap.get(lcKey) : undefined;
         const cnValue = rec && hsg ? (rec as any)[hsg as keyof CnRecord] : undefined;
         if (cnValue !== undefined) {
           f.properties = { ...(f.properties || {}), CN: cnValue };
