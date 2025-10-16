@@ -185,26 +185,27 @@ type HydroCADSubcatchment = {
   areas: HydroCADAreaGroup[];
 };
 
+const resolveSubareaName = (rawName: unknown, fallback: string) => {
+  const candidate = rawName == null ? '' : String(rawName);
+  const trimmed = candidate.trim();
+  return trimmed === '' ? fallback : trimmed;
+};
+
+const normalizeSubareaKey = (name: string) => name.trim().toLowerCase();
+
+type SubareaAggregate = {
+  name: string;
+  parent: string | null;
+  parents: Set<string>;
+  order: number;
+  groups: Map<string, HydroCADAreaGroup>;
+};
+
 const aggregateOverlayForHydroCAD = (
   features: Feature[],
   subareas: Feature<Polygon | MultiPolygon>[]
 ): HydroCADSubcatchment[] => {
-  type SubareaAggregate = {
-    name: string;
-    parent: string | null;
-    order: number;
-    groups: Map<string, HydroCADAreaGroup>;
-  };
-
   const aggregates = new Map<string, SubareaAggregate>();
-
-  const normalizeName = (value: string, fallback: string) => {
-    const trimmed = value.trim();
-    return trimmed === '' ? fallback : trimmed;
-  };
-
-  const makeKey = (name: string, parent: string | null) =>
-    `${parent ?? ''}|${name.toLowerCase()}`;
 
   const ensureAggregate = (
     rawName: string,
@@ -213,17 +214,21 @@ const aggregateOverlayForHydroCAD = (
     parentRaw: string | null
   ): SubareaAggregate => {
     const parent = parentRaw ? formatDischargePointName(parentRaw) : null;
-    const name = normalizeName(rawName, fallbackName);
-    const key = makeKey(name, parent);
+    const name = resolveSubareaName(rawName, fallbackName);
+    const key = normalizeSubareaKey(name);
     const existing = aggregates.get(key);
     if (existing) {
-      if (!existing.parent && parent) existing.parent = parent;
+      if (parent) {
+        existing.parents.add(parent);
+        if (!existing.parent) existing.parent = parent;
+      }
       if (order < existing.order) existing.order = order;
       return existing;
     }
     const aggregate: SubareaAggregate = {
       name,
       parent,
+      parents: parent ? new Set([parent]) : new Set(),
       order,
       groups: new Map(),
     };
@@ -313,7 +318,10 @@ const aggregateOverlayForHydroCAD = (
     .map((aggregate, index) => ({
       id: sanitizeId(aggregate.name, aggregate.parent, index),
       name: aggregate.name,
-      parentDa: aggregate.parent,
+      parentDa:
+        aggregate.parents.size === 1
+          ? Array.from(aggregate.parents)[0]
+          : aggregate.parent,
       areas: Array.from(aggregate.groups.values()).map(item => ({
         area: Number(item.area.toFixed(2)),
         cn: item.cn,
@@ -1688,11 +1696,11 @@ const App: React.FC = () => {
             processedSubareas.map((subFeature, index) => {
               const props = subFeature.properties || {};
               const rawName = (props as any)[SUBAREA_NAME_ATTR];
-              const name = rawName == null ? '' : String(rawName).trim();
-              const parentRaw = (props as any)[SUBAREA_PARENT_ATTR];
-              const parent = parentRaw == null ? '' : formatDischargePointName(parentRaw) || '';
-              const resolvedName = name === '' ? `Subarea ${index + 1}` : name;
-              return `${parent}|${resolvedName}`;
+              const resolvedName = resolveSubareaName(
+                rawName,
+                `Subarea ${index + 1}`
+              );
+              return normalizeSubareaKey(resolvedName);
             })
           ).size;
           if (subcatchments.length < expectedCount) {
@@ -1783,11 +1791,11 @@ const App: React.FC = () => {
       processedSubareas.map((subFeature, index) => {
         const props = subFeature.properties || {};
         const rawName = (props as any)[SUBAREA_NAME_ATTR];
-        const name = rawName == null ? '' : String(rawName).trim();
-        const parentRaw = (props as any)[SUBAREA_PARENT_ATTR];
-        const parent = parentRaw == null ? '' : formatDischargePointName(parentRaw) || '';
-        const resolvedName = name === '' ? `Subarea ${index + 1}` : name;
-        return `${parent}|${resolvedName}`;
+        const resolvedName = resolveSubareaName(
+          rawName,
+          `Subarea ${index + 1}`
+        );
+        return normalizeSubareaKey(resolvedName);
       })
     ).size;
     if (subcatchments.length < expectedCount) {
