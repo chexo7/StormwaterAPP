@@ -7,35 +7,39 @@ export type CnRecord = {
   D: number;
 };
 
-export async function loadLandCoverList(): Promise<string[]> {
-  const sources = ['/api/cn-values', '/data/SCS_CN_VALUES.json'];
-  for (const url of sources) {
-    try {
-      const res = await fetch(url);
-      if (res.ok) {
-        const data = (await res.json()) as any[];
-        return Array.from(new Set(data.map(d => d?.LandCover).filter(Boolean)));
-      }
-      console.warn(`CN values request to ${url} failed with status ${res.status}`);
-    } catch (err) {
-      console.warn(`CN values request to ${url} failed`, err);
-    }
+async function requestCnValues(): Promise<CnRecord[]> {
+  const res = await fetch('/api/cn-values');
+  if (!res.ok) {
+    throw new Error(`No se pudieron cargar los valores de CN (HTTP ${res.status}).`);
   }
-  return [];
+  const data = (await res.json()) as unknown;
+  if (!Array.isArray(data)) {
+    throw new Error('La respuesta del servidor para los valores de CN es inválida.');
+  }
+  return data as CnRecord[];
+}
+
+export async function loadLandCoverList(): Promise<string[]> {
+  const records = await requestCnValues();
+  return Array.from(new Set(records.map(record => record?.LandCover).filter(Boolean)));
 }
 
 export async function loadCnValues(): Promise<CnRecord[]> {
-  const sources = ['/api/cn-values', '/data/SCS_CN_VALUES.json'];
-  for (const url of sources) {
-    try {
-      const res = await fetch(url);
-      if (res.ok) {
-        return (await res.json()) as CnRecord[];
-      }
-      console.warn(`CN values request to ${url} failed with status ${res.status}`);
-    } catch (err) {
-      console.warn(`CN values request to ${url} failed`, err);
-    }
+  return requestCnValues();
+}
+
+export async function saveCnValues(records: CnRecord[]): Promise<CnRecord[]> {
+  const res = await fetch('/api/cn-values', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(records),
+  });
+  if (!res.ok) {
+    throw new Error(`No se pudieron guardar los valores de CN (HTTP ${res.status}).`);
   }
-  return [];
+  const payload = (await res.json()) as { records?: CnRecord[] };
+  if (!payload.records || !Array.isArray(payload.records)) {
+    throw new Error('La respuesta del servidor al guardar los valores de CN es inválida.');
+  }
+  return payload.records;
 }

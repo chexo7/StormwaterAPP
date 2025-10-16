@@ -18,6 +18,8 @@ app.use(express.json());
 const port = process.env.PORT || 3001;
 const logLimit = parseInt(process.env.LOG_LIMIT || '100', 10);
 
+const { promises: fsPromises } = fs;
+
 const logs = [];
 const toFeature = (poly) =>
   poly.type === 'Feature' ? poly : { type: 'Feature', properties: {}, geometry: poly };
@@ -61,6 +63,56 @@ app.get('/api/cn-values', (req, res) => {
       res.type('application/json').send(data);
     }
   });
+});
+
+app.put('/api/cn-values', async (req, res) => {
+  const payload = req.body;
+  if (!Array.isArray(payload)) {
+    addLog('Invalid payload for CN values update', 'error');
+    return res.status(400).json({ error: 'Formato inválido para actualizar valores de CN.' });
+  }
+
+  const normalizeRecord = (record, index) => {
+    const landCoverRaw = record?.LandCover;
+    const landCover = typeof landCoverRaw === 'string' ? landCoverRaw.trim() : '';
+    if (!landCover) {
+      throw new Error(`Registro ${index + 1}: LandCover es requerido.`);
+    }
+    const parseNumber = (value, field) => {
+      const num = Number(value);
+      if (!Number.isFinite(num)) {
+        throw new Error(`Registro ${index + 1}: el campo ${field} debe ser numérico.`);
+      }
+      return num;
+    };
+    return {
+      LandCover: landCover,
+      A: parseNumber(record?.A, 'A'),
+      B: parseNumber(record?.B, 'B'),
+      C: parseNumber(record?.C, 'C'),
+      D: parseNumber(record?.D, 'D'),
+    };
+  };
+
+  let normalized;
+  try {
+    normalized = payload.map(normalizeRecord);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Error de validación desconocido.';
+    addLog(`CN values update validation failed: ${message}`, 'error');
+    return res.status(400).json({ error: message });
+  }
+
+  const filePath = path.join(__dirname, 'public', 'data', 'SCS_CN_VALUES.json');
+  try {
+    await fsPromises.writeFile(filePath, JSON.stringify(normalized, null, 2));
+    addLog('Curve Number values updated');
+    res.json({ records: normalized });
+  } catch (error) {
+    console.error('Failed to persist CN values', error);
+    addLog('Failed to persist CN values', 'error');
+    res.status(500).json({ error: 'No se pudieron guardar los valores de CN.' });
+  }
 });
 
 app.get('/api/logs', (req, res) => {

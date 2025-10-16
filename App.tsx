@@ -19,7 +19,8 @@ import LayerPreview from './components/LayerPreview';
 import ComputeModal, { ComputeTask } from './components/ComputeModal';
 import ExportModal from './components/ExportModal';
 import FieldMapModal from './components/FieldMapModal';
-import { loadLandCoverList, loadCnValues, CnRecord } from './utils/landcover';
+import CnTableModal from './components/CnTableModal';
+import { loadLandCoverList, loadCnValues, saveCnValues, CnRecord } from './utils/landcover';
 import { prepareForShapefile } from './utils/shp';
 import proj4 from 'proj4';
 import { STATE_PLANE_OPTIONS } from './utils/projections';
@@ -185,46 +186,47 @@ type HydroCADSubcatchment = {
   areas: HydroCADAreaGroup[];
 };
 
+const resolveSubareaName = (rawName: unknown, fallback: string): string => {
+  if (rawName === undefined || rawName === null) return fallback;
+  const value = String(rawName).trim();
+  return value === '' ? fallback : value;
+};
+
+const getSubareaKey = (rawName: unknown, fallback: string): string =>
+  resolveSubareaName(rawName, fallback).toLowerCase();
+
 const aggregateOverlayForHydroCAD = (
   features: Feature[],
   subareas: Feature<Polygon | MultiPolygon>[]
 ): HydroCADSubcatchment[] => {
   type SubareaAggregate = {
     name: string;
-    parent: string | null;
     order: number;
+    parents: Set<string>;
     groups: Map<string, HydroCADAreaGroup>;
   };
 
   const aggregates = new Map<string, SubareaAggregate>();
 
-  const normalizeName = (value: string, fallback: string) => {
-    const trimmed = value.trim();
-    return trimmed === '' ? fallback : trimmed;
-  };
-
-  const makeKey = (name: string, parent: string | null) =>
-    `${parent ?? ''}|${name.toLowerCase()}`;
-
   const ensureAggregate = (
-    rawName: string,
+    rawName: unknown,
     fallbackName: string,
     order: number,
-    parentRaw: string | null
+    parentRaw: unknown
   ): SubareaAggregate => {
-    const parent = parentRaw ? formatDischargePointName(parentRaw) : null;
-    const name = normalizeName(rawName, fallbackName);
-    const key = makeKey(name, parent);
+    const name = resolveSubareaName(rawName, fallbackName);
+    const key = name.toLowerCase();
+    const parentValue = parentRaw ? formatDischargePointName(parentRaw) : '';
     const existing = aggregates.get(key);
     if (existing) {
-      if (!existing.parent && parent) existing.parent = parent;
+      if (parentValue) existing.parents.add(parentValue);
       if (order < existing.order) existing.order = order;
       return existing;
     }
     const aggregate: SubareaAggregate = {
       name,
-      parent,
       order,
+      parents: parentValue ? new Set([parentValue]) : new Set(),
       groups: new Map(),
     };
     aggregates.set(key, aggregate);
@@ -236,12 +238,7 @@ const aggregateOverlayForHydroCAD = (
     const rawName = (props as any)[SUBAREA_NAME_ATTR];
     const fallback = `Subarea ${index + 1}`;
     const parentRaw = (props as any)[SUBAREA_PARENT_ATTR] ?? null;
-    ensureAggregate(
-      rawName == null ? '' : String(rawName),
-      fallback,
-      index,
-      parentRaw == null ? null : String(parentRaw)
-    );
+    ensureAggregate(rawName, fallback, index, parentRaw);
   });
 
   features.forEach((feature, idx) => {
@@ -251,10 +248,10 @@ const aggregateOverlayForHydroCAD = (
     const fallback = `Subarea ${subareas.length + idx + 1}`;
     const parentRaw = (feature.properties as any)[SUBAREA_PARENT_ATTR] ?? null;
     const aggregate = ensureAggregate(
-      rawName == null ? '' : String(rawName),
+      rawName,
       fallback,
       subareas.length + idx,
-      parentRaw == null ? null : String(parentRaw)
+      parentRaw
     );
 
     const cnRaw = (feature.properties as any)?.CN;
@@ -310,16 +307,25 @@ const aggregateOverlayForHydroCAD = (
 
   return Array.from(aggregates.values())
     .sort((a, b) => a.order - b.order)
-    .map((aggregate, index) => ({
-      id: sanitizeId(aggregate.name, aggregate.parent, index),
-      name: aggregate.name,
-      parentDa: aggregate.parent,
-      areas: Array.from(aggregate.groups.values()).map(item => ({
-        area: Number(item.area.toFixed(2)),
-        cn: item.cn,
-        desc: item.desc,
-      })),
-    }));
+    .map((aggregate, index) => {
+      const parentLabel =
+        aggregate.parents.size > 0
+          ? Array.from(aggregate.parents)
+              .filter(Boolean)
+              .sort((a, b) => a.localeCompare(b))
+              .join(', ')
+          : null;
+      return {
+        id: sanitizeId(aggregate.name, parentLabel, index),
+        name: aggregate.name,
+        parentDa: parentLabel,
+        areas: Array.from(aggregate.groups.values()).map(item => ({
+          area: Number(item.area.toFixed(2)),
+          cn: item.cn,
+          desc: item.desc,
+        })),
+      };
+    });
 };
 
 const buildHydroCADContent = (
@@ -395,6 +401,10 @@ const App: React.FC = () => {
   const [exportModalOpen, setExportModalOpen] = useState<boolean>(false);
   const [projection, setProjection] = useState<ProjectionOption>(STATE_PLANE_OPTIONS[0]);
   const [projectionConfirmed, setProjectionConfirmed] = useState<boolean>(false);
+  const [cnTableOpen, setCnTableOpen] = useState<boolean>(false);
+  const [cnTableLoading, setCnTableLoading] = useState<boolean>(false);
+  const [cnTableError, setCnTableError] = useState<string | null>(null);
+  const [cnTableRecords, setCnTableRecords] = useState<CnRecord[] | null>(null);
   const autoOverlaySignatureRef = useRef<string | null>(null);
 
   const project = useMemo(() => proj4('EPSG:4326', projection.proj4), [projection]);
@@ -608,8 +618,82 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    loadLandCoverList().then(list => setLandCoverOptions(list));
+    let cancelled = false;
+    (async () => {
+      try {
+        const list = await loadLandCoverList();
+        if (!cancelled) {
+          setLandCoverOptions(list);
+        }
+      } catch (error) {
+        console.error('Failed to load Land Cover options', error);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  const applyLandCoverOptionsFromRecords = useCallback(
+    (records: CnRecord[]) => {
+      const options = Array.from(new Set(records.map(record => record.LandCover)));
+      setLandCoverOptions(options);
+    },
+    [setLandCoverOptions]
+  );
+
+  const fetchCnTableRecords = useCallback(async () => {
+    setCnTableLoading(true);
+    setCnTableError(null);
+    try {
+      const records = await loadCnValues();
+      setCnTableRecords(records);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'No se pudieron cargar los valores de CN.';
+      setCnTableError(message);
+      addLog(`No se pudieron cargar los valores de CN: ${message}`, 'error');
+      console.error('Failed to load CN values', error);
+    } finally {
+      setCnTableLoading(false);
+    }
+  }, [addLog]);
+
+  const handleOpenCnTable = useCallback(() => {
+    setCnTableOpen(true);
+    fetchCnTableRecords();
+  }, [fetchCnTableRecords]);
+
+  const handleCloseCnTable = useCallback(() => {
+    setCnTableOpen(false);
+  }, []);
+
+  const handleReloadCnTable = useCallback(() => {
+    fetchCnTableRecords();
+  }, [fetchCnTableRecords]);
+
+  const handleSaveCnTable = useCallback(
+    async (records: CnRecord[]) => {
+      try {
+        const saved = await saveCnValues(records);
+        setCnTableRecords(saved);
+        applyLandCoverOptionsFromRecords(saved);
+        setCnTableError(null);
+        addLog('Tabla de Curve Numbers actualizada y guardada en el servidor.');
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : 'No se pudieron guardar los valores de CN.';
+        addLog(`Error al guardar la tabla de Curve Numbers: ${message}`, 'error');
+        console.error('Failed to save CN values', error);
+        throw new Error(message);
+      }
+    },
+    [addLog, applyLandCoverOptionsFromRecords]
+  );
 
   useEffect(() => {
     if (!landCoverOptions.length) return;
@@ -1688,11 +1772,8 @@ const App: React.FC = () => {
             processedSubareas.map((subFeature, index) => {
               const props = subFeature.properties || {};
               const rawName = (props as any)[SUBAREA_NAME_ATTR];
-              const name = rawName == null ? '' : String(rawName).trim();
-              const parentRaw = (props as any)[SUBAREA_PARENT_ATTR];
-              const parent = parentRaw == null ? '' : formatDischargePointName(parentRaw) || '';
-              const resolvedName = name === '' ? `Subarea ${index + 1}` : name;
-              return `${parent}|${resolvedName}`;
+              const fallback = `Subarea ${index + 1}`;
+              return getSubareaKey(rawName, fallback);
             })
           ).size;
           if (subcatchments.length < expectedCount) {
@@ -1783,11 +1864,8 @@ const App: React.FC = () => {
       processedSubareas.map((subFeature, index) => {
         const props = subFeature.properties || {};
         const rawName = (props as any)[SUBAREA_NAME_ATTR];
-        const name = rawName == null ? '' : String(rawName).trim();
-        const parentRaw = (props as any)[SUBAREA_PARENT_ATTR];
-        const parent = parentRaw == null ? '' : formatDischargePointName(parentRaw) || '';
-        const resolvedName = name === '' ? `Subarea ${index + 1}` : name;
-        return `${parent}|${resolvedName}`;
+        const fallback = `Subarea ${index + 1}`;
+        return getSubareaKey(rawName, fallback);
       })
     ).size;
     if (subcatchments.length < expectedCount) {
@@ -2972,6 +3050,7 @@ const App: React.FC = () => {
         onCompute={handleCompute}
         exportEnabled={exportEnabled}
         onExport={() => setExportModalOpen(true)}
+        onManageCnValues={handleOpenCnTable}
         onView3D={handleView3D}
         view3DEnabled={pipe3DEnabled}
         projectName={projectName}
@@ -3067,6 +3146,16 @@ const App: React.FC = () => {
           properties={mappingLayer.data.features[0]?.properties || {}}
           onConfirm={handleFieldMapConfirm}
           onCancel={handleFieldMapCancel}
+        />
+      )}
+      {cnTableOpen && (
+        <CnTableModal
+          records={cnTableRecords}
+          loading={cnTableLoading}
+          error={cnTableError}
+          onReload={handleReloadCnTable}
+          onSave={handleSaveCnTable}
+          onClose={handleCloseCnTable}
         />
       )}
     </div>
