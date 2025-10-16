@@ -19,7 +19,7 @@ import LayerPreview from './components/LayerPreview';
 import ComputeModal, { ComputeTask } from './components/ComputeModal';
 import ExportModal from './components/ExportModal';
 import FieldMapModal from './components/FieldMapModal';
-import { loadCnValues, saveCnValues, CnRecord } from './utils/landcover';
+import { loadCnValues, CnRecord } from './utils/landcover';
 import { prepareForShapefile } from './utils/shp';
 import proj4 from 'proj4';
 import { STATE_PLANE_OPTIONS } from './utils/projections';
@@ -716,11 +716,14 @@ const App: React.FC = () => {
     !!pipesLayer &&
     pipesLayer.geojson.features.length > 0;
 
-  const exportHydroCADEnabled = computeSucceeded;
-  const exportShapefilesEnabled =
-    (computeSucceeded || pipe3DEnabled) && projectionConfirmed;
-  const exportSWMMEnabled = (computeSucceeded || pipe3DEnabled) && projectionConfirmed;
-  const exportEnabled = computeSucceeded || pipe3DEnabled;
+  const overlayLayerForExport = useMemo(
+    () =>
+      layers.find(l => l.name === AUTO_OVERLAY_LAYER_NAME) ||
+      layers.find(l => l.name === 'Overlay'),
+    [layers]
+  );
+  const exportEnabled = !!overlayLayerForExport;
+  const exportOverlayEnabled = !!overlayLayerForExport && projectionConfirmed;
   const curveNumbersEnabled = cnValuesLoaded;
 
   const splitPipesAtNodes = (
@@ -1456,9 +1459,8 @@ const App: React.FC = () => {
           `Land Cover duplicados detectados: ${Array.from(new Set(duplicates)).join(', ')}`
         );
       }
-      await saveCnValues(sanitized);
       setCnValues(sanitized);
-      addLog('Tabla de Curve Numbers actualizada.');
+      addLog('Tabla de Curve Numbers actualizada para esta sesión.');
       setCnTableOpen(false);
     },
     [addLog]
@@ -1476,7 +1478,7 @@ const App: React.FC = () => {
       { id: 'check_overall', name: 'Validate Overall Drainage Area', status: 'pending' },
       { id: 'check_attrs', name: 'Validate required attributes', status: 'pending' },
       { id: 'prepare_subareas', name: 'Build drainage subareas with complements', status: 'pending' },
-      { id: 'overlay', name: 'Execute SCS overlay analysis', status: 'pending' },
+      { id: 'overlay', name: 'Run SCS overlay analysis', status: 'pending' },
       { id: 'hydrocad', name: 'Generate HydroCAD file (SCS)', status: 'pending' },
     ];
     setComputeTasks(tasks);
@@ -1982,7 +1984,7 @@ const App: React.FC = () => {
     }
     const processedLayer = layers.find(l => l.name === PROCESSED_SUBAREA_LAYER_NAME);
     if (!processedLayer) {
-      addLog('Drainage Subareas (Computed) layer not found. Ejecuta "Execute" para generarla.', 'error');
+      addLog('Drainage Subareas (Computed) layer not found. Ejecuta "HydroCAD" para generarla.', 'error');
       return;
     }
     const processedSubareas = processedLayer.geojson.features.filter(isPolygonLike) as Feature<
@@ -2015,7 +2017,7 @@ const App: React.FC = () => {
     ).size;
     if (subcatchments.length < expectedCount) {
       addLog(
-        'No se generaron todos los subcatchments de HydroCAD para las subáreas. Ejecuta nuevamente "Execute".',
+        'No se generaron todos los subcatchments de HydroCAD para las subáreas. Ejecuta nuevamente "HydroCAD".',
         'error'
       );
       return;
@@ -2556,242 +2558,13 @@ const App: React.FC = () => {
     }, [addLog, layers, projectName, projectVersion, projection]);
 
   const handleExportShapefiles = useCallback(async () => {
-    try {
-      const processedLayers = layers.filter(
-        l =>
-          l.category === 'Process' ||
-          l.name === 'Catch Basins / Manholes'
-      );
-
-      const forward = (coord: [number, number]): [number, number] => {
-        const [x, y] = project.forward(coord);
-        if (!Number.isFinite(x) || !Number.isFinite(y)) {
-          throw new Error(
-            `Failed to project coordinate ${JSON.stringify(coord)} with EPSG:${projection.epsg}`
-          );
-        }
-        return [x, y] as [number, number];
-      };
-
-      const jLayer = layers.find((l) => l.name === 'Catch Basins / Manholes');
-      const pLayer = layers.find((l) => l.name === 'Pipes');
-
-      if (jLayer && pLayer) {
-
-      const getPropStrict = (props: any, candidates: string[]) => {
-        if (!props) return undefined;
-        const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
-        const map = new Map(Object.keys(props).map((k) => [norm(k), k]));
-        for (const cand of candidates) {
-          const hit = map.get(norm(cand));
-          if (hit !== undefined) return (props as any)[hit];
-        }
-        return undefined;
-      };
-
-      const getMapped = (
-        props: any,
-        map: Record<string, string> | undefined,
-        key: string,
-        candidates: string[]
-      ) => {
-        if (map && map[key] && props?.[map[key]] !== undefined) {
-          return (props as any)[map[key]];
-        }
-        return getPropStrict(props, candidates);
-      };
-
-      const sanitizeId = (s: string, i: number) =>
-        (s || `S${i + 1}`)
-          .trim()
-          .replace(/[^\w\-]/g, '_')
-          .replace(/_+/g, '_')
-          .slice(0, 31);
-
-      type NodeRec = { id: string; coord: [number, number]; invert: number };
-      const jMap = jLayer.fieldMap;
-      const nodeFeatures = jLayer.geojson.features.filter(
-        (f) => f.geometry && f.geometry.type === 'Point'
-      ) as Feature<Point>[];
-      const nodes: NodeRec[] = [];
-      const goodNodeFeatures: Feature<Point>[] = [];
-      nodeFeatures.forEach((f, i) => {
-        const props = f.properties;
-        const id = sanitizeId(
-          String(getMapped(props, jMap, 'label', ['Label']) ?? ''),
-          i
-        );
-        const invert = Number(
-          getMapped(props, jMap, 'inv_out', [
-            'Inv Out [ft]',
-            'Inv Out [ft]:',
-            'Elevation Invert[ft]'
-          ])
-        );
-        const ground = Number(
-          getMapped(props, jMap, 'ground', ['Elevation Ground [ft]'])
-        );
-        if (!Number.isFinite(invert) || !Number.isFinite(ground)) return;
-        const coord = forward((f.geometry as any).coordinates as [number, number]);
-        nodes.push({ id, coord, invert });
-        goodNodeFeatures.push(f);
-      });
-
-      const cbIdx = processedLayers.findIndex(
-        (l) => l.name === 'Catch Basins / Manholes'
-      );
-      if (cbIdx >= 0) {
-        processedLayers[cbIdx] = {
-          ...processedLayers[cbIdx],
-          geojson: {
-            type: 'FeatureCollection',
-            features: goodNodeFeatures,
-          },
-        };
-      }
-
-      const findNearestNode = (pt: [number, number]) => {
-        let best: NodeRec | undefined;
-        let bestDist = Infinity;
-        for (const n of nodes) {
-          const dx = pt[0] - n.coord[0];
-          const dy = pt[1] - n.coord[1];
-          const d = Math.hypot(dx, dy);
-          if (d < bestDist) {
-            bestDist = d;
-            best = n;
-          }
-        }
-        return best;
-      };
-
-      const lineLength = (coords: number[][]) => {
-        let len = 0;
-        for (let i = 1; i < coords.length; i++) {
-          const [x1, y1] = forward(coords[i - 1] as [number, number]);
-          const [x2, y2] = forward(coords[i] as [number, number]);
-          len += Math.hypot(x2 - x1, y2 - y1);
-        }
-        return len;
-      };
-
-      const rawPipeFeatures: Feature<LineString>[] = [];
-      pLayer.geojson.features.forEach((f) => {
-        if (!f.geometry) return;
-        if (f.geometry.type === 'LineString') {
-          rawPipeFeatures.push(f as Feature<LineString>);
-        } else if (f.geometry.type === 'MultiLineString') {
-          (f.geometry.coordinates as number[][][]).forEach((coords) => {
-            rawPipeFeatures.push({
-              type: 'Feature',
-              geometry: { type: 'LineString', coordinates: coords },
-              properties: f.properties || {},
-            });
-          });
-        }
-      });
-      const pipeFeatures = splitPipesAtNodes(rawPipeFeatures, nodeFeatures);
-      const pMap = pLayer.fieldMap;
-      const pipeOut: Feature<LineString>[] = [];
-      const toNumericOrNull = (value: unknown): number | null => {
-        if (value == null || value === '') return null;
-        const num = Number(value);
-        return Number.isFinite(num) ? num : null;
-      };
-
-      const formatOrEmpty = (value: number | null, digits: number) =>
-        value == null ? '' : Number(value.toFixed(digits));
-
-      pipeFeatures.forEach((f, i) => {
-        const seg = (f.properties as any)?._segment;
-        let raw = String(
-          getMapped(f.properties, pMap, 'label', ['Label']) ?? ''
-        );
-        if (seg) raw = `${raw}-${seg}`;
-        const id = sanitizeId(raw, i);
-        const coords = (f.geometry as LineString).coordinates;
-        const diamIn = toNumericOrNull(
-          getMapped(f.properties, pMap, 'diameter', ['Diameter [in]'])
-        );
-        const invIn = toNumericOrNull(
-          getMapped(f.properties, pMap, 'inv_in', ['Elevation Invert In [ft]'])
-        );
-        const invOut = toNumericOrNull(
-          getMapped(f.properties, pMap, 'inv_out', ['Elevation Invert Out [ft]'])
-        );
-
-        let dirStr = String(
-          getMapped(f.properties, pMap, 'direction', ['Directions']) ?? ''
-        );
-        if (seg) dirStr = '';
-        let from: NodeRec | undefined;
-        let to: NodeRec | undefined;
-        if (dirStr.includes(' to ')) {
-          const [a, b] = dirStr.split(/\s+to\s+/);
-          const fromId = sanitizeId(a, 0);
-          const toId = sanitizeId(b, 0);
-          from = nodes.find((n) => n.id === fromId);
-          to = nodes.find((n) => n.id === toId);
-        }
-        if (!from || !to) {
-          const start = forward(coords[0] as [number, number]);
-          const end = forward(coords[coords.length - 1] as [number, number]);
-          from = findNearestNode(start);
-          to = findNearestNode(end);
-        }
-        if (!from || !to) return;
-
-        const len = lineLength(coords);
-        const rough = Number(
-          getMapped(f.properties, pMap, 'roughness', ['Rougness', 'Roughness']) ??
-            0
-        );
-        const slope =
-          invIn != null && invOut != null && len > 0 ? (invIn - invOut) / len : null;
-        const inOffset = invIn != null ? invIn - from.invert : null;
-        const outOffset = invOut != null ? invOut - to.invert : null;
-        pipeOut.push({
-          type: 'Feature',
-          geometry: f.geometry,
-          properties: {
-            ID: id,
-            FROM_ID: from.id,
-            TO_ID: to.id,
-            LEN_FT: Number(len.toFixed(3)),
-            DIAM_IN: formatOrEmpty(diamIn, 3),
-            INV_IN: formatOrEmpty(invIn, 3),
-            INV_OUT: formatOrEmpty(invOut, 3),
-            ROUGH: rough,
-            SLOPE: formatOrEmpty(slope, 6),
-            IN_OFF: formatOrEmpty(inOffset, 3),
-            OUT_OFF: formatOrEmpty(outOffset, 3),
-          },
-        });
-      });
-      if (pipeOut.length > 0) {
-        processedLayers.push({
-          id: `${Date.now()}-PipeNetwork`,
-          name: 'Pipe Network',
-          geojson: {
-            type: 'FeatureCollection',
-            features: pipeOut,
-          } as FeatureCollection,
-          editable: false,
-          visible: false,
-          fillColor: getDefaultColor('Overlay'),
-          fillOpacity: DEFAULT_OPACITY,
-          category: 'Process',
-        });
-      }
+    if (!overlayLayerForExport) {
+      addLog('Capa Overlay (Auto) no disponible para exportar.', 'error');
+      return;
     }
-
-      if (processedLayers.length === 0) {
-        addLog('No processed layers to export', 'error');
-        return;
-      }
-      const JSZip = (await import('jszip')).default;
+    try {
+      const JSZipLib = (await import('jszip')).default;
       const shpwrite = (await import('@mapbox/shp-write')).default as any;
-      const zip = new JSZip();
 
       let prj: string;
       try {
@@ -2801,49 +2574,66 @@ const App: React.FC = () => {
         return;
       }
 
-      for (const layer of processedLayers) {
-        const prepared = prepareForShapefile(layer.geojson, layer.name);
-        let projected: FeatureCollection;
-        try {
-          projected = reprojectFeatureCollection(prepared, projection.proj4);
-        } catch (error) {
-          const reason = error instanceof Error ? error.message : String(error);
-          throw new Error(`Failed to reproject layer "${layer.name}": ${reason}`);
-        }
-        addLog(`Exporting "${layer.name}": ${projected.features.length} features`);
-        const layerZipBuffer = await shpwrite.zip(projected, { outputType: 'arraybuffer', prj });
-        const layerZip = await JSZip.loadAsync(layerZipBuffer);
-        const folderName = layer.name.replace(/[^a-z0-9_\-]/gi, '_');
-        const folder = zip.folder(folderName);
-        if (!folder) continue;
-        await Promise.all(
-          Object.keys(layerZip.files).map(async filename => {
-            const content = await layerZip.files[filename].async('arraybuffer');
-            folder.file(filename, content);
-          })
-        );
-        const dbf = Object.keys(layerZip.files).find(f => f.toLowerCase().endsWith('.dbf'));
-        if (dbf) {
-          const base = dbf.replace(/\.dbf$/i, '');
-          folder.file(`${base}.cpg`, 'UTF-8');
-        }
+      const prepared = prepareForShapefile(
+        overlayLayerForExport.geojson,
+        overlayLayerForExport.name
+      );
+      let projected: FeatureCollection;
+      try {
+        projected = reprojectFeatureCollection(prepared, projection.proj4);
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        throw new Error(`Failed to reproject layer "${overlayLayerForExport.name}": ${reason}`);
       }
 
-      const blob = await zip.generateAsync({ type: 'blob' });
-      const filename = `${(projectName || 'project')}_${projectVersion}_shapefiles.zip`;
+      const layerZipBuffer = await shpwrite.zip(projected, {
+        outputType: 'arraybuffer',
+        prj,
+      });
+      const layerZip = await JSZipLib.loadAsync(layerZipBuffer);
+      const outZip = new JSZipLib();
+      const baseNameRaw = overlayLayerForExport.name.replace(/[^a-z0-9_\-]/gi, '_');
+      const baseName = baseNameRaw.length ? baseNameRaw : 'Overlay_Auto';
+      const writtenExt = new Set<string>();
+
+      await Promise.all(
+        Object.keys(layerZip.files).map(async filename => {
+          const entry = layerZip.files[filename];
+          if (!entry || entry.dir) return;
+          const match = filename.match(/(\.[^.]+)$/);
+          const ext = match ? match[1] : '';
+          const content = await entry.async('arraybuffer');
+          const targetName = `${baseName}${ext}`;
+          outZip.file(targetName, content);
+          writtenExt.add(ext.toLowerCase());
+        })
+      );
+
+      if (!writtenExt.has('.cpg')) {
+        outZip.file(`${baseName}.cpg`, 'UTF-8');
+      }
+
+      const blob = await outZip.generateAsync({ type: 'blob' });
+      const filename = `${(projectName || 'project')}_${projectVersion}_overlay_auto.zip`;
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = filename;
       a.click();
       URL.revokeObjectURL(url);
-      addLog('Processed shapefiles exported');
+      addLog('Overlay (Auto) exportado como shapefile.');
       setExportModalOpen(false);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       addLog(`Export canceled: ${message}`, 'error');
     }
-  }, [addLog, layers, projectName, projectVersion, projection]);
+  }, [
+    addLog,
+    overlayLayerForExport,
+    projectName,
+    projectVersion,
+    projection,
+  ]);
 
   const handleView3D = useCallback(() => {
     const jLayer = layers.find((l) => l.name === 'Catch Basins / Manholes');
@@ -3267,13 +3057,9 @@ const App: React.FC = () => {
       )}
       {exportModalOpen && (
         <ExportModal
-          onExportHydroCAD={handleExportHydroCAD}
-          onExportSWMM={handleExportSWMM}
-          onExportShapefiles={handleExportShapefiles}
+          onExportOverlay={handleExportShapefiles}
           onClose={() => setExportModalOpen(false)}
-          exportHydroCADEnabled={exportHydroCADEnabled}
-          exportSWMMEnabled={exportSWMMEnabled}
-          exportShapefilesEnabled={exportShapefilesEnabled}
+          exportOverlayEnabled={exportOverlayEnabled}
           projection={projection}
           onProjectionChange={(epsg) => {
             const proj = STATE_PLANE_OPTIONS.find(p => p.epsg === epsg);
