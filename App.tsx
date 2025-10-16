@@ -106,6 +106,13 @@ const App: React.FC = () => {
     [layers]
   );
 
+  const soilsLayer = useMemo(
+    () => layers.find(l => l.name === 'Soil Layer from Web Soil Survey') ?? null,
+    [layers]
+  );
+
+  const soilsLoaded = Boolean(soilsLayer);
+
   const assignedDrainagePoints = useMemo(() => {
     const assigned = new Set<string>();
     if (!drainageAreasLayer) return assigned;
@@ -142,15 +149,18 @@ const App: React.FC = () => {
   }, [subareasLayer, assignedDrainagePoints]);
 
   const allowedLayerNames = useMemo(() => {
-    const names = new Set<string>(['Drainage Areas', 'Land Cover', 'LOD']);
+    const names = new Set<string>(['Drainage Areas', 'LOD']);
     if (drainageAreasAssigned) {
       names.add(SUBAREA_LAYER_NAME);
     }
     if (drainageAreasAssigned && subareasConfigured) {
       names.add('Soil Layer from Web Soil Survey');
     }
+    if (soilsLoaded) {
+      names.add('Land Cover');
+    }
     return Array.from(names);
-  }, [drainageAreasAssigned, subareasConfigured]);
+  }, [drainageAreasAssigned, subareasConfigured, soilsLoaded]);
 
   const lodLayer = layers.find(l => l.name === 'LOD');
   const lodValid = !!(
@@ -324,6 +334,16 @@ const App: React.FC = () => {
       }
     }
 
+    if (name === 'Land Cover') {
+      if (!soilsLoaded) {
+        const msg =
+          'Carga primero la capa de suelos (WSS) antes de agregar la capa de Land Cover para mantener la secuencia de trabajo.';
+        setError(msg);
+        addLog(msg, 'error');
+        return;
+      }
+    }
+
     const editable = KNOWN_LAYER_NAMES.includes(name);
     const normalizedGeojson = transformLayerGeojson(name, geojson, {
       landCoverOptions,
@@ -336,7 +356,7 @@ const App: React.FC = () => {
       normalizedGeojson.features.length === 0
     ) {
       const msg =
-        'La capa del Web Soil Survey no se superpone con las Drainage Areas cargadas. Revisa el recorte y vuelve a intentarlo.';
+        'La capa del Web Soil Survey no contiene polígonos válidos. Revisa el archivo y vuelve a intentarlo.';
       setError(msg);
       addLog(msg, 'error');
       return;
@@ -376,9 +396,12 @@ const App: React.FC = () => {
       );
     }
     if (name === 'Soil Layer from Web Soil Survey') {
-      addLog('La capa WSS fue recortada a los límites de las Drainage Areas. Asigna manualmente el HSG (A/B/C/D) a cada polígono.');
+      addLog('La capa WSS se cargó correctamente. Asigna manualmente el HSG (A/B/C/D) a cada polígono.');
     }
-  }, [addLog, landCoverOptions, layers, drainageAreasAssigned, subareasConfigured, drainageAreasLayer]);
+    if (name === 'Land Cover') {
+      addLog('La capa Land Cover está disponible. Verifica que cada polígono tenga un valor LAND_COVER.');
+    }
+  }, [addLog, landCoverOptions, layers, drainageAreasAssigned, subareasConfigured, drainageAreasLayer, soilsLoaded]);
 
   const handlePreviewReady = useCallback((geojson: FeatureCollection, fileName: string, detectedName: string) => {
     setIsLoading(false);
