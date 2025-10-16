@@ -3,7 +3,6 @@ import * as shp from 'shpjs';
 import JSZip from 'jszip';
 import type { FeatureCollection } from 'geojson';
 import { UploadIcon } from './Icons';
-import { loadHsgMap } from '../utils/soil';
 import { ARCHIVE_NAME_MAP, KNOWN_LAYER_NAMES } from '../utils/constants';
 
 interface FileUploadProps {
@@ -15,11 +14,25 @@ interface FileUploadProps {
   onCreateLayer?: (name: string) => void;
   existingLayerNames?: string[];
   onPreviewReady?: (data: FeatureCollection, fileName: string, detectedName: string) => void;
+  layerLocks?: Record<string, string>;
 }
 
-const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onError, onLog, isLoading, onCreateLayer, existingLayerNames = [], onPreviewReady }) => {
+const FileUpload: React.FC<FileUploadProps> = ({
+  onLayerAdded,
+  onLoading,
+  onError,
+  onLog,
+  isLoading,
+  onCreateLayer,
+  existingLayerNames = [],
+  onPreviewReady,
+  layerLocks = {},
+}) => {
   const [isDragging, setIsDragging] = useState(false);
-  const availableNames = KNOWN_LAYER_NAMES.filter(n => !existingLayerNames.includes(n));
+  const isLocked = useCallback((name: string) => Boolean(layerLocks[name]), [layerLocks]);
+  const availableNames = KNOWN_LAYER_NAMES.filter(
+    n => !existingLayerNames.includes(n) && !isLocked(n)
+  );
   const [newLayerName, setNewLayerName] = useState(availableNames[0] || '');
 
   useEffect(() => {
@@ -79,38 +92,19 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
             newZip.file(fileNameOnly, await zipObject.async('arraybuffer'));
           }
         }
-        
+
         buffer = await newZip.generateAsync({ type: 'arraybuffer' });
         displayName = 'Soil Layer from Web Soil Survey';
       }
 
-      let geojson = await shp.parseZip(buffer) as FeatureCollection;
-
-      // --- DATA ENRICHMENT FOR WSS FILES ---
-      if (isWssFile && geojson.features.length > 0) {
-        try {
-          const hsgMap = await loadHsgMap();
-          if (hsgMap) {
-            geojson.features.forEach(feature => {
-              if (feature.properties && feature.properties.MUSYM) {
-                const musym = String(feature.properties.MUSYM);
-                const rawHsg = hsgMap[musym] || 'N/A';
-                const hsg = typeof rawHsg === 'string' ? rawHsg.split('/')[0] : rawHsg;
-                feature.properties.HSG = hsg;
-              }
-            });
-            onLog('Soil data enriched');
-          } else {
-            const msg = 'Could not load soil HSG data. Skipping enrichment.';
-            console.warn(msg);
-            onLog(msg, 'error');
-          }
-        } catch (enrichError) {
-          console.error('Failed to enrich soil data:', enrichError);
-          onLog('Failed to enrich soil data', 'error');
-        }
+      if (layerLocks[displayName]) {
+        const reason = layerLocks[displayName];
+        onError(reason);
+        onLog(reason, 'error');
+        return;
       }
-      // --- END OF ENRICHMENT LOGIC ---
+
+      let geojson = await shp.parseZip(buffer) as FeatureCollection;
 
       if (onPreviewReady) {
         onPreviewReady(geojson, file.name, displayName);
@@ -125,7 +119,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
       onError(errMsg);
       onLog(errMsg, 'error');
     }
-  }, [onLayerAdded, onLoading, onError, onLog, onPreviewReady]);
+  }, [layerLocks, onLayerAdded, onLoading, onError, onLog, onPreviewReady]);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -217,6 +211,11 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
           </button>
         </div>
       )}
+      {Object.entries(layerLocks).map(([name, reason]) => (
+        <p key={name} className="mt-2 text-xs text-amber-300">
+          <span className="font-semibold">{name} bloqueado:</span> {reason}
+        </p>
+      ))}
     </div>
   );
 };

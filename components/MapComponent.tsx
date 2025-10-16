@@ -9,6 +9,7 @@ import ReactLeafletGoogleLayer from 'react-leaflet-google-layer';
 import type { LayerData } from '../types';
 import { formatDischargePointName } from '../utils/layerTransforms';
 import type { GeoJSON as LeafletGeoJSON, Layer } from 'leaflet';
+import { buildSmartOptions, collectReservedValues } from '../utils/selectHelpers';
 
 const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY as string | undefined;
 
@@ -185,16 +186,19 @@ const ManagedGeoJsonLayer = ({
         select.style.border = '2px solid #f59e0b';
         select.style.backgroundColor = '#fef3c7';
         select.style.fontWeight = 'bold';
-        const blank = L.DomUtil.create('option', '', select) as HTMLOptionElement;
-        blank.value = '';
-        blank.textContent = '-';
-        ['A', 'B', 'C', 'D'].forEach(val => {
-          const opt = L.DomUtil.create('option', '', select) as HTMLOptionElement;
-          opt.value = val;
-          opt.textContent = val;
-          if (feature.properties!.HSG === val) opt.selected = true;
+        const hsgOptions = buildSmartOptions({
+          options: ['A', 'B', 'C', 'D'].map(value => ({ value, label: value })),
+          currentValue: feature.properties!.HSG as string,
+          placeholderLabel: '-',
         });
-        if (!feature.properties!.HSG) blank.selected = true;
+        hsgOptions.forEach(option => {
+          const opt = L.DomUtil.create('option', '', select) as HTMLOptionElement;
+          opt.value = option.value;
+          opt.textContent = option.label;
+          opt.disabled = Boolean(option.disabled);
+          if (option.value === (feature.properties!.HSG as string)) opt.selected = true;
+        });
+        select.value = (feature.properties!.HSG as string) || '';
         select.addEventListener('change', (e) => {
           const newVal = (e.target as HTMLSelectElement).value;
           const idx = data.features.indexOf(feature);
@@ -210,7 +214,7 @@ const ManagedGeoJsonLayer = ({
       if (layerName === 'Drainage Areas') {
         feature.properties = {
           ...(feature.properties || {}),
-          DA_NAME: feature.properties?.DA_NAME ?? '',
+          DA_NAME: formatDischargePointName(feature.properties?.DA_NAME),
         };
         const nameRow = L.DomUtil.create('div', '', propsDiv);
         const nLabel = L.DomUtil.create('b', '', nameRow);
@@ -221,48 +225,45 @@ const ManagedGeoJsonLayer = ({
         select.style.border = '2px solid #3b82f6';
         select.style.backgroundColor = '#dbeafe';
         select.style.fontWeight = 'bold';
-        const blank = L.DomUtil.create('option', '', select) as HTMLOptionElement;
-        blank.value = '';
-        blank.textContent = '--';
         const currentValue = feature.properties!.DA_NAME as string;
-        const usedNames = new Set(
-          data.features
-            .map(f => (f.properties?.DA_NAME as string))
-            .filter(n => n && n !== currentValue)
-        );
-        const dpOptions = Array.from({ length: 20 }, (_, i) => i + 1).map(num => ({
-          num,
-          dpName: `DP-${num.toString().padStart(2, '0')}`,
-        }));
-        const availableNames = dpOptions.filter(
-          ({ dpName }) => dpName === currentValue || !usedNames.has(dpName)
-        );
-        availableNames.forEach(({ num, dpName }) => {
-          const opt = L.DomUtil.create('option', '', select) as HTMLOptionElement;
-          opt.value = dpName;
-          opt.textContent = String(num);
-          if (currentValue === dpName) opt.selected = true;
+        const featureIndex = data.features.indexOf(feature);
+        const reserved = collectReservedValues({
+          items: data.features,
+          currentIndex: featureIndex,
+          getValue: (item) =>
+            formatDischargePointName((item.properties as any)?.DA_NAME),
         });
-        if (currentValue && !availableNames.some(({ dpName }) => dpName === currentValue)) {
+        const dpOptions = buildSmartOptions({
+          options: Array.from({ length: 20 }, (_, i) => {
+            const num = i + 1;
+            return { value: `DP-${num.toString().padStart(2, '0')}`, label: String(num) };
+          }),
+          currentValue,
+          reservedValues: reserved,
+        });
+        dpOptions.forEach(option => {
           const opt = L.DomUtil.create('option', '', select) as HTMLOptionElement;
-          opt.value = currentValue;
-          opt.textContent = currentValue;
-          opt.selected = true;
-        }
-        if (!currentValue) blank.selected = true;
+          opt.value = option.value;
+          opt.textContent = option.label;
+          opt.disabled = Boolean(option.disabled);
+          if (option.value === currentValue) opt.selected = true;
+        });
+        select.value = currentValue || '';
         select.addEventListener('change', (e) => {
-          const newVal = (e.target as HTMLSelectElement).value;
+          const raw = (e.target as HTMLSelectElement).value;
+          const newVal = formatDischargePointName(raw);
           const idx = data.features.indexOf(feature);
           onUpdateFeatureDaName(id, idx, newVal);
           feature.properties!.DA_NAME = newVal;
+          select.value = newVal || '';
         });
       }
 
       if (layerName === 'Drainage Subareas') {
         feature.properties = {
           ...(feature.properties || {}),
-          SUBAREA_NAME: feature.properties?.SUBAREA_NAME ?? '',
-          PARENT_DA: feature.properties?.PARENT_DA ?? '',
+          SUBAREA_NAME: (feature.properties?.SUBAREA_NAME as string) ?? '',
+          PARENT_DA: formatDischargePointName(feature.properties?.PARENT_DA),
         };
 
         const subNameRow = L.DomUtil.create('div', '', propsDiv);
@@ -274,21 +275,34 @@ const ManagedGeoJsonLayer = ({
         subNameSelect.style.border = '2px solid #2563eb';
         subNameSelect.style.backgroundColor = '#dbeafe';
         subNameSelect.style.fontWeight = 'bold';
-        const subBlank = L.DomUtil.create('option', '', subNameSelect) as HTMLOptionElement;
-        subBlank.value = '';
-        subBlank.textContent = '--';
-        (subareaNameOptions || []).forEach(option => {
-          const opt = L.DomUtil.create('option', '', subNameSelect) as HTMLOptionElement;
-          opt.value = option;
-          opt.textContent = option;
-          if (feature.properties!.SUBAREA_NAME === option) opt.selected = true;
+        const subIndex = data.features.indexOf(feature);
+        const reservedSubNames = collectReservedValues({
+          items: data.features,
+          currentIndex: subIndex,
+          getValue: (item) => {
+            const raw = (item.properties as any)?.SUBAREA_NAME;
+            return raw ? String(raw).trim() : '';
+          },
         });
-        if (!feature.properties!.SUBAREA_NAME) subBlank.selected = true;
+        const subNameOptionsList = buildSmartOptions({
+          options: (subareaNameOptions || []).map(option => ({ value: option, label: option })),
+          currentValue: (feature.properties!.SUBAREA_NAME as string) ?? '',
+          reservedValues: reservedSubNames,
+        });
+        subNameOptionsList.forEach(option => {
+          const opt = L.DomUtil.create('option', '', subNameSelect) as HTMLOptionElement;
+          opt.value = option.value;
+          opt.textContent = option.label;
+          opt.disabled = Boolean(option.disabled);
+          if (option.value === feature.properties!.SUBAREA_NAME) opt.selected = true;
+        });
+        subNameSelect.value = (feature.properties!.SUBAREA_NAME as string) || '';
         subNameSelect.addEventListener('change', (e) => {
           const newVal = (e.target as HTMLSelectElement).value;
           const idx = data.features.indexOf(feature);
           onUpdateFeatureSubareaName?.(id, idx, newVal);
           feature.properties!.SUBAREA_NAME = newVal;
+          subNameSelect.value = newVal || '';
         });
 
         const parentRow = L.DomUtil.create('div', '', propsDiv);
@@ -300,21 +314,26 @@ const ManagedGeoJsonLayer = ({
         parentSelect.style.border = '2px solid #0ea5e9';
         parentSelect.style.backgroundColor = '#cffafe';
         parentSelect.style.fontWeight = 'bold';
-        const parentBlank = L.DomUtil.create('option', '', parentSelect) as HTMLOptionElement;
-        parentBlank.value = '';
-        parentBlank.textContent = '--';
-        (subareaDpOptions || []).forEach(option => {
+        const currentParent = feature.properties!.PARENT_DA as string;
+        const parentOptions = buildSmartOptions({
+          options: (subareaDpOptions || []).map(option => ({ value: option.value, label: option.label })),
+          currentValue: currentParent,
+        });
+        parentOptions.forEach(option => {
           const opt = L.DomUtil.create('option', '', parentSelect) as HTMLOptionElement;
           opt.value = option.value;
           opt.textContent = option.label;
-          if (feature.properties!.PARENT_DA === option.value) opt.selected = true;
+          opt.disabled = Boolean(option.disabled);
+          if (option.value === currentParent) opt.selected = true;
         });
-        if (!feature.properties!.PARENT_DA) parentBlank.selected = true;
+        parentSelect.value = currentParent || '';
         parentSelect.addEventListener('change', (e) => {
-          const newVal = (e.target as HTMLSelectElement).value;
+          const raw = (e.target as HTMLSelectElement).value;
+          const newVal = formatDischargePointName(raw);
           const idx = data.features.indexOf(feature);
           onUpdateFeatureSubareaParent?.(id, idx, newVal);
           feature.properties!.PARENT_DA = newVal;
+          parentSelect.value = newVal || '';
         });
       }
 
@@ -330,16 +349,18 @@ const ManagedGeoJsonLayer = ({
         select.style.backgroundColor = '#ffedd5';
         select.style.fontWeight = 'bold';
         select.style.width = '280px';
-        const blank = L.DomUtil.create('option', '', select) as HTMLOptionElement;
-        blank.value = '';
-        blank.textContent = '--';
-        landCoverOptions.forEach(val => {
-          const opt = L.DomUtil.create('option', '', select) as HTMLOptionElement;
-          opt.value = val;
-          opt.textContent = val;
-          if (feature.properties!.LAND_COVER === val) opt.selected = true;
+        const lcOptions = buildSmartOptions({
+          options: landCoverOptions.map(val => ({ value: val, label: val })),
+          currentValue: (feature.properties!.LAND_COVER as string) ?? '',
         });
-        if (!feature.properties!.LAND_COVER) blank.selected = true;
+        lcOptions.forEach(option => {
+          const opt = L.DomUtil.create('option', '', select) as HTMLOptionElement;
+          opt.value = option.value;
+          opt.textContent = option.label;
+          opt.disabled = Boolean(option.disabled);
+          if (option.value === feature.properties!.LAND_COVER) opt.selected = true;
+        });
+        select.value = (feature.properties!.LAND_COVER as string) || '';
         select.addEventListener('change', (e) => {
           const newVal = (e.target as HTMLSelectElement).value;
           const idx = data.features.indexOf(feature);

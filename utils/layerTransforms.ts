@@ -1,4 +1,5 @@
-import type { FeatureCollection, Feature, LineString, Point } from 'geojson';
+import type { FeatureCollection, Feature, LineString, Point, Polygon, MultiPolygon } from 'geojson';
+import { intersect as turfIntersect, union as turfUnion } from '@turf/turf';
 import type { LayerData } from '../types';
 import { getDir } from './direction';
 
@@ -95,14 +96,98 @@ const normalizeLandCover = (
     })
   );
 
-const normalizeSoils = (geojson: FeatureCollection): FeatureCollection =>
-  cloneGeojson(
-    geojson,
-    geojson.features.map(feature => ({
-      ...feature,
-      properties: { ...(feature.properties || {}), HSG: feature.properties?.HSG ?? '' },
-    }))
-  );
+const buildDrainageAreaMask = (
+  layers: LayerData[]
+): Feature<Polygon | MultiPolygon> | null => {
+  const daLayer = layers.find(l => l.name === 'Drainage Areas');
+  if (!daLayer) return null;
+
+  const polygonFeatures = daLayer.geojson.features
+    .map(feature => {
+      if (!feature.geometry) return null;
+      if (feature.geometry.type === 'Polygon' || feature.geometry.type === 'MultiPolygon') {
+        return {
+          type: 'Feature',
+          geometry: feature.geometry as Polygon | MultiPolygon,
+          properties: {},
+        } as Feature<Polygon | MultiPolygon>;
+      }
+      return null;
+    })
+    .filter((feature): feature is Feature<Polygon | MultiPolygon> => feature !== null);
+
+  if (polygonFeatures.length === 0) return null;
+
+  return polygonFeatures.reduce<Feature<Polygon | MultiPolygon> | null>((mask, feature) => {
+    if (!mask) return feature;
+    try {
+      const merged = turfUnion(mask, feature);
+      return merged as Feature<Polygon | MultiPolygon> | null;
+    } catch {
+      return mask;
+    }
+  }, null);
+};
+
+const normalizeSoils = (
+  geojson: FeatureCollection,
+  layers: LayerData[]
+): FeatureCollection => {
+  const mask = buildDrainageAreaMask(layers);
+  const features: Feature[] = [];
+
+  geojson.features.forEach(sourceFeature => {
+    const baseProps = { ...(sourceFeature.properties || {}), HSG: '' };
+    if (!sourceFeature.geometry) {
+      features.push({ ...sourceFeature, properties: baseProps });
+      return;
+    }
+
+    if (
+      sourceFeature.geometry.type !== 'Polygon' &&
+      sourceFeature.geometry.type !== 'MultiPolygon'
+    ) {
+      features.push({ ...sourceFeature, properties: baseProps });
+      return;
+    }
+
+    const polygonFeature = {
+      type: 'Feature',
+      geometry: sourceFeature.geometry as Polygon | MultiPolygon,
+      properties: baseProps,
+    } as Feature<Polygon | MultiPolygon>;
+
+    if (!mask) {
+      features.push(polygonFeature);
+      return;
+    }
+
+    let clipped: Feature<Polygon | MultiPolygon> | null = null;
+    try {
+      const intersection = turfIntersect(polygonFeature, mask);
+      if (intersection && intersection.geometry) {
+        if (
+          intersection.geometry.type === 'Polygon' ||
+          intersection.geometry.type === 'MultiPolygon'
+        ) {
+          clipped = {
+            type: 'Feature',
+            geometry: intersection.geometry,
+            properties: baseProps,
+          };
+        }
+      }
+    } catch {
+      clipped = null;
+    }
+
+    if (clipped) {
+      features.push(clipped);
+    }
+  });
+
+  return cloneGeojson(geojson, features);
+};
 
 const preparePipesLayer = (
   geojson: FeatureCollection,
@@ -344,7 +429,7 @@ export const transformLayerGeojson = (
   }
 
   if (name === 'Soil Layer from Web Soil Survey') {
-    return normalizeSoils(geojson);
+    return normalizeSoils(geojson, layers);
   }
 
   if (name === 'Pipes' && fieldMap) {

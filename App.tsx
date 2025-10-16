@@ -96,6 +96,60 @@ const App: React.FC = () => {
     'Soil Layer from Web Soil Survey',
   ];
 
+  const wssLockReason = useMemo(() => {
+    const daLayer = layers.find(l => l.name === 'Drainage Areas');
+    if (!daLayer || daLayer.geojson.features.length === 0) {
+      return 'Carga las Drainage Areas y asigna sus Discharge Points antes de cargar la capa de suelos (WSS).';
+    }
+
+    const daMissingDp = daLayer.geojson.features.some(feature => {
+      const current = feature.properties ? (feature.properties as any)[DA_NAME_ATTR] : null;
+      const formatted = formatDischargePointName(current);
+      return !formatted;
+    });
+    if (daMissingDp) {
+      return 'Asigna un Discharge Point (DP-##) a cada Drainage Area antes de habilitar la capa de suelos (WSS).';
+    }
+
+    const subLayer = layers.find(l => l.name === SUBAREA_LAYER_NAME);
+    if (!subLayer || subLayer.geojson.features.length === 0) {
+      return 'Carga las Drainage Subareas y vincúlalas a sus Drainage Areas antes de habilitar la capa de suelos (WSS).';
+    }
+
+    const daNames = new Set(
+      daLayer.geojson.features
+        .map(feature => formatDischargePointName(feature.properties?.[DA_NAME_ATTR]))
+        .filter((name): name is string => Boolean(name))
+    );
+
+    const subMissingName = subLayer.geojson.features.some(feature => {
+      const raw = feature.properties ? (feature.properties as any)[SUBAREA_NAME_ATTR] : null;
+      return !raw || String(raw).trim() === '';
+    });
+    if (subMissingName) {
+      return 'Asigna un nombre "DRAINAGE AREA - #" a cada Drainage Subarea antes de habilitar la capa de suelos (WSS).';
+    }
+
+    const subMissingParent = subLayer.geojson.features.some(feature => {
+      const raw = feature.properties ? (feature.properties as any)[SUBAREA_PARENT_ATTR] : null;
+      const formatted = formatDischargePointName(raw);
+      return !formatted || !daNames.has(formatted);
+    });
+    if (subMissingParent) {
+      return 'Vincula cada Drainage Subarea a un Discharge Point válido antes de habilitar la capa de suelos (WSS).';
+    }
+
+    return null;
+  }, [layers]);
+
+  const layerUploadLocks = useMemo(() => {
+    const locks: Record<string, string> = {};
+    if (wssLockReason) {
+      locks['Soil Layer from Web Soil Survey'] = wssLockReason;
+    }
+    return locks;
+  }, [wssLockReason]);
+
   const lodLayer = layers.find(l => l.name === 'LOD');
   const lodValid = !!(
     lodLayer &&
@@ -296,6 +350,11 @@ const App: React.FC = () => {
     if (name === SUBAREA_LAYER_NAME) {
       addLog(
         "Etiqueta cada Drainage Subarea como 'DRAINAGE AREA - #' y vincúlala a su Discharge Point (DP-##) mediante el campo PARENT_DA."
+      );
+    }
+    if (name === 'Soil Layer from Web Soil Survey') {
+      addLog(
+        'La capa de suelos se recortó al contorno exterior de las Drainage Areas. Define manualmente el HSG con las opciones A, B, C o D.'
       );
     }
   }, [addLog, landCoverOptions, layers]);
@@ -2139,6 +2198,7 @@ const App: React.FC = () => {
             onCreateLayer={handleCreateLayer}
             existingLayerNames={layers.map(l => l.name)}
             onPreviewReady={handlePreviewReady}
+            layerLocks={layerUploadLocks}
           />
           {previewLayer && (
             <LayerPreview
