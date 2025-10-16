@@ -8,6 +8,7 @@ import type {
   MultiPolygon,
 } from 'geojson';
 import { area as turfArea, intersect as turfIntersect } from '@turf/turf';
+import { featureCollection } from '@turf/helpers';
 import type { LayerData, LogEntry } from './types';
 import Header from './components/Header';
 import FileUpload from './components/FileUpload';
@@ -1638,18 +1639,50 @@ const App: React.FC = () => {
           processedSubareas.push(normalizedFeature);
         });
 
-        let remainderGeom: Feature<Polygon | MultiPolygon> | null = {
+        const initialRemainder: Feature<Polygon | MultiPolygon> = {
           type: 'Feature',
           geometry: geometryForProcessing.geometry as Polygon | MultiPolygon,
           properties: baseProps,
         };
 
+        let remainderGeom: FeatureCollection<Polygon | MultiPolygon> | null = featureCollection([
+          initialRemainder,
+        ]);
+
         normalizedSubs.forEach(subFeature => {
           if (!remainderGeom) return;
-          const diff = turfDifference(remainderGeom as any, subFeature as any);
-          remainderGeom = diff && diff.geometry
-            ? (diff as Feature<Polygon | MultiPolygon>)
-            : null;
+          const diff = turfDifference(
+            remainderGeom as any,
+            featureCollection([subFeature as any]) as any
+          );
+
+          if (!diff) {
+            remainderGeom = null;
+            return;
+          }
+
+          if (diff.type === 'Feature') {
+            if (!diff.geometry || !isPolygonLike(diff)) {
+              remainderGeom = null;
+              return;
+            }
+            remainderGeom = featureCollection([
+              diff as Feature<Polygon | MultiPolygon>,
+            ]);
+            return;
+          }
+
+          if (diff.type === 'FeatureCollection') {
+            const polygonFeatures = diff.features.filter(isPolygonLike) as Feature<
+              Polygon | MultiPolygon
+            >[];
+            remainderGeom = polygonFeatures.length
+              ? featureCollection(polygonFeatures)
+              : null;
+            return;
+          }
+
+          remainderGeom = null;
         });
 
         if (remainderGeom) {
