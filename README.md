@@ -31,19 +31,17 @@ The backend exposes two endpoints using Turf.js for polygon processing:
   their intersection or `null` if they do not overlap.
 * `POST /api/area` accepts `{ polygon }` and returns `{ area }` in square meters.
 
-An additional route serves SCS Curve Number lookup data used for hydrologic
-analysis:
+Additional routes expose the editable SCS Curve Number lookup table used for
+hydrologic analysis:
 
-* `GET /api/cn-values` returns the contents of `public/data/SCS_CN_VALUES.json`.
+* `GET /api/cn-table` returns the normalized contents of
+  `public/data/SCS_CN_VALUES.json`, mapping each land cover description to CN
+  values for hydrologic soil groups A–D.
+* `PUT /api/cn-table` accepts an array of Curve Number records and persists the
+  updated table back to `public/data/SCS_CN_VALUES.json`.
 
-  The JSON maps land cover descriptions to arrays of Curve Number records, each
-  providing values for hydrologic soil groups A–D as listed in the TR‐55 tables.
-  Duplicated descriptions therefore hold multiple CN sets to cover different
-  conditions.
-
-This allows the frontend to fetch the table of CN values based on soil group.
-
-These routes are ready for future integration with the frontend.
+These endpoints allow the frontend to review and edit the CN table without
+depending on external services.
 
 ## Update soil HSG mapping
 

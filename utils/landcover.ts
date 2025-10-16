@@ -7,35 +7,27 @@ export type CnRecord = {
   D: number;
 };
 
-export async function loadLandCoverList(): Promise<string[]> {
-  const sources = ['/api/cn-values', '/data/SCS_CN_VALUES.json'];
-  for (const url of sources) {
-    try {
-      const res = await fetch(url);
-      if (res.ok) {
-        const data = (await res.json()) as any[];
-        return Array.from(new Set(data.map(d => d?.LandCover).filter(Boolean)));
-      }
-      console.warn(`CN values request to ${url} failed with status ${res.status}`);
-    } catch (err) {
-      console.warn(`CN values request to ${url} failed`, err);
+export const createCnLookup = (records: CnRecord[]): Map<string, CnRecord> => {
+  const map = new Map<string, CnRecord>();
+  records.forEach(record => {
+    const key = record?.LandCover?.trim().toLowerCase();
+    if (!key) return;
+    if (!map.has(key)) {
+      map.set(key, record);
     }
-  }
-  return [];
-}
+  });
+  return map;
+};
 
-export async function loadCnValues(): Promise<CnRecord[]> {
-  const sources = ['/api/cn-values', '/data/SCS_CN_VALUES.json'];
-  for (const url of sources) {
-    try {
-      const res = await fetch(url);
-      if (res.ok) {
-        return (await res.json()) as CnRecord[];
-      }
-      console.warn(`CN values request to ${url} failed with status ${res.status}`);
-    } catch (err) {
-      console.warn(`CN values request to ${url} failed`, err);
+export const extractLandCoverOptions = (records: CnRecord[]): string[] => {
+  const normalized = new Map<string, string>();
+  records.forEach(record => {
+    const raw = record?.LandCover?.trim();
+    if (!raw) return;
+    const key = raw.toLowerCase();
+    if (!normalized.has(key)) {
+      normalized.set(key, raw);
     }
-  }
-  return [];
-}
+  });
+  return Array.from(normalized.values()).sort((a, b) => a.localeCompare(b));
+};
