@@ -31,6 +31,7 @@ import ScsStatusPanel, { ScsLayerStatus } from './components/ScsStatusPanel';
 import CnTableModal from './components/CnTableModal';
 import {
   applyHsgToFeatures,
+  buildHsgMap,
   extractAreaSymbol,
   extractUniqueSymbols,
   fetchWssHsgRecords,
@@ -1076,16 +1077,6 @@ const App: React.FC = () => {
           }
         }
 
-        if (name === 'Soil Layer from Web Soil Survey') {
-          if (!drainageAreasAssigned || !subareasConfigured) {
-            const msg =
-              'Completa la asignación de Discharge Points en Drainage Areas y vincula todas las Drainage Subareas antes de cargar la capa de suelos (WSS).';
-            setError(msg);
-            addLog(msg, 'error');
-            return;
-          }
-        }
-
         if (name === 'Land Cover') {
           if (!soilsLoaded) {
             const msg =
@@ -1163,16 +1154,20 @@ const App: React.FC = () => {
             );
           } else {
             try {
-              const records = await fetchWssHsgRecords(areaSymbol, symbols);
-              const hsgMap = new Map<string, string>();
-              records.forEach(record => {
-                const symbolKey = record.musym?.toUpperCase();
-                if (!symbolKey) return;
-                const simplified = simplifyHsgValue(record.hsg);
-                if (simplified) {
-                  hsgMap.set(symbolKey, simplified);
+              addLog(
+                `Consultando SDA para autocompletar HSG (${symbols.length} símbolos, ${areaSymbol}).`
+              );
+              let lastPercent = -1;
+              const records = await fetchWssHsgRecords(areaSymbol, symbols, (completed, total) => {
+                if (total <= 0) return;
+                const percent = Math.round((completed / total) * 100);
+                if (percent !== lastPercent) {
+                  lastPercent = percent;
+                  addLog(`Progreso de consulta HSG: ${percent}% (${completed}/${total}).`);
                 }
               });
+              addLog('Aplicando HSG automáticos a la capa WSS.');
+              const hsgMap = buildHsgMap(records);
               processedGeojson = applyHsgToFeatures(processedGeojson, hsgMap);
 
               const totalFeatures = processedGeojson.features.length;
@@ -1198,10 +1193,9 @@ const App: React.FC = () => {
               }
             } catch (err) {
               const message = err instanceof Error ? err.message : 'error desconocido';
-              addLog(
-                `No se pudo obtener el HSG desde SDA (${message}). Los HSG permanecen en blanco.`,
-                'warn'
-              );
+              const userMessage = `No se pudo obtener el HSG desde SDA (${message}). Los HSG permanecen en blanco.`;
+              setError(userMessage);
+              addLog(userMessage, 'error');
             }
           }
         }
