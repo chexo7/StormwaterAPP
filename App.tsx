@@ -29,6 +29,7 @@ import {
 } from './utils/layerTransforms';
 import ScsStatusPanel, { ScsLayerStatus } from './components/ScsStatusPanel';
 import CnTableModal from './components/CnTableModal';
+import { populateWssHsg, ensureHsgField } from './utils/wssHsg';
 
 const SUBAREA_LAYER_NAME = 'Drainage Subareas';
 const OVERALL_DRAINAGE_LAYER_NAME = 'Overall Drainage Area';
@@ -1030,186 +1031,215 @@ const App: React.FC = () => {
     }
   }, [computeTasks]);
 
-  const handleLayerAdded = useCallback((geojson: FeatureCollection, name: string, fieldMap?: Record<string, string>) => {
-    setIsLoading(false);
+  const handleLayerAdded = useCallback(async (geojson: FeatureCollection, name: string, fieldMap?: Record<string, string>) => {
     setError(null);
-    if (geojson.features.length === 0) {
-      const msg = `The file "${name}" appears to be empty or could not be read correctly.`;
-      setError(msg);
-      addLog(msg, 'error');
-      return;
-    }
 
-    if (name === SUBAREA_LAYER_NAME) {
-      const daLayer = drainageAreasLayer;
-      if (!daLayer) {
-        const msg =
-          'Primero carga las Drainage Areas y asigna un Discharge Point (DP-##) a cada polígono antes de subir las Drainage Subareas.';
+    try {
+      if (geojson.features.length === 0) {
+        const msg = `The file "${name}" appears to be empty or could not be read correctly.`;
         setError(msg);
         addLog(msg, 'error');
         return;
       }
-      const missingDaIndexes: number[] = [];
-      daLayer.geojson.features.forEach((feature, idx) => {
-        const current = feature.properties ? (feature.properties as any)[DA_NAME_ATTR] : null;
-        const formatted = formatDischargePointName(current);
-        if (!formatted) missingDaIndexes.push(idx + 1);
+
+      if (name === SUBAREA_LAYER_NAME) {
+        const daLayer = drainageAreasLayer;
+        if (!daLayer) {
+          const msg =
+            'Primero carga las Drainage Areas y asigna un Discharge Point (DP-##) a cada polígono antes de subir las Drainage Subareas.';
+          setError(msg);
+          addLog(msg, 'error');
+          return;
+        }
+        const missingDaIndexes: number[] = [];
+        daLayer.geojson.features.forEach((feature, idx) => {
+          const current = feature.properties ? (feature.properties as any)[DA_NAME_ATTR] : null;
+          const formatted = formatDischargePointName(current);
+          if (!formatted) missingDaIndexes.push(idx + 1);
+        });
+        if (missingDaIndexes.length > 0) {
+          const msg =
+            'Asigna un Discharge Point (DP-##) a cada Drainage Area antes de cargar las Drainage Subareas. Revisa los polígonos sin DP y vuelve a intentarlo.';
+          setError(msg);
+          addLog(msg, 'error');
+          return;
+        }
+      }
+
+      if (name === 'Soil Layer from Web Soil Survey') {
+        if (!drainageAreasAssigned || !subareasConfigured) {
+          const msg =
+            'Completa la asignación de Discharge Points en Drainage Areas y vincula todas las Drainage Subareas antes de cargar la capa de suelos (WSS).';
+          setError(msg);
+          addLog(msg, 'error');
+          return;
+        }
+      }
+
+      if (name === 'Land Cover') {
+        if (!soilsLoaded) {
+          const msg =
+            'Carga primero la capa de suelos (WSS) antes de agregar la capa de Land Cover para mantener la secuencia de trabajo.';
+          setError(msg);
+          addLog(msg, 'error');
+          return;
+        }
+      }
+
+      const overallDrainageFeature = getOverallDrainageFeature(layers);
+
+      const editable = KNOWN_LAYER_NAMES.includes(name);
+      const normalizedGeojson = transformLayerGeojson(name, geojson, {
+        landCoverOptions,
+        layers,
+        fieldMap,
       });
-      if (missingDaIndexes.length > 0) {
-        const msg =
-          'Asigna un Discharge Point (DP-##) a cada Drainage Area antes de cargar las Drainage Subareas. Revisa los polígonos sin DP y vuelve a intentarlo.';
-        setError(msg);
-        addLog(msg, 'error');
-        return;
+
+      let processedGeojson = normalizedGeojson;
+
+      if (name === 'Soil Layer from Web Soil Survey' && overallDrainageFeature) {
+        const clipped = clipCollectionToOverall(normalizedGeojson, overallDrainageFeature);
+        processedGeojson = clipped;
+        if (processedGeojson.features.length === 0) {
+          const msg =
+            'No se encontraron polígonos del WSS dentro del Overall Drainage Area. Verifica los archivos y vuelve a intentarlo.';
+          setError(msg);
+          addLog(msg, 'error');
+          return;
+        }
       }
-    }
 
-    if (name === 'Soil Layer from Web Soil Survey') {
-      if (!drainageAreasAssigned || !subareasConfigured) {
-        const msg =
-          'Completa la asignación de Discharge Points en Drainage Areas y vincula todas las Drainage Subareas antes de cargar la capa de suelos (WSS).';
-        setError(msg);
-        addLog(msg, 'error');
-        return;
-      }
-    }
-
-    if (name === 'Land Cover') {
-      if (!soilsLoaded) {
-        const msg =
-          'Carga primero la capa de suelos (WSS) antes de agregar la capa de Land Cover para mantener la secuencia de trabajo.';
-        setError(msg);
-        addLog(msg, 'error');
-        return;
-      }
-    }
-
-    const overallDrainageFeature = getOverallDrainageFeature(layers);
-
-    const editable = KNOWN_LAYER_NAMES.includes(name);
-    const normalizedGeojson = transformLayerGeojson(name, geojson, {
-      landCoverOptions,
-      layers,
-      fieldMap,
-    });
-
-    let processedGeojson = normalizedGeojson;
-
-    if (name === 'Soil Layer from Web Soil Survey' && overallDrainageFeature) {
-      const clipped = clipCollectionToOverall(normalizedGeojson, overallDrainageFeature);
-      processedGeojson = clipped;
-      if (processedGeojson.features.length === 0) {
-        const msg =
-          'No se encontraron polígonos del WSS dentro del Overall Drainage Area. Verifica los archivos y vuelve a intentarlo.';
-        setError(msg);
-        addLog(msg, 'error');
-        return;
-      }
-    }
-
-    if (
-      name === 'Soil Layer from Web Soil Survey' &&
-      processedGeojson.features.length === 0
-    ) {
-      const msg =
-        'La capa del Web Soil Survey no contiene polígonos válidos. Revisa el archivo y vuelve a intentarlo.';
-      setError(msg);
-      addLog(msg, 'error');
-      return;
-    }
-
-    if (
-      overallDrainageFeature &&
-      (name === SUBAREA_LAYER_NAME ||
-        name === 'Soil Layer from Web Soil Survey' ||
-        name === 'Land Cover')
-    ) {
-      const layerAreaSqM = sumPolygonAreasSqm(processedGeojson);
-      const overallAreaSqM = computeFeatureAreaSqm(overallDrainageFeature);
       if (
-        overallAreaSqM > 0 &&
-        overallAreaSqM - layerAreaSqM > AREA_TOLERANCE_SQM
+        name === 'Soil Layer from Web Soil Survey' &&
+        processedGeojson.features.length === 0
       ) {
-        const layerAreaAc = Number((layerAreaSqM * SQM_TO_ACRES).toFixed(4));
-        const overallAreaAc = Number((overallAreaSqM * SQM_TO_ACRES).toFixed(4));
-        addLog(
-          `Advertencia: el área total de ${name} (${layerAreaAc} ac) es menor que el Overall Drainage Area (${overallAreaAc} ac). Revisa que los polígonos cubran toda el área de drenaje.`,
-          'warn'
-        );
+        const msg =
+          'La capa del Web Soil Survey no contiene polígonos válidos. Revisa el archivo y vuelve a intentarlo.';
+        setError(msg);
+        addLog(msg, 'error');
+        return;
       }
-    }
 
-    let action: 'updated' | 'created' = 'created';
-    let overallChange: 'none' | 'created' | 'updated' | 'removed' = 'none';
+      if (name === 'Soil Layer from Web Soil Survey') {
+        try {
+          addLog('Consultando el Web Soil Survey para completar los HSG automáticamente...');
+          const { geojson: enriched, filled, total } = await populateWssHsg(processedGeojson);
+          processedGeojson = enriched;
+          if (filled > 0) {
+            addLog(`Se autocompletó el HSG en ${filled} de ${total} polígonos del WSS.`);
+          } else {
+            addLog('No se encontraron valores HSG automáticos para los polígonos del WSS.');
+          }
+        } catch (err) {
+          console.error('Failed to populate WSS HSG automatically', err);
+          addLog('No se pudo autocompletar el HSG del WSS. Deja los valores en blanco o asígnalos manualmente.', 'warn');
+          processedGeojson = ensureHsgField(processedGeojson);
+        }
+      }
 
-    setLayers(prevLayers => {
-      const existing = prevLayers.find(l => l.name === name);
-      const hadOverall = prevLayers.some(l => l.name === OVERALL_DRAINAGE_LAYER_NAME);
+      if (
+        overallDrainageFeature &&
+        (name === SUBAREA_LAYER_NAME ||
+          name === 'Soil Layer from Web Soil Survey' ||
+          name === 'Land Cover')
+      ) {
+        const layerAreaSqM = sumPolygonAreasSqm(processedGeojson);
+        const overallAreaSqM = computeFeatureAreaSqm(overallDrainageFeature);
+        if (
+          overallAreaSqM > 0 &&
+          overallAreaSqM - layerAreaSqM > AREA_TOLERANCE_SQM
+        ) {
+          const layerAreaAc = Number((layerAreaSqM * SQM_TO_ACRES).toFixed(4));
+          const overallAreaAc = Number((overallAreaSqM * SQM_TO_ACRES).toFixed(4));
+          addLog(
+            `Advertencia: el área total de ${name} (${layerAreaAc} ac) es menor que el Overall Drainage Area (${overallAreaAc} ac). Revisa que los polígonos cubran toda el área de drenaje.`,
+            'warn'
+          );
+        }
+      }
 
-      let nextLayers: LayerData[];
-      if (existing) {
-        action = 'updated';
-        nextLayers = prevLayers.map(l =>
-          l.name === name
-            ? { ...l, geojson: processedGeojson, editable, fieldMap: fieldMap ?? l.fieldMap }
-            : l
-        );
+      let action: 'updated' | 'created' = 'created';
+      let overallChange: 'none' | 'created' | 'updated' | 'removed' = 'none';
+
+      setLayers(prevLayers => {
+        const existing = prevLayers.find(l => l.name === name);
+        const hadOverall = prevLayers.some(l => l.name === OVERALL_DRAINAGE_LAYER_NAME);
+
+        let nextLayers: LayerData[];
+        if (existing) {
+          action = 'updated';
+          nextLayers = prevLayers.map(l =>
+            l.name === name
+              ? { ...l, geojson: processedGeojson, editable, fieldMap: fieldMap ?? l.fieldMap }
+              : l
+          );
+        } else {
+          const newLayer: LayerData = {
+            id: `${Date.now()}-${name}`,
+            name,
+            geojson: processedGeojson,
+            editable,
+            visible: true,
+            fillColor: getDefaultColor(name),
+            fillOpacity: DEFAULT_OPACITY,
+            category: 'Original',
+            fieldMap,
+          };
+          nextLayers = [...prevLayers, newLayer];
+        }
+
+        if (name === 'Drainage Areas') {
+          nextLayers = ensureOverallDrainageAreaLayer(nextLayers, normalizedGeojson);
+          const hasOverallAfter = nextLayers.some(l => l.name === OVERALL_DRAINAGE_LAYER_NAME);
+          if (!hadOverall && hasOverallAfter) overallChange = 'created';
+          else if (hadOverall && hasOverallAfter) overallChange = 'updated';
+          else if (hadOverall && !hasOverallAfter) overallChange = 'removed';
+        }
+
+        return nextLayers;
+      });
+
+      if (action === 'updated') {
+        addLog(`Updated layer ${name} with uploaded data`);
       } else {
-        const newLayer: LayerData = {
-          id: `${Date.now()}-${name}`,
-          name,
-          geojson: processedGeojson,
-          editable,
-          visible: true,
-          fillColor: getDefaultColor(name),
-          fillOpacity: DEFAULT_OPACITY,
-          category: 'Original',
-          fieldMap,
-        };
-        nextLayers = [...prevLayers, newLayer];
+        addLog(`Loaded layer ${name}${editable ? '' : ' (view only)'}`);
       }
 
       if (name === 'Drainage Areas') {
-        nextLayers = ensureOverallDrainageAreaLayer(nextLayers, normalizedGeojson);
-        const hasOverallAfter = nextLayers.some(l => l.name === OVERALL_DRAINAGE_LAYER_NAME);
-        if (!hadOverall && hasOverallAfter) overallChange = 'created';
-        else if (hadOverall && hasOverallAfter) overallChange = 'updated';
-        else if (hadOverall && !hasOverallAfter) overallChange = 'removed';
+        if (overallChange === 'created') {
+          addLog('Se generó automáticamente la capa Overall Drainage Area.');
+        } else if (overallChange === 'updated') {
+          addLog('Se actualizó la capa Overall Drainage Area para reflejar los cambios.');
+        } else if (overallChange === 'removed') {
+          addLog('Se eliminó la capa Overall Drainage Area porque no hay geometría disponible.');
+        }
       }
-
-      return nextLayers;
-    });
-
-    if (action === 'updated') {
-      addLog(`Updated layer ${name} with uploaded data`);
-    } else {
-      addLog(`Loaded layer ${name}${editable ? '' : ' (view only)'}`);
-    }
-
-    if (name === 'Drainage Areas') {
-      if (overallChange === 'created') {
-        addLog('Se generó automáticamente la capa Overall Drainage Area.');
-      } else if (overallChange === 'updated') {
-        addLog('Se actualizó la capa Overall Drainage Area para reflejar los cambios.');
-      } else if (overallChange === 'removed') {
-        addLog('Se eliminó la capa Overall Drainage Area porque no hay geometría disponible.');
+      if (name === 'Drainage Areas') {
+        addLog('Asigna un Discharge Point (DP-##) a cada área de drenaje usando el desplegable del mapa.');
       }
+      if (name === SUBAREA_LAYER_NAME) {
+        addLog(
+          "Etiqueta cada Drainage Subarea como 'DRAINAGE AREA - #' y vincúlala a su Discharge Point (DP-##) mediante el campo PARENT_DA."
+        );
+      }
+      if (name === 'Soil Layer from Web Soil Survey') {
+        addLog('La capa WSS se cargó correctamente. Verifica los valores de HSG antes de continuar.');
+      }
+      if (name === 'Land Cover') {
+        addLog('La capa Land Cover está disponible. Verifica que cada polígono tenga un valor LAND_COVER.');
+      }
+    } finally {
+      setIsLoading(false);
     }
-    if (name === 'Drainage Areas') {
-      addLog('Asigna un Discharge Point (DP-##) a cada área de drenaje usando el desplegable del mapa.');
-    }
-    if (name === SUBAREA_LAYER_NAME) {
-      addLog(
-        "Etiqueta cada Drainage Subarea como 'DRAINAGE AREA - #' y vincúlala a su Discharge Point (DP-##) mediante el campo PARENT_DA."
-      );
-    }
-    if (name === 'Soil Layer from Web Soil Survey') {
-      addLog('La capa WSS se cargó correctamente. Asigna manualmente el HSG (A/B/C/D) a cada polígono.');
-    }
-    if (name === 'Land Cover') {
-      addLog('La capa Land Cover está disponible. Verifica que cada polígono tenga un valor LAND_COVER.');
-    }
-  }, [addLog, landCoverOptions, layers, drainageAreasAssigned, subareasConfigured, drainageAreasLayer, soilsLoaded]);
+  }, [
+    addLog,
+    landCoverOptions,
+    layers,
+    drainageAreasAssigned,
+    subareasConfigured,
+    drainageAreasLayer,
+    soilsLoaded,
+  ]);
 
   const handlePreviewReady = useCallback((geojson: FeatureCollection, fileName: string, detectedName: string) => {
     setIsLoading(false);
