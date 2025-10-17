@@ -643,18 +643,19 @@ const App: React.FC = () => {
   }, [subareasLayer, assignedDrainagePoints]);
 
   const allowedLayerNames = useMemo(() => {
-    const names = new Set<string>(['Drainage Areas', 'LOD']);
+    const names = new Set<string>([
+      'Drainage Areas',
+      'LOD',
+      'Soil Layer from Web Soil Survey',
+    ]);
     if (drainageAreasAssigned) {
       names.add(SUBAREA_LAYER_NAME);
-    }
-    if (drainageAreasAssigned && subareasConfigured) {
-      names.add('Soil Layer from Web Soil Survey');
     }
     if (soilsLoaded) {
       names.add('Land Cover');
     }
     return Array.from(names);
-  }, [drainageAreasAssigned, subareasConfigured, soilsLoaded]);
+  }, [drainageAreasAssigned, soilsLoaded]);
 
   const scsLayerStatuses = useMemo<ScsLayerStatus[]>(() => {
     const statuses: ScsLayerStatus[] = [
