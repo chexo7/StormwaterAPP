@@ -48,9 +48,11 @@ const COMPLEMENT_FLAG_ATTR = 'IS_COMPLEMENT';
 const SUBAREA_AREA_ATTR = 'SUBAREA_AC';
 const SQM_TO_ACRES = 0.000247105381;
 const SQM_TO_SQFT = 10.76391041671;
+const SQFT_PER_ACRE = 43560;
 const MIN_COMPLEMENT_AREA_SF = 100;
 const MIN_COMPLEMENT_AREA_SQM = MIN_COMPLEMENT_AREA_SF / SQM_TO_SQFT;
 const AREA_TOLERANCE_SQM = 0.01;
+const AREA_MISMATCH_TOLERANCE_AC = 0.01;
 
 const DEFAULT_COLORS: Record<string, string> = {
   'Drainage Areas': '#67e8f9',
@@ -201,6 +203,11 @@ type HydroCADSubcatchment = {
   areas: HydroCADAreaGroup[];
 };
 
+type HydroCADAggregationResult = {
+  subcatchments: HydroCADSubcatchment[];
+  warnings: string[];
+};
+
 const resolveSubareaName = (rawName: unknown, fallback: string): string => {
   if (rawName === undefined || rawName === null) return fallback;
   const value = String(rawName).trim();
@@ -213,12 +220,13 @@ const getSubareaKey = (rawName: unknown, fallback: string): string =>
 const aggregateOverlayForHydroCAD = (
   features: Feature[],
   subareas: Feature<Polygon | MultiPolygon>[]
-): HydroCADSubcatchment[] => {
+): HydroCADAggregationResult => {
   type SubareaAggregate = {
     name: string;
     order: number;
     parents: Set<string>;
     groups: Map<string, HydroCADAreaGroup>;
+    sourceAreaAcres: number;
   };
 
   const aggregates = new Map<string, SubareaAggregate>();
@@ -243,6 +251,7 @@ const aggregateOverlayForHydroCAD = (
       order,
       parents: parentValue ? new Set([parentValue]) : new Set(),
       groups: new Map(),
+      sourceAreaAcres: 0,
     };
     aggregates.set(key, aggregate);
     return aggregate;
@@ -253,7 +262,20 @@ const aggregateOverlayForHydroCAD = (
     const rawName = (props as any)[SUBAREA_NAME_ATTR];
     const fallback = `Subarea ${index + 1}`;
     const parentRaw = (props as any)[SUBAREA_PARENT_ATTR] ?? null;
-    ensureAggregate(rawName, fallback, index, parentRaw);
+    const aggregate = ensureAggregate(rawName, fallback, index, parentRaw);
+
+    let areaAcres = Number((props as any)[SUBAREA_AREA_ATTR]);
+    if (!Number.isFinite(areaAcres) || areaAcres <= 0) {
+      if (isPolygonLike(subFeature)) {
+        const areaSqm = computeFeatureAreaSqm(subFeature);
+        areaAcres = Number((areaSqm * SQM_TO_ACRES).toFixed(6));
+      } else {
+        areaAcres = 0;
+      }
+    }
+    if (Number.isFinite(areaAcres) && areaAcres > 0) {
+      aggregate.sourceAreaAcres += areaAcres;
+    }
   });
 
   features.forEach((feature, idx) => {
@@ -320,27 +342,51 @@ const aggregateOverlayForHydroCAD = (
     return finalId;
   };
 
-  return Array.from(aggregates.values())
-    .sort((a, b) => a.order - b.order)
-    .map((aggregate, index) => {
-      const parentLabel =
-        aggregate.parents.size > 0
-          ? Array.from(aggregate.parents)
-              .filter(Boolean)
-              .sort((a, b) => a.localeCompare(b))
-              .join(', ')
-          : null;
-      return {
-        id: sanitizeId(aggregate.name, parentLabel, index),
-        name: aggregate.name,
-        parentDa: parentLabel,
-        areas: Array.from(aggregate.groups.values()).map(item => ({
-          area: Number(item.area.toFixed(2)),
-          cn: item.cn,
-          desc: item.desc,
-        })),
-      };
-    });
+  const warnings: string[] = [];
+  const ordered = Array.from(aggregates.values()).sort((a, b) => a.order - b.order);
+
+  const subcatchments = ordered.map((aggregate, index) => {
+    const parentLabel =
+      aggregate.parents.size > 0
+        ? Array.from(aggregate.parents)
+            .filter(Boolean)
+            .sort((a, b) => a.localeCompare(b))
+            .join(', ')
+        : null;
+    return {
+      id: sanitizeId(aggregate.name, parentLabel, index),
+      name: aggregate.name,
+      parentDa: parentLabel,
+      areas: Array.from(aggregate.groups.values()).map(item => ({
+        area: Number(item.area.toFixed(2)),
+        cn: item.cn,
+        desc: item.desc,
+      })),
+    };
+  });
+
+  ordered.forEach(aggregate => {
+    const totalAreaSqFt = Array.from(aggregate.groups.values()).reduce(
+      (sum, item) => sum + item.area,
+      0
+    );
+    const computedAreaAcres = Number((totalAreaSqFt / SQFT_PER_ACRE).toFixed(4));
+    if (aggregate.sourceAreaAcres > 0) {
+      const diffAcres = Math.abs(aggregate.sourceAreaAcres - computedAreaAcres);
+      if (diffAcres > AREA_MISMATCH_TOLERANCE_AC) {
+        const percentDiff = (diffAcres / aggregate.sourceAreaAcres) * 100;
+        warnings.push(
+          `La subárea "${aggregate.name}" perdió ${diffAcres.toFixed(
+            2
+          )} ac (${percentDiff.toFixed(1)}%) al generar HydroCAD (esperado ${aggregate.sourceAreaAcres.toFixed(
+            2
+          )} ac, generado ${computedAreaAcres.toFixed(2)} ac). Revisa Land Cover o valores de CN faltantes.`
+        );
+      }
+    }
+  });
+
+  return { subcatchments, warnings };
 };
 
 const buildSubcatchmentNodeBase = (name: string, fallbackIndex: number): string => {
@@ -2016,10 +2062,14 @@ const App: React.FC = () => {
         addLog(`Overlay created with ${overlay.length} features`);
 
         try {
-          const subcatchments = aggregateOverlayForHydroCAD(overlay, processedSubareas);
+          const { subcatchments, warnings } = aggregateOverlayForHydroCAD(
+            overlay,
+            processedSubareas
+          );
           if (subcatchments.length === 0) {
             throw new Error('No hay combinaciones válidas de CN para generar HydroCAD.');
           }
+          warnings.forEach(message => addLog(message, 'warn'));
           const incomplete = subcatchments.filter(sc => sc.areas.length === 0);
           if (incomplete.length > 0) {
             const missingNames = incomplete.map(sc => sc.name).join(', ');
