@@ -33,6 +33,26 @@ const SDA_HEADERS = {
   Accept: 'application/json',
 };
 const MAX_SYMBOLS_PER_QUERY = 50;
+const LETTER_PATTERN = /[ABCD]/i;
+
+const sanitizeText = value => {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) return '';
+    return String(value);
+  }
+  if (typeof value !== 'string') return String(value ?? '').trim();
+  return value.trim();
+};
+
+const simplifyHsgToken = value => {
+  const raw = sanitizeText(value);
+  if (!raw) return '';
+  const match = raw.toUpperCase().match(LETTER_PATTERN);
+  return match ? match[0] : '';
+};
+
+const toUpperToken = value => sanitizeText(value).toUpperCase();
 
 const chunkSymbols = (symbols, size = MAX_SYMBOLS_PER_QUERY) => {
   const chunks = [];
@@ -90,30 +110,27 @@ app.post('/api/wss-hsg', async (req, res) => {
     typeof req.body?.areaSymbol === 'string' ? req.body.areaSymbol.trim() : '';
   const symbolsRaw = Array.isArray(req.body?.symbols) ? req.body.symbols : [];
 
-  const areaSymbol = areaSymbolRaw.toUpperCase();
+  const areaSymbol = toUpperToken(areaSymbolRaw);
   const symbolSet = new Set(
     symbolsRaw
-      .map(value => {
-        if (value === null || value === undefined) return '';
-        return String(value).trim().toUpperCase();
-      })
+      .map(value => toUpperToken(value))
       .filter(Boolean)
   );
 
   const symbols = Array.from(symbolSet);
 
-  if (!areaSymbol || symbols.length === 0) {
-    addLog('WSS HSG lookup skipped due to missing inputs', 'warn');
-    return res.json({ areaSymbol, results: [] });
+  if (symbols.length === 0) {
+    addLog('WSS HSG lookup skipped because no MUSYM symbols were provided.', 'warn');
+    return res.json({ areaSymbol: areaSymbol || null, results: [] });
   }
 
   try {
-    const results = [];
+    const grouped = new Map();
     for (const chunk of chunkSymbols(symbols)) {
       const quotedSymbols = chunk
         .map(sym => `'${escapeSqlLiteral(sym)}'`)
         .join(',');
-      const sql = `
+      const baseSql = `
         SELECT
           m.musym,
           m.muname,
@@ -123,11 +140,16 @@ app.post('/api/wss-hsg', async (req, res) => {
             WHERE c.mukey = m.mukey
             ORDER BY c.comppct_r DESC
           ) AS hsg
-        FROM legend l
-        JOIN mapunit m ON l.lkey = m.lkey
-        WHERE l.areasymbol = '${escapeSqlLiteral(areaSymbol)}'
-          AND m.musym IN (${quotedSymbols});
+        FROM mapunit m
       `;
+
+      const sql = areaSymbol
+        ? `${baseSql}
+          JOIN legend l ON l.lkey = m.lkey
+          WHERE l.areasymbol = '${escapeSqlLiteral(areaSymbol)}'
+            AND m.musym IN (${quotedSymbols});`
+        : `${baseSql}
+          WHERE m.musym IN (${quotedSymbols});`;
 
       const response = await fetch(SDA_ENDPOINT, {
         method: 'POST',
@@ -141,22 +163,66 @@ app.post('/api/wss-hsg', async (req, res) => {
 
       const table = await parseSdaTable(response);
       table.forEach(row => {
-        results.push({
-          musym: row?.musym ?? row?.MUSYM ?? '',
-          muname: row?.muname ?? row?.MUNAME ?? '',
-          hsg: row?.hsg ?? row?.HSG ?? row?.hydgrp ?? row?.HYDGRP ?? '',
-        });
+        const musym = toUpperToken(row?.musym ?? row?.MUSYM);
+        if (!musym) return;
+        const muname = sanitizeText(row?.muname ?? row?.MUNAME);
+        const simplified = simplifyHsgToken(
+          row?.hsg ?? row?.HSG ?? row?.hydgrp ?? row?.HYDGRP ?? ''
+        );
+        const entry = grouped.get(musym) || {
+          musym,
+          muname: undefined,
+          tokens: [],
+        };
+        if (muname) {
+          entry.muname = muname;
+        }
+        if (simplified) {
+          entry.tokens.push(simplified);
+        }
+        grouped.set(musym, entry);
       });
     }
 
+    const results = symbols.map(symbol => {
+      const entry = grouped.get(symbol);
+      if (!entry) {
+        return { musym: symbol, muname: undefined, hsg: '' };
+      }
+
+      let resolvedHsg = '';
+      if (entry.tokens.length > 0) {
+        const counts = entry.tokens.reduce((acc, token) => {
+          const current = acc.get(token) ?? 0;
+          acc.set(token, current + 1);
+          return acc;
+        }, new Map());
+        const maxCount = Math.max(...counts.values());
+        const candidates = Array.from(counts.entries())
+          .filter(([, count]) => count === maxCount)
+          .map(([token]) => token)
+          .sort();
+        resolvedHsg = candidates[0] ?? '';
+      }
+
+      return {
+        musym: entry.musym,
+        muname: entry.muname,
+        hsg: resolvedHsg,
+      };
+    });
+
+    const matchedCount = results.filter(record => Boolean(record.hsg)).length;
+    const areaSuffix = areaSymbol ? ` (${areaSymbol})` : '';
     addLog(
-      `Fetched ${results.length} MUSYM records from SDA for area symbol ${areaSymbol}.`
+      `Fetched SDA HSG data for ${matchedCount} de ${symbols.length} símbolos${areaSuffix}.`
     );
-    res.json({ areaSymbol, results });
+    res.json({ areaSymbol: areaSymbol || null, results });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : 'Unknown error during SDA lookup';
-    addLog(`Failed SDA lookup for ${areaSymbol}: ${message}`, 'error');
+    const areaSuffix = areaSymbol ? ` (${areaSymbol})` : '';
+    addLog(`Failed SDA lookup${areaSuffix}: ${message}`, 'error');
     res.status(502).json({ error: message });
   }
 });
