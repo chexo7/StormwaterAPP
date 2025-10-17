@@ -8,7 +8,7 @@ const instructionsContent = {
     stepsTitle: 'Pasos para comenzar',
     steps: [
       'Carga un archivo Shapefile o GeoPackage desde el panel izquierdo. Cada capa se validará automáticamente y el registro mostrará cualquier advertencia.',
-      'Primero sube las Drainage Areas, asigna un Discharge Point (DP-##) a cada polígono y luego incorpora las Drainage Subareas vinculándolas a esos mismos DP. Al completar esas asociaciones se habilitará la carga de la capa de suelos (WSS); después de cargarla podrás añadir la capa de Land Cover con la detección automática habitual.',
+      'Primero sube las Drainage Areas y asigna un Discharge Point (DP-##) a cada polígono. Después incorpora las Drainage Subareas y vincúlalas a esos mismos DP cuando estén listas. La capa de suelos (WSS) puede cargarse en cualquier momento; al hacerlo la aplicación intentará autocompletar los HSG y, una vez presentes, podrás añadir la capa de Land Cover con la detección automática habitual.',
       'Revisa el panel de capas para activar o desactivar la visibilidad, cambiar estilos y seleccionar qué capa editar.',
       'Usa el mapa para revisar geometrías. Puedes editar atributos clave como el Discharge Point # (DP-##), la cobertura del suelo y verificar o completar manualmente el HSG (A/B/C/D) en la capa WSS desde los controles contextuales.',
       'Cuando los datos estén listos, utiliza el botón Exportar para generar archivos HydroCAD, SWMM o nuevos Shapefiles, y confirma la proyección correspondiente.',
@@ -42,7 +42,7 @@ const instructionsContent = {
     stepsTitle: 'Getting started',
     steps: [
       'Upload a Shapefile or GeoPackage from the left panel. Each layer is validated automatically and the activity log will highlight any warnings.',
-      'Load the Drainage Areas first, assign a Discharge Point (DP-##) to every polygon, then import the Drainage Subareas and link them to those discharge points. Once those prerequisites are satisfied the WSS soil layer unlocks, and after it is loaded you can add the Land Cover layer with the usual auto-detection.',
+      'Begin by loading the Drainage Areas and assigning a Discharge Point (DP-##) to every polygon. Next, bring in the Drainage Subareas and link them to those discharge points when they are available. You can upload the WSS soil layer at any time—the app will attempt to auto-fill the HSG values—and once it is present you can add the Land Cover layer with the usual auto-detection.',
       'Review the layer panel to toggle visibility, adjust styles, and choose which layer is currently editable.',
       'Use the map to inspect geometries. Contextual controls let you edit key attributes like the Discharge Point # (DP-##), Land Cover, and review or manually complete the HSG value (A/B/C/D) on the WSS features.',
       'When the dataset is ready, open the Export dialog to generate HydroCAD, SWMM, or Shapefile outputs and confirm the desired projection.',

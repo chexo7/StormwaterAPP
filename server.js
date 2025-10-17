@@ -33,6 +33,7 @@ const SDA_HEADERS = {
   Accept: 'application/json',
 };
 const MAX_SYMBOLS_PER_QUERY = 50;
+const HSG_LETTER_PATTERN = /[ABCD]/i;
 
 const chunkSymbols = (symbols, size = MAX_SYMBOLS_PER_QUERY) => {
   const chunks = [];
@@ -43,6 +44,38 @@ const chunkSymbols = (symbols, size = MAX_SYMBOLS_PER_QUERY) => {
 };
 
 const escapeSqlLiteral = (value = '') => value.replace(/'/g, "''");
+
+const sanitizeText = value => {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? String(value) : '';
+  }
+  if (typeof value === 'string') {
+    return value.trim();
+  }
+  return String(value).trim();
+};
+
+const cleanHsgToken = value => {
+  if (value === null || value === undefined) return '';
+  const token = String(value).toUpperCase().trim();
+  const match = token.match(HSG_LETTER_PATTERN);
+  return match ? match[0] : '';
+};
+
+const runSdaQuery = async sql => {
+  const response = await fetch(SDA_ENDPOINT, {
+    method: 'POST',
+    headers: SDA_HEADERS,
+    body: JSON.stringify({ query: sql }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`SDA request failed with status ${response.status}`);
+  }
+
+  return parseSdaTable(response);
+};
 
 const parseSdaTable = async response => {
   const contentType = response.headers.get('content-type') || '';
@@ -102,14 +135,27 @@ app.post('/api/wss-hsg', async (req, res) => {
 
   const symbols = Array.from(symbolSet);
 
-  if (!areaSymbol || symbols.length === 0) {
+  if (symbols.length === 0) {
     addLog('WSS HSG lookup skipped due to missing inputs', 'warn');
     return res.json({ areaSymbol, results: [] });
   }
 
+  const chunkCount = Math.ceil(symbols.length / MAX_SYMBOLS_PER_QUERY) || 1;
   try {
+    addLog(
+      `Fetching HSG data for ${symbols.length} MUSYM symbol(s)${
+        areaSymbol ? ` (AREASYMBOL ${areaSymbol})` : ''
+      }.`
+    );
+
     const results = [];
+    let processedChunks = 0;
     for (const chunk of chunkSymbols(symbols)) {
+      processedChunks += 1;
+      addLog(
+        `Requesting HSG chunk ${processedChunks}/${chunkCount} (${chunk.length} symbol(s)).`
+      );
+
       const quotedSymbols = chunk
         .map(sym => `'${escapeSqlLiteral(sym)}'`)
         .join(',');
@@ -123,40 +169,41 @@ app.post('/api/wss-hsg', async (req, res) => {
             WHERE c.mukey = m.mukey
             ORDER BY c.comppct_r DESC
           ) AS hsg
-        FROM legend l
-        JOIN mapunit m ON l.lkey = m.lkey
-        WHERE l.areasymbol = '${escapeSqlLiteral(areaSymbol)}'
-          AND m.musym IN (${quotedSymbols});
+        FROM mapunit m
+        WHERE m.musym IN (${quotedSymbols});
       `;
 
-      const response = await fetch(SDA_ENDPOINT, {
-        method: 'POST',
-        headers: SDA_HEADERS,
-        body: JSON.stringify({ query: sql }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`SDA request failed with status ${response.status}`);
-      }
-
-      const table = await parseSdaTable(response);
+      const table = await runSdaQuery(sql);
       table.forEach(row => {
+        const musymRaw = row?.musym ?? row?.MUSYM ?? '';
+        const munameRaw = row?.muname ?? row?.MUNAME ?? '';
+        const musym = sanitizeText(musymRaw).toUpperCase();
+        const muname = sanitizeText(munameRaw);
+        const hsg = cleanHsgToken(row?.hsg ?? row?.HSG ?? row?.hydgrp ?? row?.HYDGRP);
+        if (musym) {
+          addLog(`SDA: MUSYM ${musym} => HSG ${hsg || 'sin datos'}`);
+        }
         results.push({
-          musym: row?.musym ?? row?.MUSYM ?? '',
-          muname: row?.muname ?? row?.MUNAME ?? '',
-          hsg: row?.hsg ?? row?.HSG ?? row?.hydgrp ?? row?.HYDGRP ?? '',
+          musym,
+          muname,
+          hsg,
         });
       });
     }
 
     addLog(
-      `Fetched ${results.length} MUSYM records from SDA for area symbol ${areaSymbol}.`
+      `Fetched ${results.length} MUSYM record(s) from SDA${
+        areaSymbol ? ` for AREASYMBOL ${areaSymbol}` : ''
+      }.`
     );
     res.json({ areaSymbol, results });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : 'Unknown error during SDA lookup';
-    addLog(`Failed SDA lookup for ${areaSymbol}: ${message}`, 'error');
+    addLog(
+      `Failed SDA lookup${areaSymbol ? ` for ${areaSymbol}` : ''}: ${message}`,
+      'error'
+    );
     res.status(502).json({ error: message });
   }
 });

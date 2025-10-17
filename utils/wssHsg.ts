@@ -72,11 +72,11 @@ export const extractUniqueSymbols = (
 };
 
 export const fetchWssHsgRecords = async (
-  areaSymbol: string,
-  symbols: string[]
+  symbols: string[],
+  areaSymbol?: string | null
 ): Promise<WssHsgRecord[]> => {
-  if (!areaSymbol || symbols.length === 0) return [];
-  const payload = { areaSymbol, symbols };
+  if (symbols.length === 0) return [];
+  const payload = areaSymbol ? { areaSymbol, symbols } : { symbols };
   const res = await fetch(WSS_HSG_ENDPOINT, {
     method: 'POST',
     headers: {
@@ -107,10 +107,21 @@ export const applyHsgToFeatures = (
     const musym = sanitizeText(
       getPropCaseInsensitive(feature.properties, TARGET_SYMBOL_KEY)
     ).toUpperCase();
-    const hsg = musym ? hsgMap.get(musym) ?? '' : '';
+    const existingHsg = simplifyHsgValue((feature.properties as any)?.HSG);
+    let resolvedHsg = existingHsg;
+
+    if (musym && hsgMap.has(musym)) {
+      const mapped = simplifyHsgValue(hsgMap.get(musym));
+      if (mapped) {
+        resolvedHsg = mapped;
+      } else if (!existingHsg) {
+        resolvedHsg = '';
+      }
+    }
+
     return {
       ...feature,
-      properties: { ...(feature.properties || {}), HSG: hsg },
+      properties: { ...(feature.properties || {}), HSG: resolvedHsg ?? '' },
     };
   });
   return { ...geojson, features: updatedFeatures };
