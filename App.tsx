@@ -1155,15 +1155,20 @@ const App: React.FC = () => {
           const areaSymbol = extractAreaSymbol(processedGeojson);
           const symbols = extractUniqueSymbols(processedGeojson);
           if (!areaSymbol) {
-            addLog('No se encontró AREASYMBOL en la capa WSS; los HSG se mantienen en blanco.', 'warn');
-          } else if (symbols.length === 0) {
             addLog(
-              `No se detectaron MUSYM en la capa WSS (${areaSymbol}); los HSG permanecen vacíos.`,
+              'No se encontró AREASYMBOL en la capa WSS; se intentará asignar HSG usando solo MUSYM.',
+              'warn'
+            );
+          }
+          if (symbols.length === 0) {
+            const areaSuffix = areaSymbol ? ` (${areaSymbol})` : '';
+            addLog(
+              `No se detectaron MUSYM en la capa WSS${areaSuffix}; los HSG permanecen vacíos.`,
               'warn'
             );
           } else {
             try {
-              const records = await fetchWssHsgRecords(areaSymbol, symbols);
+              const records = await fetchWssHsgRecords(symbols, areaSymbol || undefined);
               const hsgMap = new Map<string, string>();
               records.forEach(record => {
                 const symbolKey = record.musym?.toUpperCase();
@@ -1182,18 +1187,20 @@ const App: React.FC = () => {
               }, 0);
               const missingCount = totalFeatures - matchedFeatures;
 
+              const areaSuffix = areaSymbol ? ` (${areaSymbol})` : '';
+
               if (matchedFeatures === 0) {
                 addLog(
-                  `No se obtuvo HSG desde SDA para los ${symbols.length} símbolos consultados (${areaSymbol}); revisa y completa manualmente.`,
+                  `No se obtuvo HSG desde SDA para los ${symbols.length} símbolos consultados${areaSuffix}; revisa y completa manualmente.`,
                   'warn'
                 );
               } else if (missingCount > 0) {
                 addLog(
-                  `Se autocompletó HSG para ${matchedFeatures} de ${totalFeatures} polígonos (${areaSymbol}). Completa manualmente ${missingCount}.`
+                  `Se autocompletó HSG para ${matchedFeatures} de ${totalFeatures} polígonos${areaSuffix}. Completa manualmente ${missingCount}.`
                 );
               } else {
                 addLog(
-                  `HSG autoasignado para los ${totalFeatures} polígonos WSS (${areaSymbol}). Revisa y ajusta si es necesario.`
+                  `HSG autoasignado para los ${totalFeatures} polígonos WSS${areaSuffix}. Revisa y ajusta si es necesario.`
                 );
               }
             } catch (err) {

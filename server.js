@@ -44,6 +44,45 @@ const chunkSymbols = (symbols, size = MAX_SYMBOLS_PER_QUERY) => {
 
 const escapeSqlLiteral = (value = '') => value.replace(/'/g, "''");
 
+const sanitizeText = value => {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) return '';
+    return String(value);
+  }
+  if (typeof value !== 'string') return String(value ?? '');
+  return value.trim();
+};
+
+const cleanHsgToken = raw => {
+  const token = sanitizeText(raw).toUpperCase();
+  if (!token) return '';
+  const match = token.match(/[ABCD]/);
+  return match ? match[0] : '';
+};
+
+const pickDominantHsg = tokens => {
+  if (!tokens || tokens.length === 0) return '';
+  const counts = new Map();
+  tokens.forEach(token => {
+    const current = counts.get(token) || 0;
+    counts.set(token, current + 1);
+  });
+  let bestToken = '';
+  let bestCount = 0;
+  counts.forEach((count, token) => {
+    if (count > bestCount) {
+      bestToken = token;
+      bestCount = count;
+      return;
+    }
+    if (count === bestCount && token < bestToken) {
+      bestToken = token;
+    }
+  });
+  return bestToken;
+};
+
 const parseSdaTable = async response => {
   const contentType = response.headers.get('content-type') || '';
   if (contentType.includes('application/json')) {
@@ -102,13 +141,14 @@ app.post('/api/wss-hsg', async (req, res) => {
 
   const symbols = Array.from(symbolSet);
 
-  if (!areaSymbol || symbols.length === 0) {
-    addLog('WSS HSG lookup skipped due to missing inputs', 'warn');
+  if (symbols.length === 0) {
+    addLog('WSS HSG lookup skipped due to missing MUSYM values', 'warn');
     return res.json({ areaSymbol, results: [] });
   }
 
   try {
     const results = [];
+
     for (const chunk of chunkSymbols(symbols)) {
       const quotedSymbols = chunk
         .map(sym => `'${escapeSqlLiteral(sym)}'`)
@@ -123,10 +163,8 @@ app.post('/api/wss-hsg', async (req, res) => {
             WHERE c.mukey = m.mukey
             ORDER BY c.comppct_r DESC
           ) AS hsg
-        FROM legend l
-        JOIN mapunit m ON l.lkey = m.lkey
-        WHERE l.areasymbol = '${escapeSqlLiteral(areaSymbol)}'
-          AND m.musym IN (${quotedSymbols});
+        FROM mapunit m
+        WHERE m.musym IN (${quotedSymbols});
       `;
 
       const response = await fetch(SDA_ENDPOINT, {
@@ -140,23 +178,45 @@ app.post('/api/wss-hsg', async (req, res) => {
       }
 
       const table = await parseSdaTable(response);
+
+      const grouped = new Map();
+      chunk.forEach(symbol => {
+        grouped.set(symbol, { tokens: [], muname: '' });
+      });
+
       table.forEach(row => {
-        results.push({
-          musym: row?.musym ?? row?.MUSYM ?? '',
-          muname: row?.muname ?? row?.MUNAME ?? '',
-          hsg: row?.hsg ?? row?.HSG ?? row?.hydgrp ?? row?.HYDGRP ?? '',
-        });
+        const musym = sanitizeText(row?.musym ?? row?.MUSYM).toUpperCase();
+        if (!musym || !grouped.has(musym)) return;
+        const muname = sanitizeText(row?.muname ?? row?.MUNAME);
+        if (muname && !grouped.get(musym).muname) {
+          grouped.get(musym).muname = muname;
+        }
+        const cleaned = cleanHsgToken(
+          row?.hsg ?? row?.HSG ?? row?.hydgrp ?? row?.HYDGRP
+        );
+        if (cleaned) {
+          grouped.get(musym).tokens.push(cleaned);
+        }
+      });
+
+      chunk.forEach(symbol => {
+        const entry = grouped.get(symbol) || { tokens: [], muname: '' };
+        const dominant = pickDominantHsg(entry.tokens);
+        results.push({ musym: symbol, muname: entry.muname, hsg: dominant });
       });
     }
 
+    const successful = results.filter(r => r.hsg).length;
+    const suffix = areaSymbol ? ` for area symbol ${areaSymbol}` : '';
     addLog(
-      `Fetched ${results.length} MUSYM records from SDA for area symbol ${areaSymbol}.`
+      `Resolved HSG for ${successful} of ${symbols.length} MUSYM values${suffix}.`
     );
     res.json({ areaSymbol, results });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : 'Unknown error during SDA lookup';
-    addLog(`Failed SDA lookup for ${areaSymbol}: ${message}`, 'error');
+    const suffix = areaSymbol ? ` (${areaSymbol})` : '';
+    addLog(`Failed SDA lookup${suffix}: ${message}`, 'error');
     res.status(502).json({ error: message });
   }
 });
