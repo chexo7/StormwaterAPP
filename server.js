@@ -33,6 +33,10 @@ const SDA_HEADERS = {
   Accept: 'application/json',
 };
 const MAX_SYMBOLS_PER_QUERY = 50;
+const SDA_REQUEST_TIMEOUT_MS = parseInt(
+  process.env.SDA_TIMEOUT_MS || '90000',
+  10
+);
 
 const chunkSymbols = (symbols, size = MAX_SYMBOLS_PER_QUERY) => {
   const chunks = [];
@@ -44,19 +48,95 @@ const chunkSymbols = (symbols, size = MAX_SYMBOLS_PER_QUERY) => {
 
 const escapeSqlLiteral = (value = '') => value.replace(/'/g, "''");
 
-const parseSdaTable = async response => {
-  const contentType = response.headers.get('content-type') || '';
-  if (contentType.includes('application/json')) {
-    const json = await response.json();
-    return Array.isArray(json?.Table) ? json.Table : [];
+const sanitizeField = value => {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string') return value.trim();
+  if (typeof value === 'number') {
+    if (Number.isNaN(value)) return '';
+    return String(value);
   }
-  const text = await response.text();
+  return String(value ?? '').trim();
+};
+
+const parseXmlTable = text => {
+  const rows = [];
+  const tableRegex = /<Table>([\s\S]*?)<\/Table>/gi;
+  let tableMatch;
+  while ((tableMatch = tableRegex.exec(text))) {
+    const rowText = tableMatch[1];
+    const row = {};
+    const cellRegex = /<([^\/><]+)>([\s\S]*?)<\/\1>/gi;
+    let cellMatch;
+    while ((cellMatch = cellRegex.exec(rowText))) {
+      const key = cellMatch[1];
+      const rawValue = cellMatch[2]
+        .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/gi, '$1')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&amp;/g, '&');
+      row[key] = sanitizeField(rawValue);
+    }
+    rows.push(row);
+  }
+  return rows;
+};
+
+const parseSdaTable = (text, contentType = '') => {
+  const trimmed = (text || '').trim();
+  if (!trimmed) return [];
+
+  if (
+    contentType.includes('application/json') ||
+    trimmed.startsWith('{') ||
+    trimmed.startsWith('[')
+  ) {
+    try {
+      const json = JSON.parse(trimmed);
+      if (Array.isArray(json?.Table)) return json.Table;
+      if (Array.isArray(json?.table)) return json.table;
+      if (Array.isArray(json)) return json;
+    } catch (err) {
+      // Fall back to XML parsing below
+    }
+  }
+
+  return parseXmlTable(trimmed);
+};
+
+const fetchWithTimeout = async (url, options = {}, timeoutMs = 0) => {
+  if (!timeoutMs) {
+    return fetch(url, options);
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
   try {
-    const json = JSON.parse(text);
-    return Array.isArray(json?.Table) ? json.Table : [];
-  } catch (err) {
-    throw new Error('Unexpected SDA response format');
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    return response;
+  } finally {
+    clearTimeout(timer);
   }
+};
+
+const runSdaQuery = async sql => {
+  const response = await fetchWithTimeout(
+    SDA_ENDPOINT,
+    {
+      method: 'POST',
+      headers: SDA_HEADERS,
+      body: JSON.stringify({ query: sql }),
+    },
+    SDA_REQUEST_TIMEOUT_MS
+  );
+
+  if (!response.ok) {
+    throw new Error(`SDA request failed with status ${response.status}`);
+  }
+
+  const contentType = response.headers.get('content-type') || '';
+  const text = await response.text();
+  return parseSdaTable(text, contentType);
 };
 function addLog(message, type = 'info') {
   const entry = { message, type, source: 'backend', timestamp: Date.now() };
@@ -108,7 +188,7 @@ app.post('/api/wss-hsg', async (req, res) => {
   }
 
   try {
-    const results = [];
+    const recordsBySymbol = new Map();
     for (const chunk of chunkSymbols(symbols)) {
       const quotedSymbols = chunk
         .map(sym => `'${escapeSqlLiteral(sym)}'`)
@@ -129,35 +209,49 @@ app.post('/api/wss-hsg', async (req, res) => {
           AND m.musym IN (${quotedSymbols});
       `;
 
-      const response = await fetch(SDA_ENDPOINT, {
-        method: 'POST',
-        headers: SDA_HEADERS,
-        body: JSON.stringify({ query: sql }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`SDA request failed with status ${response.status}`);
-      }
-
-      const table = await parseSdaTable(response);
+      const table = await runSdaQuery(sql);
       table.forEach(row => {
-        results.push({
-          musym: row?.musym ?? row?.MUSYM ?? '',
-          muname: row?.muname ?? row?.MUNAME ?? '',
-          hsg: row?.hsg ?? row?.HSG ?? row?.hydgrp ?? row?.HYDGRP ?? '',
-        });
+        const musymRaw = row?.musym ?? row?.MUSYM ?? '';
+        const musym = sanitizeField(musymRaw).toUpperCase();
+        if (!musym) return;
+        if (!recordsBySymbol.has(musym)) {
+          recordsBySymbol.set(musym, {
+            musym,
+            muname: sanitizeField(row?.muname ?? row?.MUNAME ?? ''),
+            hsg: sanitizeField(
+              row?.hsg ?? row?.HSG ?? row?.hydgrp ?? row?.HYDGRP ?? ''
+            ),
+          });
+        }
       });
     }
 
-    addLog(
-      `Fetched ${results.length} MUSYM records from SDA for area symbol ${areaSymbol}.`
+    const orderedResults = symbols.map(symbol => {
+      const musym = sanitizeField(symbol).toUpperCase();
+      const record = recordsBySymbol.get(musym);
+      if (record) {
+        return record;
+      }
+      return { musym, muname: '', hsg: '' };
+    });
+
+    const matchedCount = orderedResults.reduce(
+      (count, row) => (row.hsg ? count + 1 : count),
+      0
     );
-    res.json({ areaSymbol, results });
+
+    addLog(
+      `Fetched HSG for ${matchedCount} de ${symbols.length} símbolos MUSYM (areasymbol ${areaSymbol}).`
+    );
+    res.json({ areaSymbol, results: orderedResults });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : 'Unknown error during SDA lookup';
-    addLog(`Failed SDA lookup for ${areaSymbol}: ${message}`, 'error');
-    res.status(502).json({ error: message });
+    const message = error instanceof Error ? error.message : 'Unknown error during SDA lookup';
+    const isTimeout = error?.name === 'AbortError';
+    const finalMessage = isTimeout
+      ? `SDA lookup timed out after ${SDA_REQUEST_TIMEOUT_MS} ms`
+      : message;
+    addLog(`Failed SDA lookup for ${areaSymbol}: ${finalMessage}`, 'error');
+    res.status(502).json({ error: finalMessage });
   }
 });
 
