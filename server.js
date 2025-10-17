@@ -34,6 +34,34 @@ const SDA_HEADERS = {
 };
 const MAX_SYMBOLS_PER_QUERY = 50;
 
+const escapeSqlLiteral = (value = '') => value.replace(/'/g, "''");
+
+const buildHsgSql = (symbols, areaSymbol) => {
+  const quotedSymbols = symbols
+    .map(sym => `'${escapeSqlLiteral(sym)}'`)
+    .join(',');
+
+  const legendJoin = areaSymbol ? 'JOIN legend l ON l.lkey = m.lkey' : '';
+  const areaFilter = areaSymbol
+    ? `l.areasymbol = '${escapeSqlLiteral(areaSymbol)}' AND`
+    : '';
+
+  return `
+    SELECT
+      m.musym,
+      m.muname,
+      (
+        SELECT TOP 1 c.hydgrp
+        FROM component c
+        WHERE c.mukey = m.mukey
+        ORDER BY c.comppct_r DESC
+      ) AS hsg
+    FROM mapunit m
+    ${legendJoin}
+    WHERE ${areaFilter} m.musym IN (${quotedSymbols});
+  `;
+};
+
 const chunkSymbols = (symbols, size = MAX_SYMBOLS_PER_QUERY) => {
   const chunks = [];
   for (let i = 0; i < symbols.length; i += size) {
@@ -41,8 +69,6 @@ const chunkSymbols = (symbols, size = MAX_SYMBOLS_PER_QUERY) => {
   }
   return chunks;
 };
-
-const escapeSqlLiteral = (value = '') => value.replace(/'/g, "''");
 
 const parseSdaTable = async response => {
   const contentType = response.headers.get('content-type') || '';
@@ -102,32 +128,27 @@ app.post('/api/wss-hsg', async (req, res) => {
 
   const symbols = Array.from(symbolSet);
 
-  if (!areaSymbol || symbols.length === 0) {
+  if (symbols.length === 0) {
     addLog('WSS HSG lookup skipped due to missing inputs', 'warn');
     return res.json({ areaSymbol, results: [] });
   }
 
   try {
     const results = [];
-    for (const chunk of chunkSymbols(symbols)) {
-      const quotedSymbols = chunk
-        .map(sym => `'${escapeSqlLiteral(sym)}'`)
-        .join(',');
-      const sql = `
-        SELECT
-          m.musym,
-          m.muname,
-          (
-            SELECT TOP 1 c.hydgrp
-            FROM component c
-            WHERE c.mukey = m.mukey
-            ORDER BY c.comppct_r DESC
-          ) AS hsg
-        FROM legend l
-        JOIN mapunit m ON l.lkey = m.lkey
-        WHERE l.areasymbol = '${escapeSqlLiteral(areaSymbol)}'
-          AND m.musym IN (${quotedSymbols});
-      `;
+    const symbolChunks = chunkSymbols(symbols);
+    const totalChunks = symbolChunks.length || 1;
+    let chunkIndex = 0;
+    addLog(
+      `Iniciando consulta SDA para ${symbols.length} símbolos${
+        areaSymbol ? ` (${areaSymbol})` : ''
+      }.`
+    );
+    for (const chunk of symbolChunks) {
+      chunkIndex += 1;
+      addLog(
+        `Consultando chunk ${chunkIndex}/${totalChunks} de símbolos SDA (${chunk.length} MUSYM).`
+      );
+      const sql = buildHsgSql(chunk, areaSymbol || null);
 
       const response = await fetch(SDA_ENDPOINT, {
         method: 'POST',
@@ -150,13 +171,18 @@ app.post('/api/wss-hsg', async (req, res) => {
     }
 
     addLog(
-      `Fetched ${results.length} MUSYM records from SDA for area symbol ${areaSymbol}.`
+      `Consulta SDA completada. Se recuperaron ${results.length} registros de MUSYM${
+        areaSymbol ? ` (${areaSymbol})` : ''
+      }.`
     );
     res.json({ areaSymbol, results });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : 'Unknown error during SDA lookup';
-    addLog(`Failed SDA lookup for ${areaSymbol}: ${message}`, 'error');
+    addLog(
+      `Falló la consulta SDA${areaSymbol ? ` para ${areaSymbol}` : ''}: ${message}`,
+      'error'
+    );
     res.status(502).json({ error: message });
   }
 });
