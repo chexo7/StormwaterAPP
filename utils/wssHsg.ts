@@ -72,11 +72,11 @@ export const extractUniqueSymbols = (
 };
 
 export const fetchWssHsgRecords = async (
-  areaSymbol: string,
-  symbols: string[]
+  symbols: string[],
+  areaSymbol?: string | null
 ): Promise<WssHsgRecord[]> => {
-  if (!areaSymbol || symbols.length === 0) return [];
-  const payload = { areaSymbol, symbols };
+  if (symbols.length === 0) return [];
+  const payload = areaSymbol ? { areaSymbol, symbols } : { symbols };
   const res = await fetch(WSS_HSG_ENDPOINT, {
     method: 'POST',
     headers: {
