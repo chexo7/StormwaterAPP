@@ -48,9 +48,11 @@ const COMPLEMENT_FLAG_ATTR = 'IS_COMPLEMENT';
 const SUBAREA_AREA_ATTR = 'SUBAREA_AC';
 const SQM_TO_ACRES = 0.000247105381;
 const SQM_TO_SQFT = 10.76391041671;
+const ACRE_TO_SQFT = 43560;
 const MIN_COMPLEMENT_AREA_SF = 100;
 const MIN_COMPLEMENT_AREA_SQM = MIN_COMPLEMENT_AREA_SF / SQM_TO_SQFT;
 const AREA_TOLERANCE_SQM = 0.01;
+const SUBAREA_AREA_TOLERANCE_SF = 5;
 
 const DEFAULT_COLORS: Record<string, string> = {
   'Drainage Areas': '#67e8f9',
@@ -209,6 +211,140 @@ const resolveSubareaName = (rawName: unknown, fallback: string): string => {
 
 const getSubareaKey = (rawName: unknown, fallback: string): string =>
   resolveSubareaName(rawName, fallback).toLowerCase();
+
+type SubareaMetadata = {
+  name: string;
+  expectedAreaSqFt: number | null;
+};
+
+type OverlayNormalizationResult = {
+  features: Feature[];
+  coverageIssues: string[];
+};
+
+const buildSubareaMetadataIndex = (
+  collection: FeatureCollection | null
+): Map<string, SubareaMetadata> => {
+  const index = new Map<string, SubareaMetadata>();
+  if (!collection) return index;
+
+  collection.features.forEach((feature, featureIndex) => {
+    const props = feature.properties || {};
+    const rawName = (props as any)[SUBAREA_NAME_ATTR];
+    const fallback = `Subarea ${featureIndex + 1}`;
+    const key = getSubareaKey(rawName, fallback);
+    const name = resolveSubareaName(rawName, fallback);
+
+    let expectedAreaSqFt: number | null = null;
+    const areaAttr = (props as any)[SUBAREA_AREA_ATTR];
+    const areaNumber = Number(areaAttr);
+    if (Number.isFinite(areaNumber) && areaNumber > 0) {
+      expectedAreaSqFt = Number((areaNumber * ACRE_TO_SQFT).toFixed(2));
+    } else if (isPolygonLike(feature)) {
+      const areaSqm = computeFeatureAreaSqm(feature as Feature<Polygon | MultiPolygon>);
+      if (areaSqm > AREA_TOLERANCE_SQM) {
+        expectedAreaSqFt = Number(((areaSqm * SQM_TO_SQFT)).toFixed(2));
+      }
+    }
+
+    index.set(key, { name, expectedAreaSqFt });
+  });
+
+  return index;
+};
+
+const normalizeOverlayPiecesBySubarea = (
+  overlayFeatures: Feature[],
+  subareasCollection: FeatureCollection | null
+): OverlayNormalizationResult => {
+  if (overlayFeatures.length === 0) {
+    return { features: overlayFeatures, coverageIssues: [] };
+  }
+
+  const metadataIndex = buildSubareaMetadataIndex(subareasCollection);
+  const groups = new Map<
+    string,
+    {
+      meta: SubareaMetadata;
+      pieces: Feature[];
+      totalAreaSqFt: number;
+    }
+  >();
+
+  overlayFeatures.forEach((feature, featureIndex) => {
+    if (!feature.properties) feature.properties = {};
+
+    const props = feature.properties || {};
+    const rawName = (props as any)[SUBAREA_NAME_ATTR];
+    const fallback = `Subarea ${featureIndex + 1}`;
+    const key = getSubareaKey(rawName, fallback);
+    const metadata = metadataIndex.get(key) ?? {
+      name: resolveSubareaName(rawName, fallback),
+      expectedAreaSqFt: null,
+    };
+    if (!metadataIndex.has(key)) {
+      metadataIndex.set(key, metadata);
+    }
+
+    let areaSqFt = Number((props as any).AREA_SF);
+    if (!Number.isFinite(areaSqFt) || areaSqFt <= 0) {
+      if (isPolygonLike(feature)) {
+        const areaSqm = computeFeatureAreaSqm(feature as Feature<Polygon | MultiPolygon>);
+        areaSqFt = Number((areaSqm * SQM_TO_SQFT).toFixed(2));
+      } else {
+        areaSqFt = 0;
+      }
+    } else {
+      areaSqFt = Number(areaSqFt.toFixed(2));
+    }
+
+    const areaAcres = Number((areaSqFt / ACRE_TO_SQFT).toFixed(6));
+    feature.properties = {
+      ...props,
+      AREA_SF: areaSqFt,
+      AREA_AC: areaAcres,
+    };
+
+    const group = groups.get(key);
+    if (group) {
+      group.pieces.push(feature);
+      group.totalAreaSqFt += areaSqFt;
+    } else {
+      groups.set(key, { meta: metadata, pieces: [feature], totalAreaSqFt: areaSqFt });
+    }
+  });
+
+  const normalizedFeatures: Feature[] = [];
+  const coverageIssues: string[] = [];
+
+  groups.forEach((group, key) => {
+    const totalArea = Number(group.totalAreaSqFt.toFixed(2));
+    const expected = group.meta.expectedAreaSqFt;
+    if (
+      expected != null &&
+      Math.abs(totalArea - expected) > Math.max(SUBAREA_AREA_TOLERANCE_SF, expected * 0.01)
+    ) {
+      coverageIssues.push(
+        `Subárea ${group.meta.name} acumula ${totalArea.toFixed(2)} sqft en el overlay, ` +
+          `pero se esperaban ${expected.toFixed(2)} sqft.`
+      );
+    }
+
+    group.pieces.forEach((feature, index) => {
+      feature.properties = {
+        ...(feature.properties || {}),
+        SUBAREA_GROUP_KEY: key,
+        SUBAREA_GROUP_NAME: group.meta.name,
+        SUBAREA_GROUP_PIECE: index + 1,
+        SUBAREA_GROUP_PIECES: group.pieces.length,
+        SUBAREA_GROUP_AREA_SF: totalArea,
+      };
+      normalizedFeatures.push(feature);
+    });
+  });
+
+  return { features: normalizedFeatures, coverageIssues };
+};
 
 const aggregateOverlayForHydroCAD = (
   features: Feature[],
@@ -902,7 +1038,7 @@ const App: React.FC = () => {
         const clippedLc = clipCollectionToOverall(landCoverLayer.geojson, overallFeature);
         const clippedSub = clipCollectionToOverall(subareasLayer.geojson, overallFeature);
 
-        const overlayFeatures: Feature[] = [];
+        const overlayPieces: Feature[] = [];
 
         clippedWss.features.forEach(wssFeature => {
           if (!wssFeature.geometry || !isPolygonLike(wssFeature as Feature)) return;
@@ -949,12 +1085,19 @@ const App: React.FC = () => {
                 AREA_AC: Number((areaSqM * SQM_TO_ACRES).toFixed(6)),
               };
 
-              overlayFeatures.push(inter2 as Feature);
+              overlayPieces.push(inter2 as Feature);
             });
           });
         });
 
         if (cancelled) return;
+
+        const { features: overlayFeatures, coverageIssues } = normalizeOverlayPiecesBySubarea(
+          overlayPieces,
+          subareasLayer.geojson
+        );
+
+        coverageIssues.forEach(issue => addLog(issue, 'warn'));
 
         if (overlayFeatures.length === 0) {
           if (
