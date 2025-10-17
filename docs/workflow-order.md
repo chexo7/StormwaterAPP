@@ -15,12 +15,12 @@ This checklist captures the sequencing rules that keep the revised hydrologic wo
 3. **Load LOD**
    - Upload the `LOD` layer at any point; it does not gate other datasets but is required before computing.
 
-4. **Unlock and Load WSS Soils**
-   - The `Soil Layer from Web Soil Survey` option unlocks only after Steps 1–2 are complete (every Drainage Area and Subarea is tagged).
-   - All soil polygons arrive with a blank `HSG` field—assign `A`, `B`, `C`, or `D` manually in the map popup.
+4. **Load WSS Soils**
+   - The `Soil Layer from Web Soil Survey` layer may be uploaded at any point; it no longer depends on Drainage Area or Subarea sequencing.
+   - Each soil polygon now auto-fills its `HSG` value from SDA (mirroring `scripts/update_soil_hsg_map.py`). Review and override values as needed.
 
 5. **Load Land Cover**
-   - After the WSS soil layer is present you can upload the `Land Cover` layer (ZIPs named `landcover.zip` remain auto-detected).
+   - Once the WSS soil layer is present you can upload the `Land Cover` layer (ZIPs named `landcover.zip` remain auto-detected).
    - Confirm the imported features carry a `LAND_COVER` value for every polygon.
 
 6. **Review Before Compute**

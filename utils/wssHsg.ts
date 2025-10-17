@@ -4,13 +4,11 @@ type RecordValue = string | number | null | undefined;
 
 export interface WssHsgRecord {
   musym: string;
-  muname?: string;
   hsg?: string;
 }
 
 const WSS_HSG_ENDPOINT = '/api/wss-hsg';
 
-const TARGET_AREA_KEY = 'areasymbol';
 const TARGET_SYMBOL_KEY = 'musym';
 
 const letterPattern = /[ABCD]/i;
@@ -46,37 +44,18 @@ export const simplifyHsgValue = (value: RecordValue): string => {
   return match ? match[0] : '';
 };
 
-export const extractAreaSymbol = (
+export const extractMusymValues = (
   featureCollection: FeatureCollection
-): string | null => {
-  for (const feature of featureCollection.features) {
-    const val = sanitizeText(getPropCaseInsensitive(feature.properties, TARGET_AREA_KEY));
-    if (val) {
-      return val.toUpperCase();
-    }
-  }
-  return null;
-};
-
-export const extractUniqueSymbols = (
-  featureCollection: FeatureCollection
-): string[] => {
-  const symbols = new Set<string>();
-  featureCollection.features.forEach(feature => {
-    const raw = sanitizeText(getPropCaseInsensitive(feature.properties, TARGET_SYMBOL_KEY));
-    if (raw) {
-      symbols.add(raw.toUpperCase());
-    }
-  });
-  return Array.from(symbols);
-};
+): string[] =>
+  featureCollection.features.map(feature =>
+    sanitizeText(getPropCaseInsensitive(feature.properties, TARGET_SYMBOL_KEY)).toUpperCase()
+  );
 
 export const fetchWssHsgRecords = async (
-  areaSymbol: string,
   symbols: string[]
 ): Promise<WssHsgRecord[]> => {
-  if (!areaSymbol || symbols.length === 0) return [];
-  const payload = { areaSymbol, symbols };
+  if (!symbols || symbols.length === 0) return [];
+  const payload = { symbols };
   const res = await fetch(WSS_HSG_ENDPOINT, {
     method: 'POST',
     headers: {
@@ -94,20 +73,17 @@ export const fetchWssHsgRecords = async (
   const table: any[] = Array.isArray(data?.results) ? data.results : [];
   return table.map(row => ({
     musym: sanitizeText((row.musym ?? row.MUSYM) as RecordValue).toUpperCase(),
-    muname: sanitizeText((row.muname ?? row.MUNAME) as RecordValue) || undefined,
     hsg: sanitizeText((row.hsg ?? row.HSG ?? row.hydgrp ?? row.HYDGRP) as RecordValue) || undefined,
   }));
 };
 
 export const applyHsgToFeatures = (
   geojson: FeatureCollection,
-  hsgMap: Map<string, string>
+  records: WssHsgRecord[]
 ): FeatureCollection => {
-  const updatedFeatures: Feature[] = geojson.features.map(feature => {
-    const musym = sanitizeText(
-      getPropCaseInsensitive(feature.properties, TARGET_SYMBOL_KEY)
-    ).toUpperCase();
-    const hsg = musym ? hsgMap.get(musym) ?? '' : '';
+  const updatedFeatures: Feature[] = geojson.features.map((feature, index) => {
+    const record = records[index];
+    const hsg = simplifyHsgValue(record?.hsg);
     return {
       ...feature,
       properties: { ...(feature.properties || {}), HSG: hsg },
