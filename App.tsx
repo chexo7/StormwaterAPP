@@ -2121,17 +2121,67 @@ const App: React.FC = () => {
       if (cnMap.size === 0) {
         throw new Error('No hay valores de Curve Number configurados.');
       }
+
+      const missingCnLandCovers = new Map<
+        string,
+        { display: string; count: number; hsgs: Set<string> }
+      >();
+
+      const registerMissingCn = (raw: unknown, normalized: string, hsg: string | null) => {
+        const rawString =
+          typeof raw === 'string' && raw.trim() !== ''
+            ? raw.trim()
+            : normalized || (raw == null ? '' : String(raw).trim());
+        const display = rawString || '(sin Land Cover)';
+        const key = (normalized || display).toLowerCase();
+        const entry = missingCnLandCovers.get(key);
+        if (entry) {
+          entry.count += 1;
+          if (hsg) entry.hsgs.add(hsg);
+        } else {
+          missingCnLandCovers.set(key, {
+            display,
+            count: 1,
+            hsgs: hsg ? new Set([hsg]) : new Set<string>(),
+          });
+        }
+      };
+
       overlay.forEach(f => {
         const lcNameRaw = (f.properties as any)?.LAND_COVER;
         const lcName = normalizeLandCover(lcNameRaw);
         const hsgRaw = (f.properties as any)?.HSG;
-        const hsg = hsgRaw == null ? null : String(hsgRaw).toUpperCase();
-        const rec = lcName ? cnMap.get(lcName) ?? cnMap.get(lcName.toLowerCase()) : undefined;
-        const cnValue = rec && hsg ? (rec as any)[hsg as keyof CnRecord] : undefined;
-        if (cnValue !== undefined) {
-          f.properties = { ...(f.properties || {}), CN: cnValue };
+        const hsg = hsgRaw == null ? null : String(hsgRaw).trim().toUpperCase();
+        if (!lcName) {
+          registerMissingCn(lcNameRaw, lcName, hsg);
+          return;
         }
+        const rec = cnMap.get(lcName) ?? cnMap.get(lcName.toLowerCase());
+        if (!rec) {
+          registerMissingCn(lcNameRaw, lcName, hsg);
+          return;
+        }
+        if (!hsg) {
+          registerMissingCn(lcNameRaw, lcName, hsg);
+          return;
+        }
+        const cnValue = (rec as any)[hsg as keyof CnRecord];
+        if (cnValue === undefined) {
+          registerMissingCn(lcNameRaw, lcName, hsg);
+          return;
+        }
+        f.properties = { ...(f.properties || {}), CN: cnValue };
       });
+
+      const missingLandCoverSummaries = Array.from(missingCnLandCovers.values()).map(
+        ({ display, count, hsgs }) => {
+          const pieces: string[] = [display];
+          if (hsgs.size > 0) pieces.push(`HSG: ${Array.from(hsgs).join(', ')}`);
+          if (count > 1) pieces.push(`${count} polígonos`);
+          return pieces.join(' · ');
+        }
+      );
+      const hasMissingCnLandCover = missingLandCoverSummaries.length > 0;
 
       if (overlay.length > 0) {
         resultLayers.push({
@@ -2145,47 +2195,63 @@ const App: React.FC = () => {
           category: 'Process',
         });
         setComputeTasks(prev =>
-          prev.map(t => (t.id === 'overlay' ? { ...t, status: 'success' } : t))
+          prev.map(t =>
+            t.id === 'overlay'
+              ? { ...t, status: hasMissingCnLandCover ? 'error' : 'success' }
+              : t
+          )
         );
         addLog(`Overlay created with ${overlay.length} features`);
 
-        try {
-          const subcatchments = aggregateOverlayForHydroCAD(overlay, processedSubareas);
-          if (subcatchments.length === 0) {
-            throw new Error('No hay combinaciones válidas de CN para generar HydroCAD.');
-          }
-          const incomplete = subcatchments.filter(sc => sc.areas.length === 0);
-          if (incomplete.length > 0) {
-            const missingNames = incomplete.map(sc => sc.name).join(', ');
-            throw new Error(
-              `Las siguientes subáreas no tienen valores de CN válidos: ${missingNames}.`
-            );
-          }
-          const expectedCount = new Set(
-            processedSubareas.map((subFeature, index) => {
-              const props = subFeature.properties || {};
-              const rawName = (props as any)[SUBAREA_NAME_ATTR];
-              const fallback = `Subarea ${index + 1}`;
-              return getSubareaKey(rawName, fallback);
-            })
-          ).size;
-          if (subcatchments.length < expectedCount) {
-            throw new Error('No se generaron todos los subcatchments de HydroCAD para las subáreas.');
-          }
-          const content = buildHydroCADContent(subcatchments, projectName);
-          triggerHydroCADDownload(content, projectName, projectVersion);
-          setComputeTasks(prev =>
-            prev.map(t => (t.id === 'hydrocad' ? { ...t, status: 'success' } : t))
-          );
-          addLog(
-            'Archivo HydroCAD generado utilizando el método SCS dentro del Overall Drainage Area.'
-          );
-        } catch (error) {
-          const reason = error instanceof Error ? error.message : String(error);
+        if (hasMissingCnLandCover) {
+          const details = missingLandCoverSummaries.join('; ');
+          const intro =
+            missingLandCoverSummaries.length === 1
+              ? 'No se encontró un valor de Curve Number para el siguiente Land Cover:'
+              : 'No se encontraron valores de Curve Number para los siguientes Land Covers:';
+          addLog(`${intro} ${details}. Revisa la tabla de Curve Numbers.`, 'error');
           setComputeTasks(prev =>
             prev.map(t => (t.id === 'hydrocad' ? { ...t, status: 'error' } : t))
           );
-          addLog(`No se pudo generar el archivo HydroCAD: ${reason}`, 'error');
+        } else {
+          try {
+            const subcatchments = aggregateOverlayForHydroCAD(overlay, processedSubareas);
+            if (subcatchments.length === 0) {
+              throw new Error('No hay combinaciones válidas de CN para generar HydroCAD.');
+            }
+            const incomplete = subcatchments.filter(sc => sc.areas.length === 0);
+            if (incomplete.length > 0) {
+              const missingNames = incomplete.map(sc => sc.name).join(', ');
+              throw new Error(
+                `Las siguientes subáreas no tienen valores de CN válidos: ${missingNames}.`
+              );
+            }
+            const expectedCount = new Set(
+              processedSubareas.map((subFeature, index) => {
+                const props = subFeature.properties || {};
+                const rawName = (props as any)[SUBAREA_NAME_ATTR];
+                const fallback = `Subarea ${index + 1}`;
+                return getSubareaKey(rawName, fallback);
+              })
+            ).size;
+            if (subcatchments.length < expectedCount) {
+              throw new Error('No se generaron todos los subcatchments de HydroCAD para las subáreas.');
+            }
+            const content = buildHydroCADContent(subcatchments, projectName);
+            triggerHydroCADDownload(content, projectName, projectVersion);
+            setComputeTasks(prev =>
+              prev.map(t => (t.id === 'hydrocad' ? { ...t, status: 'success' } : t))
+            );
+            addLog(
+              'Archivo HydroCAD generado utilizando el método SCS dentro del Overall Drainage Area.'
+            );
+          } catch (error) {
+            const reason = error instanceof Error ? error.message : String(error);
+            setComputeTasks(prev =>
+              prev.map(t => (t.id === 'hydrocad' ? { ...t, status: 'error' } : t))
+            );
+            addLog(`No se pudo generar el archivo HydroCAD: ${reason}`, 'error');
+          }
         }
       } else {
         setComputeTasks(prev =>
