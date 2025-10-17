@@ -4,6 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { intersect as turfIntersectRaw, area as turfArea } from '@turf/turf';
 import processFileMap from './process-file-map.json' assert { type: 'json' };
+import { XMLParser } from 'fast-xml-parser';
 
 // processFileMap maps backend processes (e.g., exportHydroCAD, exportSWMM,
 // exportShapefiles) to the spatial data layers they require. Update
@@ -44,19 +45,68 @@ const chunkSymbols = (symbols, size = MAX_SYMBOLS_PER_QUERY) => {
 
 const escapeSqlLiteral = (value = '') => value.replace(/'/g, "''");
 
-const parseSdaTable = async response => {
-  const contentType = response.headers.get('content-type') || '';
-  if (contentType.includes('application/json')) {
-    const json = await response.json();
-    return Array.isArray(json?.Table) ? json.Table : [];
+const xmlParser = new XMLParser({ ignoreAttributes: false, trimValues: true });
+const letterPattern = /[ABCD]/i;
+
+const sanitizeText = value => {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) return '';
+    return String(value);
   }
+  if (typeof value !== 'string') return String(value ?? '');
+  return value.trim();
+};
+
+const simplifyHsgValue = value => {
+  const raw = sanitizeText(value);
+  if (!raw) return '';
+  const match = raw.toUpperCase().match(letterPattern);
+  return match ? match[0] : '';
+};
+
+const extractTablesFromXml = node => {
+  if (!node || typeof node !== 'object') return [];
+  if (Array.isArray(node)) {
+    return node.flatMap(child => extractTablesFromXml(child));
+  }
+
+  const tables = [];
+  for (const [key, value] of Object.entries(node)) {
+    if (key.toLowerCase() === 'table') {
+      if (Array.isArray(value)) {
+        tables.push(...value);
+      } else if (value && typeof value === 'object') {
+        tables.push(value);
+      }
+    } else if (value && typeof value === 'object') {
+      tables.push(...extractTablesFromXml(value));
+    }
+  }
+  return tables;
+};
+
+const runSdaSql = async sql => {
+  const response = await fetch(SDA_ENDPOINT, {
+    method: 'POST',
+    headers: SDA_HEADERS,
+    body: JSON.stringify({ query: sql }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`SDA request failed with status ${response.status}`);
+  }
+
   const text = await response.text();
-  try {
-    const json = JSON.parse(text);
-    return Array.isArray(json?.Table) ? json.Table : [];
-  } catch (err) {
-    throw new Error('Unexpected SDA response format');
+  const contentType = response.headers.get('content-type') || '';
+
+  if (contentType.includes('application/json') || text.trim().startsWith('{')) {
+    const data = JSON.parse(text);
+    return Array.isArray(data?.Table) ? data.Table : [];
   }
+
+  const parsed = xmlParser.parse(text || '<root />');
+  return extractTablesFromXml(parsed);
 };
 function addLog(message, type = 'info') {
   const entry = { message, type, source: 'backend', timestamp: Date.now() };
@@ -108,51 +158,54 @@ app.post('/api/wss-hsg', async (req, res) => {
   }
 
   try {
-    const results = [];
-    for (const chunk of chunkSymbols(symbols)) {
+    const chunks = chunkSymbols(symbols);
+    const fetchedRecords = new Map();
+
+    for (const chunk of chunks) {
       const quotedSymbols = chunk
         .map(sym => `'${escapeSqlLiteral(sym)}'`)
         .join(',');
       const sql = `
-        SELECT
-          m.musym,
-          m.muname,
-          (
-            SELECT TOP 1 c.hydgrp
-            FROM component c
-            WHERE c.mukey = m.mukey
-            ORDER BY c.comppct_r DESC
-          ) AS hsg
-        FROM legend l
-        JOIN mapunit m ON l.lkey = m.lkey
-        WHERE l.areasymbol = '${escapeSqlLiteral(areaSymbol)}'
-          AND m.musym IN (${quotedSymbols});
+    SELECT
+      m.musym,
+      m.muname,
+      (
+        SELECT TOP 1 c.hydgrp
+        FROM component c
+        WHERE c.mukey = m.mukey
+        ORDER BY c.comppct_r DESC
+      ) AS hsg
+    FROM legend l
+    JOIN mapunit m ON l.lkey = m.lkey
+    WHERE l.areasymbol = '${escapeSqlLiteral(areaSymbol)}'
+      AND m.musym IN (${quotedSymbols});
       `;
 
-      const response = await fetch(SDA_ENDPOINT, {
-        method: 'POST',
-        headers: SDA_HEADERS,
-        body: JSON.stringify({ query: sql }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`SDA request failed with status ${response.status}`);
-      }
-
-      const table = await parseSdaTable(response);
+      const table = await runSdaSql(sql);
       table.forEach(row => {
-        results.push({
-          musym: row?.musym ?? row?.MUSYM ?? '',
-          muname: row?.muname ?? row?.MUNAME ?? '',
-          hsg: row?.hsg ?? row?.HSG ?? row?.hydgrp ?? row?.HYDGRP ?? '',
-        });
+        const musym = sanitizeText(row?.musym ?? row?.MUSYM).toUpperCase();
+        if (!musym || fetchedRecords.has(musym)) return;
+        const muname = sanitizeText(row?.muname ?? row?.MUNAME);
+        const hsg = simplifyHsgValue(
+          row?.hsg ?? row?.HSG ?? row?.hydgrp ?? row?.HYDGRP
+        );
+        fetchedRecords.set(musym, { musym, muname, hsg });
       });
     }
 
+    const orderedResults = symbols.map(sym => {
+      const record = fetchedRecords.get(sym) || null;
+      return {
+        musym: sym,
+        muname: record?.muname ?? '',
+        hsg: record?.hsg ?? '',
+      };
+    });
+
     addLog(
-      `Fetched ${results.length} MUSYM records from SDA for area symbol ${areaSymbol}.`
+      `Fetched ${fetchedRecords.size} MUSYM records from SDA for area symbol ${areaSymbol}.`
     );
-    res.json({ areaSymbol, results });
+    res.json({ areaSymbol, results: orderedResults });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : 'Unknown error during SDA lookup';
