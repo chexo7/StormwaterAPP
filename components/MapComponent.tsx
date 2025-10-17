@@ -8,6 +8,10 @@ import AddressSearch from './AddressSearch';
 import ReactLeafletGoogleLayer from 'react-leaflet-google-layer';
 import type { LayerData } from '../types';
 import { formatDischargePointName } from '../utils/layerTransforms';
+import {
+  DEFAULT_DRAINAGE_AREA_NAMES,
+  MAX_DISCHARGE_POINTS,
+} from '../utils/constants';
 import type { GeoJSON as LeafletGeoJSON, Layer } from 'leaflet';
 
 const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY as string | undefined;
@@ -102,6 +106,9 @@ const appendSmartSelect = ({
     const newVal = (e.target as HTMLSelectElement).value;
     onChange(newVal);
   });
+
+  L.DomEvent.disableClickPropagation(select);
+  L.DomEvent.disableScrollPropagation(select);
 
   return select;
 };
@@ -303,7 +310,7 @@ const ManagedGeoJsonLayer = ({
             .map(f => formatDischargePointName((f.properties as any)?.DA_NAME))
             .filter(n => n && n !== currentValue)
         );
-        const dpOptions = Array.from({ length: 20 }, (_, i) => i + 1).map(num => ({
+        const dpOptions = Array.from({ length: MAX_DISCHARGE_POINTS }, (_, i) => i + 1).map(num => ({
           value: formatDischargePointName(num),
           label: String(num),
         }));
@@ -331,6 +338,33 @@ const ManagedGeoJsonLayer = ({
           PARENT_DA: feature.properties?.PARENT_DA ?? '',
         };
 
+        const maintainPopupState = () => {
+          const leafletLayer = layer as L.Layer & {
+            openPopup?: () => L.Layer;
+            closePopup?: () => L.Layer;
+            isPopupOpen?: () => boolean;
+          };
+          const hasName = Boolean(
+            feature.properties!.SUBAREA_NAME &&
+              String(feature.properties!.SUBAREA_NAME).trim()
+          );
+          const hasParent = Boolean(
+            feature.properties!.PARENT_DA &&
+              String(feature.properties!.PARENT_DA).trim()
+          );
+          if (hasName && hasParent) {
+            if (leafletLayer.closePopup) {
+              setTimeout(() => {
+                leafletLayer.closePopup?.();
+              }, 0);
+            }
+          } else if (leafletLayer.openPopup) {
+            setTimeout(() => {
+              leafletLayer.openPopup?.();
+            }, 0);
+          }
+        };
+
         const currentSubName = feature.properties!.SUBAREA_NAME
           ? String(feature.properties!.SUBAREA_NAME).trim()
           : '';
@@ -356,6 +390,7 @@ const ManagedGeoJsonLayer = ({
             const idx = data.features.indexOf(feature);
             onUpdateFeatureSubareaName?.(id, idx, newVal);
             feature.properties!.SUBAREA_NAME = newVal;
+            maintainPopupState();
           },
         });
 
@@ -373,6 +408,7 @@ const ManagedGeoJsonLayer = ({
             const idx = data.features.indexOf(feature);
             onUpdateFeatureSubareaParent?.(id, idx, newVal);
             feature.properties!.PARENT_DA = newVal;
+            maintainPopupState();
           },
         });
       }
@@ -402,7 +438,11 @@ const ManagedGeoJsonLayer = ({
         });
       }
 
-      layer.bindPopup(container);
+      const popupOptions =
+        layerName === 'Drainage Subareas'
+          ? ({ closeOnClick: false, autoClose: false } as L.PopupOptions)
+          : undefined;
+      layer.bindPopup(container, popupOptions);
 
       if (isEditingLayer && editingFeatureIndex === null && onSelectFeature) {
         const handler = () => {
@@ -622,7 +662,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
   const mapRef = useRef<L.Map | null>(null);
 
   const subareaNameOptions = useMemo(
-    () => Array.from({ length: 20 }, (_, i) => `DRAINAGE AREA - ${i + 1}`),
+    () => [...DEFAULT_DRAINAGE_AREA_NAMES],
     []
   );
 

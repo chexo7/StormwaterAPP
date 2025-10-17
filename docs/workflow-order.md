@@ -4,7 +4,7 @@ This checklist captures the sequencing rules that keep the revised hydrologic wo
 
 1. **Load Drainage Areas**
    - Upload the `Drainage Areas` layer (ZIPs named like `DA-TO-DP.zip` are auto-detected).
-   - Assign a unique **Discharge Point #** (`DP-01` … `DP-20`) to every polygon.
+   - Assign a unique **Discharge Point #** (`DP-01` … `DP-10`) to every polygon.
    - Do not continue until all polygons display a formatted DP value.
 
 2. **Load Drainage Subareas**

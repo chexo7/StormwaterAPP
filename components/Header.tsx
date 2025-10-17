@@ -63,14 +63,14 @@ const Header: React.FC<HeaderProps> = ({
   }, [isHydroCADMenuOpen]);
 
   return (
-    <header className="relative bg-gray-800/50 backdrop-blur-sm border-b border-gray-700 shadow-md p-4 flex items-center space-x-4 z-10">
+    <header className="relative bg-gray-800/50 backdrop-blur-sm border-b border-gray-700 shadow-md p-4 flex items-center space-x-4 z-[1200]">
       <MapIcon className="w-8 h-8 text-cyan-400" />
       <div>
         <h1 className="text-xl font-bold text-white">Shapefile Viewer Pro</h1>
         <p className="text-sm text-gray-400">Upload and visualize your geographic data</p>
       </div>
-      <div className="absolute left-1/2 -translate-x-1/2 flex space-x-2">
-        <div className="relative" ref={hydroCADMenuRef}>
+      <div className="absolute left-1/2 -translate-x-1/2 flex space-x-2 z-[1200]">
+        <div className="relative z-[1200]" ref={hydroCADMenuRef}>
           <button
             type="button"
             onClick={() => setHydroCADMenuOpen(prev => !prev)}
@@ -92,7 +92,7 @@ const Header: React.FC<HeaderProps> = ({
             </svg>
           </button>
           {isHydroCADMenuOpen && (
-            <div className="absolute left-0 mt-2 flex flex-col space-y-2 bg-gray-800 border border-gray-700 rounded shadow-lg p-2 min-w-[12rem]">
+            <div className="absolute left-0 mt-2 flex flex-col space-y-2 bg-gray-800 border border-gray-700 rounded shadow-lg p-2 min-w-[12rem] z-[1300]">
               <button
                 type="button"
                 onClick={() => {
