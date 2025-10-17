@@ -48,6 +48,8 @@ const COMPLEMENT_FLAG_ATTR = 'IS_COMPLEMENT';
 const SUBAREA_AREA_ATTR = 'SUBAREA_AC';
 const SQM_TO_ACRES = 0.000247105381;
 const SQM_TO_SQFT = 10.76391041671;
+const SQFT_PER_ACRE = 43560;
+const AREA_GAP_TOLERANCE_AC = 0.01;
 const MIN_COMPLEMENT_AREA_SF = 100;
 const MIN_COMPLEMENT_AREA_SQM = MIN_COMPLEMENT_AREA_SF / SQM_TO_SQFT;
 const AREA_TOLERANCE_SQM = 0.01;
@@ -199,6 +201,8 @@ type HydroCADSubcatchment = {
   name: string;
   parentDa?: string | null;
   areas: HydroCADAreaGroup[];
+  expectedAreaAcres?: number;
+  missingAreaAcres?: number;
 };
 
 const resolveSubareaName = (rawName: unknown, fallback: string): string => {
@@ -219,6 +223,8 @@ const aggregateOverlayForHydroCAD = (
     order: number;
     parents: Set<string>;
     groups: Map<string, HydroCADAreaGroup>;
+    expectedAreaAcres: number;
+    coveredAreaSqft: number;
   };
 
   const aggregates = new Map<string, SubareaAggregate>();
@@ -243,6 +249,8 @@ const aggregateOverlayForHydroCAD = (
       order,
       parents: parentValue ? new Set([parentValue]) : new Set(),
       groups: new Map(),
+      expectedAreaAcres: 0,
+      coveredAreaSqft: 0,
     };
     aggregates.set(key, aggregate);
     return aggregate;
@@ -253,7 +261,21 @@ const aggregateOverlayForHydroCAD = (
     const rawName = (props as any)[SUBAREA_NAME_ATTR];
     const fallback = `Subarea ${index + 1}`;
     const parentRaw = (props as any)[SUBAREA_PARENT_ATTR] ?? null;
-    ensureAggregate(rawName, fallback, index, parentRaw);
+    const aggregate = ensureAggregate(rawName, fallback, index, parentRaw);
+
+    const areaAcresProp = (props as any)[SUBAREA_AREA_ATTR];
+    let areaAcres = Number(areaAcresProp);
+    if (!Number.isFinite(areaAcres) || areaAcres <= 0) {
+      if (isPolygonLike(subFeature)) {
+        const areaSqm = computeFeatureAreaSqm(subFeature);
+        areaAcres = Number((areaSqm * SQM_TO_ACRES).toFixed(6));
+      } else {
+        areaAcres = 0;
+      }
+    }
+    if (areaAcres > 0) {
+      aggregate.expectedAreaAcres += areaAcres;
+    }
   });
 
   features.forEach((feature, idx) => {
@@ -297,6 +319,7 @@ const aggregateOverlayForHydroCAD = (
     } else {
       aggregate.groups.set(key, { area: areaValue, cn: cnValue, desc });
     }
+    aggregate.coveredAreaSqft += areaValue;
   });
 
   const usedIds = new Set<string>();
@@ -330,6 +353,12 @@ const aggregateOverlayForHydroCAD = (
               .sort((a, b) => a.localeCompare(b))
               .join(', ')
           : null;
+      const coveredAreaAcres = aggregate.coveredAreaSqft / SQFT_PER_ACRE;
+      const missingAreaAcres = aggregate.expectedAreaAcres - coveredAreaAcres;
+      const normalizedMissing =
+        aggregate.expectedAreaAcres > 0 && missingAreaAcres > 0
+          ? Number(missingAreaAcres.toFixed(4))
+          : 0;
       return {
         id: sanitizeId(aggregate.name, parentLabel, index),
         name: aggregate.name,
@@ -339,6 +368,12 @@ const aggregateOverlayForHydroCAD = (
           cn: item.cn,
           desc: item.desc,
         })),
+        expectedAreaAcres:
+          aggregate.expectedAreaAcres > 0
+            ? Number(aggregate.expectedAreaAcres.toFixed(4))
+            : undefined,
+        missingAreaAcres:
+          normalizedMissing > AREA_GAP_TOLERANCE_AC ? normalizedMissing : undefined,
       };
     });
 };
@@ -2026,6 +2061,27 @@ const App: React.FC = () => {
             throw new Error(
               `Las siguientes subáreas no tienen valores de CN válidos: ${missingNames}.`
             );
+          }
+          const coverageIssues = subcatchments.filter(
+            sc => (sc.missingAreaAcres ?? 0) > AREA_GAP_TOLERANCE_AC
+          );
+          if (coverageIssues.length > 0) {
+            const details = coverageIssues
+              .map(sc => {
+                const missing = sc.missingAreaAcres ?? 0;
+                const expected = sc.expectedAreaAcres ?? null;
+                const expectedText =
+                  expected && expected > 0
+                    ? ` de ${expected.toFixed(2)} ac`
+                    : '';
+                return `${sc.name} (${missing.toFixed(2)} ac sin clasificar${expectedText})`;
+              })
+              .join('; ');
+            const message =
+              'Las siguientes subáreas no están cubiertas por el overlay de Land Cover/HSG o carecen de valores de CN: ' +
+              `${details}. ` +
+              'Revise las capas para asegurar que cada subárea tenga Land Cover, HSG y Curve Number válidos.';
+            throw new Error(message);
           }
           const expectedCount = new Set(
             processedSubareas.map((subFeature, index) => {
