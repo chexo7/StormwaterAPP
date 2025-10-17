@@ -1076,14 +1076,14 @@ const App: React.FC = () => {
           }
         }
 
-        if (name === 'Soil Layer from Web Soil Survey') {
-          if (!drainageAreasAssigned || !subareasConfigured) {
-            const msg =
-              'Completa la asignación de Discharge Points en Drainage Areas y vincula todas las Drainage Subareas antes de cargar la capa de suelos (WSS).';
-            setError(msg);
-            addLog(msg, 'error');
-            return;
-          }
+        if (
+          name === 'Soil Layer from Web Soil Survey' &&
+          (!drainageAreasAssigned || !subareasConfigured)
+        ) {
+          addLog(
+            'Nota: La capa de suelos (WSS) se cargó antes de completar las Drainage Areas y Subareas. Puedes continuar, pero asegúrate de completar esas capas antes de ejecutar Compute.',
+            'warn'
+          );
         }
 
         if (name === 'Land Cover') {
