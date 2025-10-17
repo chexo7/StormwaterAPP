@@ -73,10 +73,12 @@ export const extractUniqueSymbols = (
 
 export const fetchWssHsgRecords = async (
   areaSymbol: string,
-  symbols: string[]
+  symbols: string[],
+  onProgress?: (completed: number, total: number) => void
 ): Promise<WssHsgRecord[]> => {
   if (!areaSymbol || symbols.length === 0) return [];
   const payload = { areaSymbol, symbols };
+  onProgress?.(0, symbols.length);
   const res = await fetch(WSS_HSG_ENDPOINT, {
     method: 'POST',
     headers: {
@@ -92,6 +94,10 @@ export const fetchWssHsgRecords = async (
 
   const data = await res.json();
   const table: any[] = Array.isArray(data?.results) ? data.results : [];
+
+  onProgress?.(table.length, symbols.length);
+  onProgress?.(symbols.length, symbols.length);
+
   return table.map(row => ({
     musym: sanitizeText((row.musym ?? row.MUSYM) as RecordValue).toUpperCase(),
     muname: sanitizeText((row.muname ?? row.MUNAME) as RecordValue) || undefined,
@@ -114,4 +120,41 @@ export const applyHsgToFeatures = (
     };
   });
   return { ...geojson, features: updatedFeatures };
+};
+
+export const buildHsgMap = (records: WssHsgRecord[]): Map<string, string> => {
+  const counts = new Map<string, Map<string, number>>();
+
+  records.forEach(record => {
+    const musym = sanitizeText(record.musym).toUpperCase();
+    const simplified = simplifyHsgValue(record.hsg);
+    if (!musym || !simplified) return;
+
+    if (!counts.has(musym)) {
+      counts.set(musym, new Map());
+    }
+    const symbolCounts = counts.get(musym)!;
+    symbolCounts.set(simplified, (symbolCounts.get(simplified) ?? 0) + 1);
+  });
+
+  const result = new Map<string, string>();
+  counts.forEach((symbolCounts, musym) => {
+    let bestLetter = '';
+    let bestCount = -1;
+
+    Array.from(symbolCounts.entries())
+      .sort(([letterA], [letterB]) => letterA.localeCompare(letterB))
+      .forEach(([letter, count]) => {
+        if (count > bestCount) {
+          bestCount = count;
+          bestLetter = letter;
+        }
+      });
+
+    if (bestLetter) {
+      result.set(musym, bestLetter);
+    }
+  });
+
+  return result;
 };
