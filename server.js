@@ -102,7 +102,7 @@ app.post('/api/wss-hsg', async (req, res) => {
 
   const symbols = Array.from(symbolSet);
 
-  if (!areaSymbol || symbols.length === 0) {
+  if (symbols.length === 0) {
     addLog('WSS HSG lookup skipped due to missing inputs', 'warn');
     return res.json({ areaSymbol, results: [] });
   }
@@ -123,10 +123,8 @@ app.post('/api/wss-hsg', async (req, res) => {
             WHERE c.mukey = m.mukey
             ORDER BY c.comppct_r DESC
           ) AS hsg
-        FROM legend l
-        JOIN mapunit m ON l.lkey = m.lkey
-        WHERE l.areasymbol = '${escapeSqlLiteral(areaSymbol)}'
-          AND m.musym IN (${quotedSymbols});
+        FROM mapunit m
+        WHERE m.musym IN (${quotedSymbols});
       `;
 
       const response = await fetch(SDA_ENDPOINT, {
@@ -149,14 +147,14 @@ app.post('/api/wss-hsg', async (req, res) => {
       });
     }
 
-    addLog(
-      `Fetched ${results.length} MUSYM records from SDA for area symbol ${areaSymbol}.`
-    );
+    const areaSymbolDesc = areaSymbol ? ` for area symbol ${areaSymbol}` : '';
+    addLog(`Fetched ${results.length} MUSYM records from SDA${areaSymbolDesc}.`);
     res.json({ areaSymbol, results });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : 'Unknown error during SDA lookup';
-    addLog(`Failed SDA lookup for ${areaSymbol}: ${message}`, 'error');
+    const scope = areaSymbol ? ` for ${areaSymbol}` : '';
+    addLog(`Failed SDA lookup${scope}: ${message}`, 'error');
     res.status(502).json({ error: message });
   }
 });
