@@ -48,9 +48,11 @@ const COMPLEMENT_FLAG_ATTR = 'IS_COMPLEMENT';
 const SUBAREA_AREA_ATTR = 'SUBAREA_AC';
 const SQM_TO_ACRES = 0.000247105381;
 const SQM_TO_SQFT = 10.76391041671;
+const SQFT_PER_ACRE = 43560;
 const MIN_COMPLEMENT_AREA_SF = 100;
 const MIN_COMPLEMENT_AREA_SQM = MIN_COMPLEMENT_AREA_SF / SQM_TO_SQFT;
 const AREA_TOLERANCE_SQM = 0.01;
+const AREA_TOLERANCE_SF = AREA_TOLERANCE_SQM * SQM_TO_SQFT;
 
 const DEFAULT_COLORS: Record<string, string> = {
   'Drainage Areas': '#67e8f9',
@@ -219,15 +221,35 @@ const aggregateOverlayForHydroCAD = (
     order: number;
     parents: Set<string>;
     groups: Map<string, HydroCADAreaGroup>;
+    expectedAreaSqft: number | null;
   };
 
   const aggregates = new Map<string, SubareaAggregate>();
+
+  const extractExpectedAreaSqft = (
+    properties: Record<string, unknown> | null | undefined,
+    feature: Feature<Polygon | MultiPolygon> | Feature | null
+  ): number | null => {
+    const rawAcres = properties ? (properties as any)[SUBAREA_AREA_ATTR] : undefined;
+    const acresValue = Number(rawAcres);
+    if (Number.isFinite(acresValue) && acresValue > 0) {
+      return acresValue * SQFT_PER_ACRE;
+    }
+    if (feature && isPolygonLike(feature)) {
+      const areaSqm = computeFeatureAreaSqm(feature as Feature<Polygon | MultiPolygon>);
+      if (areaSqm > AREA_TOLERANCE_SQM) {
+        return areaSqm * SQM_TO_SQFT;
+      }
+    }
+    return null;
+  };
 
   const ensureAggregate = (
     rawName: unknown,
     fallbackName: string,
     order: number,
-    parentRaw: unknown
+    parentRaw: unknown,
+    expectedAreaSqft: number | null
   ): SubareaAggregate => {
     const name = resolveSubareaName(rawName, fallbackName);
     const key = name.toLowerCase();
@@ -236,6 +258,9 @@ const aggregateOverlayForHydroCAD = (
     if (existing) {
       if (parentValue) existing.parents.add(parentValue);
       if (order < existing.order) existing.order = order;
+      if (existing.expectedAreaSqft === null && expectedAreaSqft !== null) {
+        existing.expectedAreaSqft = expectedAreaSqft;
+      }
       return existing;
     }
     const aggregate: SubareaAggregate = {
@@ -243,6 +268,7 @@ const aggregateOverlayForHydroCAD = (
       order,
       parents: parentValue ? new Set([parentValue]) : new Set(),
       groups: new Map(),
+      expectedAreaSqft,
     };
     aggregates.set(key, aggregate);
     return aggregate;
@@ -253,7 +279,8 @@ const aggregateOverlayForHydroCAD = (
     const rawName = (props as any)[SUBAREA_NAME_ATTR];
     const fallback = `Subarea ${index + 1}`;
     const parentRaw = (props as any)[SUBAREA_PARENT_ATTR] ?? null;
-    ensureAggregate(rawName, fallback, index, parentRaw);
+    const expectedAreaSqft = extractExpectedAreaSqft(props, subFeature);
+    ensureAggregate(rawName, fallback, index, parentRaw, expectedAreaSqft);
   });
 
   features.forEach((feature, idx) => {
@@ -266,7 +293,8 @@ const aggregateOverlayForHydroCAD = (
       rawName,
       fallback,
       subareas.length + idx,
-      parentRaw
+      parentRaw,
+      extractExpectedAreaSqft(feature.properties, feature)
     );
 
     const cnRaw = (feature.properties as any)?.CN;
@@ -320,7 +348,14 @@ const aggregateOverlayForHydroCAD = (
     return finalId;
   };
 
-  return Array.from(aggregates.values())
+  const mismatches: {
+    name: string;
+    parent: string | null;
+    acres: number;
+    kind: 'missing' | 'excess';
+  }[] = [];
+
+  const subcatchments = Array.from(aggregates.values())
     .sort((a, b) => a.order - b.order)
     .map((aggregate, index) => {
       const parentLabel =
@@ -330,6 +365,21 @@ const aggregateOverlayForHydroCAD = (
               .sort((a, b) => a.localeCompare(b))
               .join(', ')
           : null;
+      const actualAreaSqft = Array.from(aggregate.groups.values()).reduce(
+        (sum, item) => sum + item.area,
+        0
+      );
+      if (aggregate.expectedAreaSqft !== null) {
+        const diffSqft = aggregate.expectedAreaSqft - actualAreaSqft;
+        if (Math.abs(diffSqft) > AREA_TOLERANCE_SF) {
+          mismatches.push({
+            name: aggregate.name,
+            parent: parentLabel,
+            acres: Math.abs(diffSqft) / SQFT_PER_ACRE,
+            kind: diffSqft > 0 ? 'missing' : 'excess',
+          });
+        }
+      }
       return {
         id: sanitizeId(aggregate.name, parentLabel, index),
         name: aggregate.name,
@@ -341,6 +391,24 @@ const aggregateOverlayForHydroCAD = (
         })),
       };
     });
+
+  if (mismatches.length > 0) {
+    const details = mismatches
+      .map(mismatch => {
+        const prefix = mismatch.parent
+          ? `${mismatch.name} (${mismatch.parent})`
+          : mismatch.name;
+        const acres = mismatch.acres.toFixed(4);
+        const label = mismatch.kind === 'missing' ? 'faltantes' : 'adicionales';
+        return `${prefix}: ${acres} acres ${label}`;
+      })
+      .join('; ');
+    throw new Error(
+      `Las siguientes subáreas tienen discrepancias de área para HydroCAD: ${details}. Verifica Land Cover y Soil Layer para cubrir por completo cada subárea.`
+    );
+  }
+
+  return subcatchments;
 };
 
 const buildSubcatchmentNodeBase = (name: string, fallbackIndex: number): string => {
