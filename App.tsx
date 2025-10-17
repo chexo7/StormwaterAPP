@@ -643,12 +643,13 @@ const App: React.FC = () => {
   }, [subareasLayer, assignedDrainagePoints]);
 
   const allowedLayerNames = useMemo(() => {
-    const names = new Set<string>(['Drainage Areas', 'LOD']);
+    const names = new Set<string>([
+      'Drainage Areas',
+      'Soil Layer from Web Soil Survey',
+      'LOD',
+    ]);
     if (drainageAreasAssigned) {
       names.add(SUBAREA_LAYER_NAME);
-    }
-    if (drainageAreasAssigned && subareasConfigured) {
-      names.add('Soil Layer from Web Soil Survey');
     }
     if (soilsLoaded) {
       names.add('Land Cover');
@@ -1076,16 +1077,6 @@ const App: React.FC = () => {
           }
         }
 
-        if (name === 'Soil Layer from Web Soil Survey') {
-          if (!drainageAreasAssigned || !subareasConfigured) {
-            const msg =
-              'Completa la asignación de Discharge Points en Drainage Areas y vincula todas las Drainage Subareas antes de cargar la capa de suelos (WSS).';
-            setError(msg);
-            addLog(msg, 'error');
-            return;
-          }
-        }
-
         if (name === 'Land Cover') {
           if (!soilsLoaded) {
             const msg =
@@ -1154,16 +1145,32 @@ const App: React.FC = () => {
         if (name === 'Soil Layer from Web Soil Survey') {
           const areaSymbol = extractAreaSymbol(processedGeojson);
           const symbols = extractUniqueSymbols(processedGeojson);
+          const totalSymbols = symbols.length;
           if (!areaSymbol) {
-            addLog('No se encontró AREASYMBOL en la capa WSS; los HSG se mantienen en blanco.', 'warn');
-          } else if (symbols.length === 0) {
+            addLog('No se encontró AREASYMBOL en la capa WSS; se consultará SDA solo con los MUSYM detectados.', 'warn');
+          }
+
+          if (totalSymbols === 0) {
             addLog(
-              `No se detectaron MUSYM en la capa WSS (${areaSymbol}); los HSG permanecen vacíos.`,
+              'No se detectaron MUSYM en la capa WSS; los HSG permanecen vacíos.',
               'warn'
             );
           } else {
             try {
+              addLog(
+                `Autoasignación HSG: se detectaron ${totalSymbols} símbolos MUSYM únicos${
+                  areaSymbol ? ` en ${areaSymbol}` : ''
+                }.`
+              );
+              addLog(
+                `Autoasignación HSG: consultando SDA${
+                  areaSymbol ? ` para ${areaSymbol}` : ''
+                }...`
+              );
               const records = await fetchWssHsgRecords(areaSymbol, symbols);
+              addLog(
+                `Autoasignación HSG: ${records.length} registros recibidos. Aplicando resultados...`
+              );
               const hsgMap = new Map<string, string>();
               records.forEach(record => {
                 const symbolKey = record.musym?.toUpperCase();
@@ -1198,10 +1205,9 @@ const App: React.FC = () => {
               }
             } catch (err) {
               const message = err instanceof Error ? err.message : 'error desconocido';
-              addLog(
-                `No se pudo obtener el HSG desde SDA (${message}). Los HSG permanecen en blanco.`,
-                'warn'
-              );
+              const errorMessage = `No se pudo autoasignar HSG desde SDA (${message}). Completa los valores manualmente.`;
+              addLog(errorMessage, 'error');
+              setError(errorMessage);
             }
           }
         }
