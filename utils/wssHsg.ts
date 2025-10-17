@@ -2,15 +2,19 @@ import type { FeatureCollection, Feature, GeoJsonProperties } from 'geojson';
 
 type RecordValue = string | number | null | undefined;
 
-export interface WssHsgRecord {
+export interface WssHsgFeatureRequest {
+  index: number;
   musym: string;
-  muname?: string;
-  hsg?: string;
+}
+
+export interface WssHsgRecord {
+  index: number;
+  musym: string;
+  hsg: string;
 }
 
 const WSS_HSG_ENDPOINT = '/api/wss-hsg';
 
-const TARGET_AREA_KEY = 'areasymbol';
 const TARGET_SYMBOL_KEY = 'musym';
 
 const letterPattern = /[ABCD]/i;
@@ -46,37 +50,25 @@ export const simplifyHsgValue = (value: RecordValue): string => {
   return match ? match[0] : '';
 };
 
-export const extractAreaSymbol = (
+export const extractFeatureMusyms = (
   featureCollection: FeatureCollection
-): string | null => {
-  for (const feature of featureCollection.features) {
-    const val = sanitizeText(getPropCaseInsensitive(feature.properties, TARGET_AREA_KEY));
-    if (val) {
-      return val.toUpperCase();
-    }
-  }
-  return null;
-};
-
-export const extractUniqueSymbols = (
-  featureCollection: FeatureCollection
-): string[] => {
-  const symbols = new Set<string>();
-  featureCollection.features.forEach(feature => {
+): WssHsgFeatureRequest[] => {
+  const items: WssHsgFeatureRequest[] = [];
+  featureCollection.features.forEach((feature, index) => {
     const raw = sanitizeText(getPropCaseInsensitive(feature.properties, TARGET_SYMBOL_KEY));
-    if (raw) {
-      symbols.add(raw.toUpperCase());
-    }
+    if (!raw) return;
+    items.push({ index, musym: raw.toUpperCase() });
   });
-  return Array.from(symbols);
+  return items;
 };
 
 export const fetchWssHsgRecords = async (
-  areaSymbol: string,
-  symbols: string[]
+  features: WssHsgFeatureRequest[]
 ): Promise<WssHsgRecord[]> => {
-  if (!areaSymbol || symbols.length === 0) return [];
-  const payload = { areaSymbol, symbols };
+  if (features.length === 0) return [];
+  const payload = {
+    features: features.map(item => ({ index: item.index, musym: item.musym })),
+  };
   const res = await fetch(WSS_HSG_ENDPOINT, {
     method: 'POST',
     headers: {
@@ -93,24 +85,29 @@ export const fetchWssHsgRecords = async (
   const data = await res.json();
   const table: any[] = Array.isArray(data?.results) ? data.results : [];
   return table.map(row => ({
+    index: Number(row?.index),
     musym: sanitizeText((row.musym ?? row.MUSYM) as RecordValue).toUpperCase(),
-    muname: sanitizeText((row.muname ?? row.MUNAME) as RecordValue) || undefined,
-    hsg: sanitizeText((row.hsg ?? row.HSG ?? row.hydgrp ?? row.HYDGRP) as RecordValue) || undefined,
+    hsg: sanitizeText((row.hsg ?? row.HSG ?? row.hydgrp ?? row.HYDGRP) as RecordValue),
   }));
 };
 
 export const applyHsgToFeatures = (
   geojson: FeatureCollection,
-  hsgMap: Map<string, string>
+  records: WssHsgRecord[]
 ): FeatureCollection => {
-  const updatedFeatures: Feature[] = geojson.features.map(feature => {
-    const musym = sanitizeText(
-      getPropCaseInsensitive(feature.properties, TARGET_SYMBOL_KEY)
-    ).toUpperCase();
-    const hsg = musym ? hsgMap.get(musym) ?? '' : '';
+  const assignments = new Map<number, string>();
+  records.forEach(record => {
+    const idx = Number(record.index);
+    if (!Number.isInteger(idx)) return;
+    assignments.set(idx, simplifyHsgValue(record.hsg));
+  });
+
+  const updatedFeatures: Feature[] = geojson.features.map((feature, index) => {
+    if (!assignments.has(index)) return feature;
+    const value = assignments.get(index) ?? '';
     return {
       ...feature,
-      properties: { ...(feature.properties || {}), HSG: hsg },
+      properties: { ...(feature.properties || {}), HSG: value },
     };
   });
   return { ...geojson, features: updatedFeatures };
