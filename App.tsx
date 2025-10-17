@@ -48,9 +48,11 @@ const COMPLEMENT_FLAG_ATTR = 'IS_COMPLEMENT';
 const SUBAREA_AREA_ATTR = 'SUBAREA_AC';
 const SQM_TO_ACRES = 0.000247105381;
 const SQM_TO_SQFT = 10.76391041671;
+const SQFT_PER_ACRE = 43560;
 const MIN_COMPLEMENT_AREA_SF = 100;
 const MIN_COMPLEMENT_AREA_SQM = MIN_COMPLEMENT_AREA_SF / SQM_TO_SQFT;
 const AREA_TOLERANCE_SQM = 0.01;
+const AREA_MATCH_TOLERANCE_SF = 1;
 
 const DEFAULT_COLORS: Record<string, string> = {
   'Drainage Areas': '#67e8f9',
@@ -219,6 +221,9 @@ const aggregateOverlayForHydroCAD = (
     order: number;
     parents: Set<string>;
     groups: Map<string, HydroCADAreaGroup>;
+    expectedAreaSqft: number | null;
+    collectedAreaSqft: number;
+    areaPieces: number[];
   };
 
   const aggregates = new Map<string, SubareaAggregate>();
@@ -227,7 +232,8 @@ const aggregateOverlayForHydroCAD = (
     rawName: unknown,
     fallbackName: string,
     order: number,
-    parentRaw: unknown
+    parentRaw: unknown,
+    expectedAreaSqft?: number
   ): SubareaAggregate => {
     const name = resolveSubareaName(rawName, fallbackName);
     const key = name.toLowerCase();
@@ -236,6 +242,14 @@ const aggregateOverlayForHydroCAD = (
     if (existing) {
       if (parentValue) existing.parents.add(parentValue);
       if (order < existing.order) existing.order = order;
+      if (
+        expectedAreaSqft !== undefined &&
+        Number.isFinite(expectedAreaSqft) &&
+        expectedAreaSqft > 0 &&
+        existing.expectedAreaSqft === null
+      ) {
+        existing.expectedAreaSqft = Number(expectedAreaSqft.toFixed(2));
+      }
       return existing;
     }
     const aggregate: SubareaAggregate = {
@@ -243,9 +257,21 @@ const aggregateOverlayForHydroCAD = (
       order,
       parents: parentValue ? new Set([parentValue]) : new Set(),
       groups: new Map(),
+      expectedAreaSqft:
+        expectedAreaSqft !== undefined && Number.isFinite(expectedAreaSqft) && expectedAreaSqft > 0
+          ? Number(expectedAreaSqft.toFixed(2))
+          : null,
+      collectedAreaSqft: 0,
+      areaPieces: [],
     };
     aggregates.set(key, aggregate);
     return aggregate;
+  };
+
+  const registerAreaPiece = (aggregate: SubareaAggregate, areaSqft: number) => {
+    if (!Number.isFinite(areaSqft) || areaSqft <= 0) return;
+    aggregate.areaPieces.push(areaSqft);
+    aggregate.collectedAreaSqft += areaSqft;
   };
 
   subareas.forEach((subFeature, index) => {
@@ -253,7 +279,13 @@ const aggregateOverlayForHydroCAD = (
     const rawName = (props as any)[SUBAREA_NAME_ATTR];
     const fallback = `Subarea ${index + 1}`;
     const parentRaw = (props as any)[SUBAREA_PARENT_ATTR] ?? null;
-    ensureAggregate(rawName, fallback, index, parentRaw);
+    const areaAcresRaw = (props as any)[SUBAREA_AREA_ATTR];
+    let expectedAreaSqft = Number(areaAcresRaw) * SQFT_PER_ACRE;
+    if (!Number.isFinite(expectedAreaSqft) || expectedAreaSqft <= 0) {
+      const areaSqm = computeFeatureAreaSqm(subFeature);
+      expectedAreaSqft = areaSqm > 0 ? areaSqm * SQM_TO_SQFT : 0;
+    }
+    ensureAggregate(rawName, fallback, index, parentRaw, expectedAreaSqft);
   });
 
   features.forEach((feature, idx) => {
@@ -262,12 +294,12 @@ const aggregateOverlayForHydroCAD = (
     const rawName = (feature.properties as any)[SUBAREA_NAME_ATTR];
     const fallback = `Subarea ${subareas.length + idx + 1}`;
     const parentRaw = (feature.properties as any)[SUBAREA_PARENT_ATTR] ?? null;
-    const aggregate = ensureAggregate(
-      rawName,
-      fallback,
-      subareas.length + idx,
-      parentRaw
-    );
+    const aggregateKey = getSubareaKey(rawName, fallback);
+    const aggregate = aggregates.get(aggregateKey);
+    if (!aggregate) {
+      return;
+    }
+    ensureAggregate(rawName, fallback, subareas.length + idx, parentRaw);
 
     const cnRaw = (feature.properties as any)?.CN;
     const cnValue = Number(cnRaw);
@@ -284,20 +316,40 @@ const aggregateOverlayForHydroCAD = (
       }
     }
 
+    registerAreaPiece(aggregate, areaValue);
+
     const lcRaw = (feature.properties as any)?.LAND_COVER;
     const lcName = lcRaw == null ? null : String(lcRaw);
     const hsgRaw = (feature.properties as any)?.HSG;
     const hsg = hsgRaw == null ? null : String(hsgRaw).toUpperCase();
     const desc = lcName ? `${lcName}${hsg ? `, HSG ${hsg}` : ''}` : undefined;
 
-    const key = `${cnValue}|${desc ?? ''}`;
-    const existing = aggregate.groups.get(key);
+    const groupKey = `${cnValue}|${desc ?? ''}`;
+    const existing = aggregate.groups.get(groupKey);
     if (existing) {
       existing.area += areaValue;
     } else {
-      aggregate.groups.set(key, { area: areaValue, cn: cnValue, desc });
+      aggregate.groups.set(groupKey, { area: areaValue, cn: cnValue, desc });
     }
   });
+
+  const coverageIssues: string[] = [];
+  aggregates.forEach(aggregate => {
+    if (aggregate.expectedAreaSqft === null) return;
+    const piecesTotal = aggregate.areaPieces.reduce((sum, piece) => sum + piece, 0);
+    const diff = aggregate.expectedAreaSqft - piecesTotal;
+    if (Math.abs(diff) <= AREA_MATCH_TOLERANCE_SF) return;
+    const direction = diff > 0 ? 'missing' : 'excess';
+    coverageIssues.push(
+      `${aggregate.name} (${direction} ${Math.abs(diff).toFixed(2)} sq ft)`
+    );
+  });
+
+  if (coverageIssues.length > 0) {
+    throw new Error(
+      `Discrepancia de área en subáreas: ${coverageIssues.join('; ')}`
+    );
+  }
 
   const usedIds = new Set<string>();
   const sanitizeId = (name: string, parent: string | null, index: number) => {
