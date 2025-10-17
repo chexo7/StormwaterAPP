@@ -10,7 +10,6 @@ export interface WssHsgRecord {
 
 const WSS_HSG_ENDPOINT = '/api/wss-hsg';
 
-const TARGET_AREA_KEY = 'areasymbol';
 const TARGET_SYMBOL_KEY = 'musym';
 
 const letterPattern = /[ABCD]/i;
@@ -46,18 +45,6 @@ export const simplifyHsgValue = (value: RecordValue): string => {
   return match ? match[0] : '';
 };
 
-export const extractAreaSymbol = (
-  featureCollection: FeatureCollection
-): string | null => {
-  for (const feature of featureCollection.features) {
-    const val = sanitizeText(getPropCaseInsensitive(feature.properties, TARGET_AREA_KEY));
-    if (val) {
-      return val.toUpperCase();
-    }
-  }
-  return null;
-};
-
 export const extractUniqueSymbols = (
   featureCollection: FeatureCollection
 ): string[] => {
@@ -71,12 +58,9 @@ export const extractUniqueSymbols = (
   return Array.from(symbols);
 };
 
-export const fetchWssHsgRecords = async (
-  areaSymbol: string,
-  symbols: string[]
-): Promise<WssHsgRecord[]> => {
-  if (!areaSymbol || symbols.length === 0) return [];
-  const payload = { areaSymbol, symbols };
+export const fetchWssHsgRecords = async (symbols: string[]): Promise<WssHsgRecord[]> => {
+  if (symbols.length === 0) return [];
+  const payload = { symbols };
   const res = await fetch(WSS_HSG_ENDPOINT, {
     method: 'POST',
     headers: {
