@@ -4,6 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { intersect as turfIntersectRaw, area as turfArea } from '@turf/turf';
 import processFileMap from './process-file-map.json' assert { type: 'json' };
+import { XMLParser } from 'fast-xml-parser';
 
 // processFileMap maps backend processes (e.g., exportHydroCAD, exportSWMM,
 // exportShapefiles) to the spatial data layers they require. Update
@@ -44,19 +45,83 @@ const chunkSymbols = (symbols, size = MAX_SYMBOLS_PER_QUERY) => {
 
 const escapeSqlLiteral = (value = '') => value.replace(/'/g, "''");
 
+const xmlParser = new XMLParser({
+  ignoreAttributes: false,
+  attributeNamePrefix: '',
+  removeNSPrefix: true,
+  trimValues: true,
+});
+
+const extractTableRows = data => {
+  if (!data || typeof data !== 'object') {
+    return [];
+  }
+  if (Array.isArray(data.Table)) {
+    return data.Table;
+  }
+  if (data.Table) {
+    return [data.Table];
+  }
+  for (const value of Object.values(data)) {
+    const rows = extractTableRows(value);
+    if (rows.length > 0) {
+      return rows;
+    }
+  }
+  return [];
+};
+
 const parseSdaTable = async response => {
   const contentType = response.headers.get('content-type') || '';
-  if (contentType.includes('application/json')) {
-    const json = await response.json();
-    return Array.isArray(json?.Table) ? json.Table : [];
-  }
   const text = await response.text();
+  const trimmed = text.trim();
+
+  const shouldTryJson =
+    contentType.includes('application/json') ||
+    trimmed.startsWith('{') ||
+    trimmed.startsWith('[');
+
+  if (shouldTryJson) {
+    try {
+      const json = trimmed ? JSON.parse(trimmed) : {};
+      return extractTableRows(json);
+    } catch (err) {
+      // fall through to XML parsing
+    }
+  }
+
+  if (!trimmed) {
+    return [];
+  }
+
   try {
-    const json = JSON.parse(text);
-    return Array.isArray(json?.Table) ? json.Table : [];
+    const parsed = xmlParser.parse(trimmed);
+    return extractTableRows(parsed);
   } catch (err) {
     throw new Error('Unexpected SDA response format');
   }
+};
+
+const sanitizeText = value => {
+  if (value === null || value === undefined) {
+    return '';
+  }
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? String(value) : '';
+  }
+  if (typeof value !== 'string') {
+    return String(value ?? '').trim();
+  }
+  return value.trim();
+};
+
+const normalizeSymbol = value => sanitizeText(value).toUpperCase();
+
+const simplifyHsgValue = value => {
+  const raw = normalizeSymbol(value);
+  if (!raw) return '';
+  const match = raw.match(/[ABCD]/);
+  return match ? match[0] : '';
 };
 function addLog(message, type = 'info') {
   const entry = { message, type, source: 'backend', timestamp: Date.now() };
@@ -108,7 +173,7 @@ app.post('/api/wss-hsg', async (req, res) => {
   }
 
   try {
-    const results = [];
+    const results = new Map();
     for (const chunk of chunkSymbols(symbols)) {
       const quotedSymbols = chunk
         .map(sym => `'${escapeSqlLiteral(sym)}'`)
@@ -141,18 +206,43 @@ app.post('/api/wss-hsg', async (req, res) => {
 
       const table = await parseSdaTable(response);
       table.forEach(row => {
-        results.push({
-          musym: row?.musym ?? row?.MUSYM ?? '',
-          muname: row?.muname ?? row?.MUNAME ?? '',
-          hsg: row?.hsg ?? row?.HSG ?? row?.hydgrp ?? row?.HYDGRP ?? '',
+        const musym = normalizeSymbol(row?.musym ?? row?.MUSYM);
+        if (!musym) {
+          return;
+        }
+
+        const existing = results.get(musym) || {
+          musym,
+          muname: '',
+          hsg: '',
+        };
+
+        const munameCandidate = sanitizeText(row?.muname ?? row?.MUNAME);
+        const hsgCandidate = simplifyHsgValue(
+          row?.hsg ?? row?.HSG ?? row?.hydgrp ?? row?.HYDGRP
+        );
+
+        results.set(musym, {
+          musym,
+          muname: munameCandidate || existing.muname,
+          hsg: hsgCandidate || existing.hsg,
         });
       });
     }
 
+    const orderedResults = symbols.map(sym => {
+      const record = results.get(sym);
+      return {
+        musym: sym,
+        muname: record?.muname ?? '',
+        hsg: record?.hsg ?? '',
+      };
+    });
+
     addLog(
-      `Fetched ${results.length} MUSYM records from SDA for area symbol ${areaSymbol}.`
+      `Fetched ${results.size} MUSYM records from SDA for area symbol ${areaSymbol}.`
     );
-    res.json({ areaSymbol, results });
+    res.json({ areaSymbol, results: orderedResults });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : 'Unknown error during SDA lookup';
