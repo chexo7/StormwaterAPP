@@ -6,14 +6,18 @@ import { UploadIcon } from './Icons';
 import { ARCHIVE_NAME_MAP, KNOWN_LAYER_NAMES } from '../utils/constants';
 
 interface FileUploadProps {
-  onLayerAdded: (data: FeatureCollection, fileName: string) => void;
+  onLayerAdded: (data: FeatureCollection, fileName: string) => Promise<void> | void;
   onLoading: () => void;
   onError: (message: string) => void;
   onLog: (message: string, type?: 'info' | 'error') => void;
   isLoading: boolean;
   onCreateLayer?: (name: string) => void;
   existingLayerNames?: string[];
-  onPreviewReady?: (data: FeatureCollection, fileName: string, detectedName: string) => void;
+  onPreviewReady?: (
+    data: FeatureCollection,
+    fileName: string,
+    detectedName: string
+  ) => Promise<void> | void;
   allowedLayerNames?: string[];
 }
 
@@ -92,10 +96,10 @@ const FileUpload: React.FC<FileUploadProps> = ({ onLayerAdded, onLoading, onErro
       let geojson = await shp.parseZip(buffer) as FeatureCollection;
 
       if (onPreviewReady) {
-        onPreviewReady(geojson, file.name, displayName);
+        await onPreviewReady(geojson, file.name, displayName);
         onLog(`Preview ready for ${file.name}`);
       } else {
-        onLayerAdded(geojson, displayName);
+        await onLayerAdded(geojson, displayName);
         onLog(`Loaded ${displayName}`);
       }
     } catch (e) {

@@ -25,6 +25,39 @@ const toFeature = (poly) =>
   poly.type === 'Feature' ? poly : { type: 'Feature', properties: {}, geometry: poly };
 const turfIntersect = (a, b) =>
   turfIntersectRaw({ type: 'FeatureCollection', features: [a, b] });
+
+const SDA_ENDPOINT =
+  'https://sdmdataaccess.sc.egov.usda.gov/Tabular/post.rest?format=JSON';
+const SDA_HEADERS = {
+  'Content-Type': 'application/json',
+  Accept: 'application/json',
+};
+const MAX_SYMBOLS_PER_QUERY = 50;
+
+const chunkSymbols = (symbols, size = MAX_SYMBOLS_PER_QUERY) => {
+  const chunks = [];
+  for (let i = 0; i < symbols.length; i += size) {
+    chunks.push(symbols.slice(i, i + size));
+  }
+  return chunks;
+};
+
+const escapeSqlLiteral = (value = '') => value.replace(/'/g, "''");
+
+const parseSdaTable = async response => {
+  const contentType = response.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    const json = await response.json();
+    return Array.isArray(json?.Table) ? json.Table : [];
+  }
+  const text = await response.text();
+  try {
+    const json = JSON.parse(text);
+    return Array.isArray(json?.Table) ? json.Table : [];
+  } catch (err) {
+    throw new Error('Unexpected SDA response format');
+  }
+};
 function addLog(message, type = 'info') {
   const entry = { message, type, source: 'backend', timestamp: Date.now() };
   logs.push(entry);
@@ -50,6 +83,82 @@ app.get('/api/soil-hsg-map', (req, res) => {
       res.type('application/json').send(data);
     }
   });
+});
+
+app.post('/api/wss-hsg', async (req, res) => {
+  const areaSymbolRaw =
+    typeof req.body?.areaSymbol === 'string' ? req.body.areaSymbol.trim() : '';
+  const symbolsRaw = Array.isArray(req.body?.symbols) ? req.body.symbols : [];
+
+  const areaSymbol = areaSymbolRaw.toUpperCase();
+  const symbolSet = new Set(
+    symbolsRaw
+      .map(value => {
+        if (value === null || value === undefined) return '';
+        return String(value).trim().toUpperCase();
+      })
+      .filter(Boolean)
+  );
+
+  const symbols = Array.from(symbolSet);
+
+  if (!areaSymbol || symbols.length === 0) {
+    addLog('WSS HSG lookup skipped due to missing inputs', 'warn');
+    return res.json({ areaSymbol, results: [] });
+  }
+
+  try {
+    const results = [];
+    for (const chunk of chunkSymbols(symbols)) {
+      const quotedSymbols = chunk
+        .map(sym => `'${escapeSqlLiteral(sym)}'`)
+        .join(',');
+      const sql = `
+        SELECT
+          m.musym,
+          m.muname,
+          (
+            SELECT TOP 1 c.hydgrp
+            FROM component c
+            WHERE c.mukey = m.mukey
+            ORDER BY c.comppct_r DESC
+          ) AS hsg
+        FROM legend l
+        JOIN mapunit m ON l.lkey = m.lkey
+        WHERE l.areasymbol = '${escapeSqlLiteral(areaSymbol)}'
+          AND m.musym IN (${quotedSymbols});
+      `;
+
+      const response = await fetch(SDA_ENDPOINT, {
+        method: 'POST',
+        headers: SDA_HEADERS,
+        body: JSON.stringify({ query: sql }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`SDA request failed with status ${response.status}`);
+      }
+
+      const table = await parseSdaTable(response);
+      table.forEach(row => {
+        results.push({
+          musym: row?.musym ?? row?.MUSYM ?? '',
+          muname: row?.muname ?? row?.MUNAME ?? '',
+          hsg: row?.hsg ?? row?.HSG ?? row?.hydgrp ?? row?.HYDGRP ?? '',
+        });
+      });
+    }
+
+    addLog(
+      `Fetched ${results.length} MUSYM records from SDA for area symbol ${areaSymbol}.`
+    );
+    res.json({ areaSymbol, results });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : 'Unknown error during SDA lookup';
+    addLog(`Failed SDA lookup for ${areaSymbol}: ${message}`, 'error');
+    res.status(502).json({ error: message });
+  }
 });
 
 app.get('/api/cn-values', (req, res) => {
