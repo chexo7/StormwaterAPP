@@ -44,19 +44,92 @@ const chunkSymbols = (symbols, size = MAX_SYMBOLS_PER_QUERY) => {
 
 const escapeSqlLiteral = (value = '') => value.replace(/'/g, "''");
 
+const decodeXmlEntities = value =>
+  String(value)
+    .replace(/<!\[CDATA\[(.*?)\]\]>/gs, '$1')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&apos;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, '&')
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, num) => String.fromCharCode(Number(num)));
+
+const parseXmlTable = text => {
+  const rows = [];
+  const tableRegex = /<Table>([\s\S]*?)<\/Table>/gi;
+  let tableMatch;
+  while ((tableMatch = tableRegex.exec(text))) {
+    const rowText = tableMatch[1];
+    const row = {};
+    const colRegex = /<([A-Za-z0-9_]+)>([\s\S]*?)<\/\1>/g;
+    let colMatch;
+    while ((colMatch = colRegex.exec(rowText))) {
+      const [, key, rawValue] = colMatch;
+      row[key] = decodeXmlEntities(rawValue.trim());
+    }
+    rows.push(row);
+  }
+  return rows;
+};
+
 const parseSdaTable = async response => {
   const contentType = response.headers.get('content-type') || '';
-  if (contentType.includes('application/json')) {
-    const json = await response.json();
-    return Array.isArray(json?.Table) ? json.Table : [];
-  }
   const text = await response.text();
-  try {
-    const json = JSON.parse(text);
-    return Array.isArray(json?.Table) ? json.Table : [];
-  } catch (err) {
-    throw new Error('Unexpected SDA response format');
+
+  if (!text) return [];
+
+  const attemptJsonParse = payload => {
+    try {
+      const json = JSON.parse(payload);
+      return Array.isArray(json?.Table) ? json.Table : [];
+    } catch (err) {
+      return null;
+    }
+  };
+
+  if (contentType.includes('application/json')) {
+    const table = attemptJsonParse(text);
+    if (table) return table;
   }
+
+  const jsonFallback = attemptJsonParse(text);
+  if (jsonFallback) return jsonFallback;
+
+  if (contentType.includes('xml') || /<Table>/i.test(text)) {
+    return parseXmlTable(text);
+  }
+
+  throw new Error('Unexpected SDA response format');
+};
+
+const sanitizeText = value => {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? String(value) : '';
+  }
+  return String(value).trim();
+};
+
+const sanitizeSymbol = value => sanitizeText(value).toUpperCase();
+
+const cleanHsgToken = raw => {
+  const text = sanitizeText(raw).toUpperCase();
+  if (!text) return '';
+  const match = text.match(/[ABCD]/);
+  return match ? match[0] : '';
+};
+
+const selectDominantHsg = counts => {
+  let dominant = '';
+  let dominantCount = 0;
+  counts.forEach((count, token) => {
+    if (count > dominantCount || (count === dominantCount && token < dominant)) {
+      dominant = token;
+      dominantCount = count;
+    }
+  });
+  return dominant;
 };
 function addLog(message, type = 'info') {
   const entry = { message, type, source: 'backend', timestamp: Date.now() };
@@ -102,13 +175,13 @@ app.post('/api/wss-hsg', async (req, res) => {
 
   const symbols = Array.from(symbolSet);
 
-  if (!areaSymbol || symbols.length === 0) {
-    addLog('WSS HSG lookup skipped due to missing inputs', 'warn');
+  if (symbols.length === 0) {
+    addLog('WSS HSG lookup skipped due to missing MUSYM symbols', 'warn');
     return res.json({ areaSymbol, results: [] });
   }
 
   try {
-    const results = [];
+    const aggregated = new Map();
     for (const chunk of chunkSymbols(symbols)) {
       const quotedSymbols = chunk
         .map(sym => `'${escapeSqlLiteral(sym)}'`)
@@ -123,10 +196,8 @@ app.post('/api/wss-hsg', async (req, res) => {
             WHERE c.mukey = m.mukey
             ORDER BY c.comppct_r DESC
           ) AS hsg
-        FROM legend l
-        JOIN mapunit m ON l.lkey = m.lkey
-        WHERE l.areasymbol = '${escapeSqlLiteral(areaSymbol)}'
-          AND m.musym IN (${quotedSymbols});
+        FROM mapunit m
+        WHERE m.musym IN (${quotedSymbols});
       `;
 
       const response = await fetch(SDA_ENDPOINT, {
@@ -141,16 +212,41 @@ app.post('/api/wss-hsg', async (req, res) => {
 
       const table = await parseSdaTable(response);
       table.forEach(row => {
-        results.push({
-          musym: row?.musym ?? row?.MUSYM ?? '',
-          muname: row?.muname ?? row?.MUNAME ?? '',
-          hsg: row?.hsg ?? row?.HSG ?? row?.hydgrp ?? row?.HYDGRP ?? '',
-        });
+        const musym = sanitizeSymbol(row?.musym ?? row?.MUSYM ?? '');
+        if (!musym) return;
+        const muname = sanitizeText(row?.muname ?? row?.MUNAME ?? '');
+        const token = cleanHsgToken(row?.hsg ?? row?.HSG ?? row?.hydgrp ?? row?.HYDGRP ?? '');
+        if (!aggregated.has(musym)) {
+          aggregated.set(musym, {
+            musym,
+            muname,
+            counts: new Map(),
+          });
+        }
+        const entry = aggregated.get(musym);
+        if (muname && !entry.muname) {
+          entry.muname = muname;
+        }
+        if (token) {
+          entry.counts.set(token, (entry.counts.get(token) ?? 0) + 1);
+        }
       });
     }
 
+    const results = symbols.map(symbol => {
+      const musym = sanitizeSymbol(symbol);
+      const entry = aggregated.get(musym);
+      if (!entry) {
+        return { musym, muname: '', hsg: '' };
+      }
+      const hsg = selectDominantHsg(entry.counts);
+      return { musym, muname: entry.muname || '', hsg };
+    });
+
+    const matchedCount = results.filter(record => record.hsg).length;
+    const areaInfo = areaSymbol ? ` for area symbol ${areaSymbol}` : '';
     addLog(
-      `Fetched ${results.length} MUSYM records from SDA for area symbol ${areaSymbol}.`
+      `Fetched HSG data for ${matchedCount}/${symbols.length} MUSYM records${areaInfo}.`
     );
     res.json({ areaSymbol, results });
   } catch (error) {
