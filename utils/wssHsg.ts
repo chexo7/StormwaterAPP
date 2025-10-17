@@ -95,7 +95,9 @@ export const fetchWssHsgRecords = async (
   return table.map(row => ({
     musym: sanitizeText((row.musym ?? row.MUSYM) as RecordValue).toUpperCase(),
     muname: sanitizeText((row.muname ?? row.MUNAME) as RecordValue) || undefined,
-    hsg: sanitizeText((row.hsg ?? row.HSG ?? row.hydgrp ?? row.HYDGRP) as RecordValue) || undefined,
+    hsg:
+      simplifyHsgValue((row.hsg ?? row.HSG ?? row.hydgrp ?? row.HYDGRP) as RecordValue) ||
+      undefined,
   }));
 };
 
