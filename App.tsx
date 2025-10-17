@@ -643,18 +643,19 @@ const App: React.FC = () => {
   }, [subareasLayer, assignedDrainagePoints]);
 
   const allowedLayerNames = useMemo(() => {
-    const names = new Set<string>(['Drainage Areas', 'LOD']);
+    const names = new Set<string>([
+      'Drainage Areas',
+      'LOD',
+      'Soil Layer from Web Soil Survey',
+    ]);
     if (drainageAreasAssigned) {
       names.add(SUBAREA_LAYER_NAME);
-    }
-    if (drainageAreasAssigned && subareasConfigured) {
-      names.add('Soil Layer from Web Soil Survey');
     }
     if (soilsLoaded) {
       names.add('Land Cover');
     }
     return Array.from(names);
-  }, [drainageAreasAssigned, subareasConfigured, soilsLoaded]);
+  }, [drainageAreasAssigned, soilsLoaded]);
 
   const scsLayerStatuses = useMemo<ScsLayerStatus[]>(() => {
     const statuses: ScsLayerStatus[] = [
@@ -1070,16 +1071,6 @@ const App: React.FC = () => {
           if (missingDaIndexes.length > 0) {
             const msg =
               'Asigna un Discharge Point (DP-##) a cada Drainage Area antes de cargar las Drainage Subareas. Revisa los polígonos sin DP y vuelve a intentarlo.';
-            setError(msg);
-            addLog(msg, 'error');
-            return;
-          }
-        }
-
-        if (name === 'Soil Layer from Web Soil Survey') {
-          if (!drainageAreasAssigned || !subareasConfigured) {
-            const msg =
-              'Completa la asignación de Discharge Points en Drainage Areas y vincula todas las Drainage Subareas antes de cargar la capa de suelos (WSS).';
             setError(msg);
             addLog(msg, 'error');
             return;
