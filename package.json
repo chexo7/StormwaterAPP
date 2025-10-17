@@ -29,6 +29,7 @@
     "shpjs": "^6.1.0"
   },
   "devDependencies": {
+    "@vercel/node": "^3.2.23",
     "@types/node": "^22.14.0",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
