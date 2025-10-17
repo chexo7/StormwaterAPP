@@ -32,17 +32,78 @@ const SDA_HEADERS = {
   'Content-Type': 'application/json',
   Accept: 'application/json',
 };
-const MAX_SYMBOLS_PER_QUERY = 50;
+const escapeSqlLiteral = (value = '') => value.replace(/'/g, "''");
 
-const chunkSymbols = (symbols, size = MAX_SYMBOLS_PER_QUERY) => {
-  const chunks = [];
-  for (let i = 0; i < symbols.length; i += size) {
-    chunks.push(symbols.slice(i, i + size));
-  }
-  return chunks;
+const cleanHsgToken = raw => {
+  if (raw === null || raw === undefined) return '';
+  const str = String(raw).toUpperCase();
+  const match = str.match(/[ABCD]/);
+  return match ? match[0] : '';
 };
 
-const escapeSqlLiteral = (value = '') => value.replace(/'/g, "''");
+const selectDominantHsg = tokens => {
+  if (!Array.isArray(tokens) || tokens.length === 0) return '';
+  const counts = new Map();
+  let maxCount = 0;
+  tokens.forEach(token => {
+    if (!token) return;
+    const next = (counts.get(token) || 0) + 1;
+    counts.set(token, next);
+    if (next > maxCount) {
+      maxCount = next;
+    }
+  });
+  if (maxCount === 0) return '';
+  const candidates = Array.from(counts.entries())
+    .filter(([, count]) => count === maxCount)
+    .map(([token]) => token)
+    .sort();
+  return candidates.length > 0 ? candidates[0] : '';
+};
+
+const runSdaQuery = async sql => {
+  const response = await fetch(SDA_ENDPOINT, {
+    method: 'POST',
+    headers: SDA_HEADERS,
+    body: JSON.stringify({ query: sql }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`SDA request failed with status ${response.status}`);
+  }
+
+  return parseSdaTable(response);
+};
+
+const fetchHsgForMusym = async musym => {
+  const trimmed = typeof musym === 'string' ? musym.trim() : '';
+  if (!trimmed) {
+    return { musym: '', hsg: '' };
+  }
+
+  const upper = trimmed.toUpperCase();
+  const sql = `
+    SELECT
+      m.musym,
+      (
+        SELECT TOP 1 c.hydgrp
+        FROM component c
+        WHERE c.mukey = m.mukey
+        ORDER BY c.comppct_r DESC
+      ) AS hsg
+    FROM mapunit m
+    WHERE m.musym = '${escapeSqlLiteral(upper)}';
+  `;
+
+  const table = await runSdaQuery(sql);
+  const tokens = table
+    .map(row =>
+      cleanHsgToken(row?.hsg ?? row?.HSG ?? row?.hydgrp ?? row?.HYDGRP ?? row?.hydgrp_r)
+    )
+    .filter(Boolean);
+  const dominant = selectDominantHsg(tokens);
+  return { musym: upper, hsg: dominant };
+};
 
 const parseSdaTable = async response => {
   const contentType = response.headers.get('content-type') || '';
@@ -86,77 +147,41 @@ app.get('/api/soil-hsg-map', (req, res) => {
 });
 
 app.post('/api/wss-hsg', async (req, res) => {
-  const areaSymbolRaw =
-    typeof req.body?.areaSymbol === 'string' ? req.body.areaSymbol.trim() : '';
+  const singleMusym =
+    typeof req.body?.musym === 'string' ? req.body.musym.trim() : '';
   const symbolsRaw = Array.isArray(req.body?.symbols) ? req.body.symbols : [];
 
-  const areaSymbol = areaSymbolRaw.toUpperCase();
-  const symbolSet = new Set(
-    symbolsRaw
-      .map(value => {
-        if (value === null || value === undefined) return '';
-        return String(value).trim().toUpperCase();
-      })
-      .filter(Boolean)
-  );
+  const normalizedInputs = [];
+  if (singleMusym) {
+    normalizedInputs.push(singleMusym);
+  }
+  symbolsRaw.forEach(value => {
+    if (value === null || value === undefined) return;
+    const str = String(value).trim();
+    if (str) {
+      normalizedInputs.push(str);
+    }
+  });
 
-  const symbols = Array.from(symbolSet);
-
-  if (!areaSymbol || symbols.length === 0) {
+  if (normalizedInputs.length === 0) {
     addLog('WSS HSG lookup skipped due to missing inputs', 'warn');
-    return res.json({ areaSymbol, results: [] });
+    return res.json({ results: [] });
   }
 
   try {
     const results = [];
-    for (const chunk of chunkSymbols(symbols)) {
-      const quotedSymbols = chunk
-        .map(sym => `'${escapeSqlLiteral(sym)}'`)
-        .join(',');
-      const sql = `
-        SELECT
-          m.musym,
-          m.muname,
-          (
-            SELECT TOP 1 c.hydgrp
-            FROM component c
-            WHERE c.mukey = m.mukey
-            ORDER BY c.comppct_r DESC
-          ) AS hsg
-        FROM legend l
-        JOIN mapunit m ON l.lkey = m.lkey
-        WHERE l.areasymbol = '${escapeSqlLiteral(areaSymbol)}'
-          AND m.musym IN (${quotedSymbols});
-      `;
-
-      const response = await fetch(SDA_ENDPOINT, {
-        method: 'POST',
-        headers: SDA_HEADERS,
-        body: JSON.stringify({ query: sql }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`SDA request failed with status ${response.status}`);
-      }
-
-      const table = await parseSdaTable(response);
-      table.forEach(row => {
-        results.push({
-          musym: row?.musym ?? row?.MUSYM ?? '',
-          muname: row?.muname ?? row?.MUNAME ?? '',
-          hsg: row?.hsg ?? row?.HSG ?? row?.hydgrp ?? row?.HYDGRP ?? '',
-        });
-      });
+    for (const input of normalizedInputs) {
+      const record = await fetchHsgForMusym(input);
+      const musym = record.musym || String(input).trim().toUpperCase();
+      results.push({ musym, hsg: record.hsg || '' });
     }
 
-    addLog(
-      `Fetched ${results.length} MUSYM records from SDA for area symbol ${areaSymbol}.`
-    );
-    res.json({ areaSymbol, results });
+    addLog(`Fetched HSG values from SDA for ${results.length} MUSYM entradas.`);
+    res.json({ results });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : 'Unknown error during SDA lookup';
-    addLog(`Failed SDA lookup for ${areaSymbol}: ${message}`, 'error');
+    addLog(`Failed SDA lookup: ${message}`, 'error');
     res.status(502).json({ error: message });
   }
 });

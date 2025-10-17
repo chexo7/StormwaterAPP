@@ -30,11 +30,10 @@ import {
 import ScsStatusPanel, { ScsLayerStatus } from './components/ScsStatusPanel';
 import CnTableModal from './components/CnTableModal';
 import {
-  applyHsgToFeatures,
-  extractAreaSymbol,
-  extractUniqueSymbols,
-  fetchWssHsgRecords,
+  fetchWssHsgForMusym,
+  getFeatureMusym,
   simplifyHsgValue,
+  withHsgValue,
 } from './utils/wssHsg';
 
 const SUBAREA_LAYER_NAME = 'Drainage Subareas';
@@ -643,18 +642,19 @@ const App: React.FC = () => {
   }, [subareasLayer, assignedDrainagePoints]);
 
   const allowedLayerNames = useMemo(() => {
-    const names = new Set<string>(['Drainage Areas', 'LOD']);
+    const names = new Set<string>([
+      'Drainage Areas',
+      'LOD',
+      'Soil Layer from Web Soil Survey',
+    ]);
     if (drainageAreasAssigned) {
       names.add(SUBAREA_LAYER_NAME);
-    }
-    if (drainageAreasAssigned && subareasConfigured) {
-      names.add('Soil Layer from Web Soil Survey');
     }
     if (soilsLoaded) {
       names.add('Land Cover');
     }
     return Array.from(names);
-  }, [drainageAreasAssigned, subareasConfigured, soilsLoaded]);
+  }, [drainageAreasAssigned, soilsLoaded]);
 
   const scsLayerStatuses = useMemo<ScsLayerStatus[]>(() => {
     const statuses: ScsLayerStatus[] = [
@@ -1152,54 +1152,73 @@ const App: React.FC = () => {
         }
 
         if (name === 'Soil Layer from Web Soil Survey') {
-          const areaSymbol = extractAreaSymbol(processedGeojson);
-          const symbols = extractUniqueSymbols(processedGeojson);
-          if (!areaSymbol) {
-            addLog('No se encontró AREASYMBOL en la capa WSS; los HSG se mantienen en blanco.', 'warn');
-          } else if (symbols.length === 0) {
-            addLog(
-              `No se detectaron MUSYM en la capa WSS (${areaSymbol}); los HSG permanecen vacíos.`,
-              'warn'
-            );
+          const totalFeatures = processedGeojson.features.length;
+          if (totalFeatures === 0) {
+            addLog('La capa WSS no contiene polígonos válidos para autocompletar HSG.', 'warn');
           } else {
-            try {
-              const records = await fetchWssHsgRecords(areaSymbol, symbols);
-              const hsgMap = new Map<string, string>();
-              records.forEach(record => {
-                const symbolKey = record.musym?.toUpperCase();
-                if (!symbolKey) return;
-                const simplified = simplifyHsgValue(record.hsg);
-                if (simplified) {
-                  hsgMap.set(symbolKey, simplified);
-                }
-              });
-              processedGeojson = applyHsgToFeatures(processedGeojson, hsgMap);
+            const updatedFeatures: Feature[] = [];
+            let matchedFeatures = 0;
+            let missingMusym = 0;
+            let failedLookups = 0;
+            const errorMessages: string[] = [];
 
-              const totalFeatures = processedGeojson.features.length;
-              const matchedFeatures = processedGeojson.features.reduce((count, feature) => {
-                const value = simplifyHsgValue((feature.properties as any)?.HSG);
-                return value ? count + 1 : count;
-              }, 0);
-              const missingCount = totalFeatures - matchedFeatures;
-
-              if (matchedFeatures === 0) {
-                addLog(
-                  `No se obtuvo HSG desde SDA para los ${symbols.length} símbolos consultados (${areaSymbol}); revisa y completa manualmente.`,
-                  'warn'
-                );
-              } else if (missingCount > 0) {
-                addLog(
-                  `Se autocompletó HSG para ${matchedFeatures} de ${totalFeatures} polígonos (${areaSymbol}). Completa manualmente ${missingCount}.`
-                );
-              } else {
-                addLog(
-                  `HSG autoasignado para los ${totalFeatures} polígonos WSS (${areaSymbol}). Revisa y ajusta si es necesario.`
-                );
+            for (const feature of processedGeojson.features) {
+              const musym = getFeatureMusym(feature);
+              if (!musym) {
+                missingMusym += 1;
+                updatedFeatures.push(withHsgValue(feature, ''));
+                continue;
               }
-            } catch (err) {
-              const message = err instanceof Error ? err.message : 'error desconocido';
+
+              try {
+                const record = await fetchWssHsgForMusym(musym);
+                const simplified = simplifyHsgValue(record?.hsg);
+                if (simplified) {
+                  matchedFeatures += 1;
+                }
+                updatedFeatures.push(withHsgValue(feature, simplified));
+              } catch (err) {
+                failedLookups += 1;
+                if (err instanceof Error) {
+                  if (!errorMessages.includes(err.message)) {
+                    errorMessages.push(err.message);
+                  }
+                }
+                updatedFeatures.push(withHsgValue(feature, ''));
+              }
+            }
+
+            processedGeojson = { ...processedGeojson, features: updatedFeatures };
+            const missingCount = totalFeatures - matchedFeatures;
+
+            if (matchedFeatures === 0) {
               addLog(
-                `No se pudo obtener el HSG desde SDA (${message}). Los HSG permanecen en blanco.`,
+                'No se obtuvo HSG desde SDA para los MUSYM detectados; revisa y completa manualmente.',
+                'warn'
+              );
+            } else if (missingCount > 0) {
+              addLog(
+                `Se autocompletó HSG para ${matchedFeatures} de ${totalFeatures} polígonos. Completa manualmente ${missingCount}.`
+              );
+            } else {
+              addLog(
+                `HSG autoasignado para los ${totalFeatures} polígonos WSS. Revisa y ajusta si es necesario.`
+              );
+            }
+
+            if (missingMusym > 0) {
+              addLog(
+                `Se omitieron ${missingMusym} polígonos porque no se encontró un MUSYM válido en sus atributos.`,
+                'warn'
+              );
+            }
+
+            if (failedLookups > 0) {
+              const suffix = errorMessages.length
+                ? ` (${errorMessages.join('; ')})`
+                : '';
+              addLog(
+                `No se pudo obtener HSG para ${failedLookups} polígonos debido a errores de consulta${suffix}. Los HSG permanecen en blanco para esos polígonos.`,
                 'warn'
               );
             }
