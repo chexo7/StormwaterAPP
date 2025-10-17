@@ -83,7 +83,7 @@ const ensureOverallDrainageAreaLayer = (
   }
   const baseLayers = layers.filter(layer => layer.name !== OVERALL_DRAINAGE_LAYER_NAME);
   const drainageAreasIndex = baseLayers.findIndex(layer => layer.name === 'Drainage Areas');
-  const insertionIndex = drainageAreasIndex === -1 ? baseLayers.length : drainageAreasIndex + 1;
+  const insertionIndex = drainageAreasIndex === -1 ? baseLayers.length : drainageAreasIndex;
 
   if (existingIndex === -1) {
     const newLayer: LayerData = {
