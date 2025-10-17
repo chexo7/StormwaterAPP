@@ -104,13 +104,26 @@ export const applyHsgToFeatures = (
   hsgMap: Map<string, string>
 ): FeatureCollection => {
   const updatedFeatures: Feature[] = geojson.features.map(feature => {
+    const originalProps = feature.properties || {};
     const musym = sanitizeText(
-      getPropCaseInsensitive(feature.properties, TARGET_SYMBOL_KEY)
+      getPropCaseInsensitive(originalProps, TARGET_SYMBOL_KEY)
     ).toUpperCase();
-    const hsg = musym ? hsgMap.get(musym) ?? '' : '';
+    const existingHsg = simplifyHsgValue((originalProps as any).HSG);
+
+    let nextHsg = existingHsg;
+    if (musym && hsgMap.has(musym)) {
+      const consulted = simplifyHsgValue(hsgMap.get(musym));
+      if (consulted) {
+        nextHsg = consulted;
+      }
+    }
+
     return {
       ...feature,
-      properties: { ...(feature.properties || {}), HSG: hsg },
+      properties: {
+        ...originalProps,
+        HSG: nextHsg || '',
+      },
     };
   });
   return { ...geojson, features: updatedFeatures };

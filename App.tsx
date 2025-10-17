@@ -1163,12 +1163,29 @@ const App: React.FC = () => {
               );
 
               const hsgMap = new Map<string, string>();
+              const symbolOutcomes = new Map<string, string>();
               records.forEach(record => {
                 const symbolKey = record.musym?.toUpperCase();
                 if (!symbolKey) return;
+
                 const simplified = simplifyHsgValue(record.hsg);
+                if (!symbolOutcomes.has(symbolKey) || !symbolOutcomes.get(symbolKey)) {
+                  symbolOutcomes.set(symbolKey, simplified);
+                }
+
                 if (simplified) {
                   hsgMap.set(symbolKey, simplified);
+                }
+              });
+
+              symbolOutcomes.forEach((hsgValue, symbolKey) => {
+                if (hsgValue) {
+                  addLog(`MUSYM ${symbolKey}: se asignó HSG ${hsgValue} desde SDA.`);
+                } else {
+                  addLog(
+                    `MUSYM ${symbolKey}: SDA no devolvió un HSG válido; se mantiene el valor existente.`,
+                    'warn'
+                  );
                 }
               });
               processedGeojson = applyHsgToFeatures(processedGeojson, hsgMap);

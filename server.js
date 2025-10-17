@@ -164,11 +164,20 @@ app.post('/api/wss-hsg', async (req, res) => {
 
       const table = await runSdaQuery(sql);
       table.forEach(row => {
+        const musym = row?.musym ?? row?.MUSYM ?? '';
+        const muname = row?.muname ?? row?.MUNAME ?? '';
+        const hsg = cleanHsgToken(row?.hsg ?? row?.HSG ?? row?.hydgrp ?? row?.HYDGRP);
         results.push({
-          musym: row?.musym ?? row?.MUSYM ?? '',
-          muname: row?.muname ?? row?.MUNAME ?? '',
-          hsg: cleanHsgToken(row?.hsg ?? row?.HSG ?? row?.hydgrp ?? row?.HYDGRP),
+          musym,
+          muname,
+          hsg,
         });
+        if (musym) {
+          const descriptor = muname ? `${musym} (${muname})` : musym;
+          addLog(
+            `SDA respondió HSG ${hsg || 'sin datos'} para MUSYM ${descriptor}.`
+          );
+        }
       });
     }
 
