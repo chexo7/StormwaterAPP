@@ -1028,6 +1028,7 @@ const App: React.FC = () => {
         if (cancelled) return;
 
         const cnMap = cnValueIndex;
+        const missingCnLandCovers = new Set<string>();
         const intersectFeatures = (a: Feature | any, b: Feature | any) =>
           turfIntersect({
             type: 'FeatureCollection',
@@ -1056,16 +1057,17 @@ const App: React.FC = () => {
 
             const lcNameRaw = (baseProps as any).LAND_COVER;
             const hsgRaw = (baseProps as any).HSG ?? (wssFeature.properties as any)?.HSG;
-            if (lcNameRaw != null) {
-              const lcName = String(lcNameRaw);
-              const rec = cnMap.get(lcName);
-              if (rec && hsgRaw != null) {
-                const hsg = String(hsgRaw).trim().toUpperCase();
-                if (hsg === 'A' || hsg === 'B' || hsg === 'C' || hsg === 'D') {
-                  const cnValue = rec[hsg as keyof CnRecord];
-                  if (typeof cnValue === 'number' && Number.isFinite(cnValue)) {
-                    (baseProps as any).CN = cnValue;
-                  }
+            const lcName = normalizeLandCover(lcNameRaw);
+            const rec = lcName ? cnMap.get(lcName) ?? cnMap.get(lcName.toLowerCase()) : undefined;
+            if (!rec && lcName) {
+              missingCnLandCovers.add(lcName);
+            }
+            if (rec && hsgRaw != null) {
+              const hsg = String(hsgRaw).trim().toUpperCase();
+              if (hsg === 'A' || hsg === 'B' || hsg === 'C' || hsg === 'D') {
+                const cnValue = rec[hsg as keyof CnRecord];
+                if (typeof cnValue === 'number' && Number.isFinite(cnValue)) {
+                  (baseProps as any).CN = cnValue;
                 }
               }
             }
@@ -1091,6 +1093,16 @@ const App: React.FC = () => {
         });
 
         if (cancelled) return;
+
+        if (missingCnLandCovers.size > 0) {
+          missingCnLandCovers.forEach(name =>
+            addLog(
+              `No se encontró un Curve Number configurado para el Land Cover "${name}". ` +
+                'Revisa la tabla de CN e intenta nuevamente.',
+              'warn'
+            )
+          );
+        }
 
         const { features: overlayFeatures, coverageIssues } = normalizeOverlayPiecesBySubarea(
           overlayPieces,
@@ -2121,17 +2133,31 @@ const App: React.FC = () => {
       if (cnMap.size === 0) {
         throw new Error('No hay valores de Curve Number configurados.');
       }
+      const missingCnLandCovers = new Set<string>();
       overlay.forEach(f => {
         const lcNameRaw = (f.properties as any)?.LAND_COVER;
         const lcName = normalizeLandCover(lcNameRaw);
         const hsgRaw = (f.properties as any)?.HSG;
         const hsg = hsgRaw == null ? null : String(hsgRaw).toUpperCase();
         const rec = lcName ? cnMap.get(lcName) ?? cnMap.get(lcName.toLowerCase()) : undefined;
+        if (!rec && lcName) {
+          missingCnLandCovers.add(lcName);
+        }
         const cnValue = rec && hsg ? (rec as any)[hsg as keyof CnRecord] : undefined;
         if (cnValue !== undefined) {
           f.properties = { ...(f.properties || {}), CN: cnValue };
         }
       });
+
+      if (missingCnLandCovers.size > 0) {
+        missingCnLandCovers.forEach(name =>
+          addLog(
+            `No se encontró un Curve Number configurado para el Land Cover "${name}". ` +
+              'Revisa la tabla de CN e intenta nuevamente.',
+            'warn'
+          )
+        );
+      }
 
       if (overlay.length > 0) {
         resultLayers.push({
