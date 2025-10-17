@@ -33,6 +33,7 @@ const SDA_HEADERS = {
   Accept: 'application/json',
 };
 const MAX_SYMBOLS_PER_QUERY = 50;
+const HSG_TOKEN_REGEX = /[ABCD]/i;
 
 const chunkSymbols = (symbols, size = MAX_SYMBOLS_PER_QUERY) => {
   const chunks = [];
@@ -43,6 +44,38 @@ const chunkSymbols = (symbols, size = MAX_SYMBOLS_PER_QUERY) => {
 };
 
 const escapeSqlLiteral = (value = '') => value.replace(/'/g, "''");
+
+const cleanHsgToken = value => {
+  if (value === null || value === undefined) return '';
+  const token = String(value).toUpperCase().match(HSG_TOKEN_REGEX);
+  return token ? token[0] : '';
+};
+
+const selectDominantHsg = tokens => {
+  if (!Array.isArray(tokens) || tokens.length === 0) {
+    return '';
+  }
+  const counts = new Map();
+  tokens.forEach(token => {
+    const current = counts.get(token) ?? 0;
+    counts.set(token, current + 1);
+  });
+
+  let selected = '';
+  let maxCount = 0;
+  counts.forEach((count, token) => {
+    if (count > maxCount) {
+      selected = token;
+      maxCount = count;
+      return;
+    }
+    if (count === maxCount && (selected === '' || token < selected)) {
+      selected = token;
+    }
+  });
+
+  return selected;
+};
 
 const parseSdaTable = async response => {
   const contentType = response.headers.get('content-type') || '';
@@ -108,7 +141,8 @@ app.post('/api/wss-hsg', async (req, res) => {
   }
 
   try {
-    const results = [];
+    const aggregated = new Map();
+    const order = [];
     for (const chunk of chunkSymbols(symbols)) {
       const quotedSymbols = chunk
         .map(sym => `'${escapeSqlLiteral(sym)}'`)
@@ -141,13 +175,44 @@ app.post('/api/wss-hsg', async (req, res) => {
 
       const table = await parseSdaTable(response);
       table.forEach(row => {
-        results.push({
-          musym: row?.musym ?? row?.MUSYM ?? '',
-          muname: row?.muname ?? row?.MUNAME ?? '',
-          hsg: row?.hsg ?? row?.HSG ?? row?.hydgrp ?? row?.HYDGRP ?? '',
-        });
+        const musymRaw = row?.musym ?? row?.MUSYM ?? '';
+        const musym = typeof musymRaw === 'string'
+          ? musymRaw.trim().toUpperCase()
+          : String(musymRaw ?? '').trim().toUpperCase();
+        if (!musym) return;
+
+        const munameRaw = row?.muname ?? row?.MUNAME ?? '';
+        const muname = typeof munameRaw === 'string'
+          ? munameRaw.trim()
+          : String(munameRaw ?? '').trim();
+        const hsgToken = cleanHsgToken(
+          row?.hsg ?? row?.HSG ?? row?.hydgrp ?? row?.HYDGRP ?? ''
+        );
+
+        if (!aggregated.has(musym)) {
+          aggregated.set(musym, { musym, muname: '', tokens: [] });
+          order.push(musym);
+        }
+        const entry = aggregated.get(musym);
+        if (entry) {
+          if (!entry.muname && muname) {
+            entry.muname = muname;
+          }
+          if (hsgToken) {
+            entry.tokens.push(hsgToken);
+          }
+        }
       });
     }
+
+    const results = order.map(musym => {
+      const entry = aggregated.get(musym) ?? { musym, muname: '', tokens: [] };
+      return {
+        musym: entry.musym,
+        muname: entry.muname,
+        hsg: selectDominantHsg(entry.tokens),
+      };
+    });
 
     addLog(
       `Fetched ${results.length} MUSYM records from SDA for area symbol ${areaSymbol}.`

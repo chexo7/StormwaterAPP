@@ -22,6 +22,7 @@ import sys
 import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from collections import Counter
 from typing import Dict, Iterable, List
 
 import requests
@@ -51,6 +52,39 @@ def parse_table(xml: str, columns: Iterable[str]) -> List[Dict[str, str]]:
     return results
 
 
+def clean_hsg_token(raw: str | None) -> str:
+    if raw is None:
+        return ""
+    text = str(raw).strip().upper()
+    for letter in ("A", "B", "C", "D"):
+        if letter in text:
+            return letter
+    return ""
+
+
+def summarize_hsg(rows: Iterable[Dict[str, str]]) -> Dict[str, str]:
+    grouped: Dict[str, Counter[str]] = {}
+    for row in rows:
+        musym_raw = row.get("musym") or ""
+        musym = musym_raw.strip().upper()
+        if not musym:
+            continue
+        token = clean_hsg_token(row.get("hsg"))
+        if not token:
+            continue
+        grouped.setdefault(musym, Counter())[token] += 1
+
+    summary: Dict[str, str] = {}
+    for musym, counter in grouped.items():
+        if not counter:
+            continue
+        max_count = max(counter.values())
+        candidates = sorted([k for k, v in counter.items() if v == max_count])
+        if candidates:
+            summary[musym] = candidates[0]
+    return summary
+
+
 def get_area_symbols() -> List[str]:
     xml = run_query("SELECT DISTINCT areasymbol FROM legend")
     tables = parse_table(xml, ["areasymbol"])
@@ -58,27 +92,42 @@ def get_area_symbols() -> List[str]:
 
 
 def fetch_musym_hsg(area: str) -> Dict[str, str]:
-    sql = (
-        "SELECT mu.musym, muagg.hydgrpdcd FROM legend l "
-        "JOIN mapunit mu ON mu.lkey = l.lkey "
-        "JOIN muaggatt muagg ON muagg.mukey = mu.mukey "
-        f"WHERE l.areasymbol = '{area}' AND muagg.hydgrpdcd IS NOT NULL"
-    )
+    safe_area = area.replace("'", "''")
+    sql = f"""
+        SELECT
+          m.musym,
+          (
+            SELECT TOP 1 c.hydgrp
+            FROM component c
+            WHERE c.mukey = m.mukey
+            ORDER BY c.comppct_r DESC
+          ) AS hsg
+        FROM legend l
+        JOIN mapunit m ON m.lkey = l.lkey
+        WHERE l.areasymbol = '{safe_area}' AND m.musym IS NOT NULL
+    """
     xml = run_query(sql)
-    pairs = parse_table(xml, ["musym", "hydgrpdcd"])
-    return {p["musym"]: p["hydgrpdcd"] for p in pairs if p["musym"] and p["hydgrpdcd"]}
+    rows = parse_table(xml, ["musym", "hsg"])
+    return summarize_hsg(rows)
 
 
 def fetch_all_musym_hsg() -> Dict[str, str]:
     """Fetch all MUSYM to HSG pairs in a single API query."""
-    sql = (
-        "SELECT DISTINCT mu.musym, muagg.hydgrpdcd "
-        "FROM mapunit mu JOIN muaggatt muagg ON mu.mukey = muagg.mukey "
-        "WHERE muagg.hydgrpdcd IS NOT NULL"
-    )
+    sql = """
+        SELECT
+          m.musym,
+          (
+            SELECT TOP 1 c.hydgrp
+            FROM component c
+            WHERE c.mukey = m.mukey
+            ORDER BY c.comppct_r DESC
+          ) AS hsg
+        FROM mapunit m
+        WHERE m.musym IS NOT NULL
+    """
     xml = run_query(sql)
-    pairs = parse_table(xml, ["musym", "hydgrpdcd"])
-    return {p["musym"]: p["hydgrpdcd"] for p in pairs if p["musym"] and p["hydgrpdcd"]}
+    rows = parse_table(xml, ["musym", "hsg"])
+    return summarize_hsg(rows)
 
 
 def load_existing_map() -> Dict[str, str]:
