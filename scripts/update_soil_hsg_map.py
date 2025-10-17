@@ -1,145 +1,79 @@
-#!/usr/bin/env python3
-"""Utility script to update the MUSYM to HSG mapping file.
+# get_hsg_text.py
+"""
+Script interactivo para obtener el HSG (Hydrologic Soil Group) dominante
+a partir de un símbolo de suelo USDA NRCS (musym).
 
-This script queries the USDA Soil Data Access API and retrieves the
-hydrologic soil group (HSG) for each map unit symbol (MUSYM). By
-default it fetches data area by area which can take a long time.  A
-``--fast`` option is provided to download all available pairs in a
-single query.  The results are merged with the existing
-``public/data/soil-hsg-map.json`` file.
-
-Usage::
-    python update_soil_hsg_map.py [--areas AREA1 AREA2 ...]
-If no areas are provided, all available areas are fetched. Fetching
-all areas may take a long time.
+Entrada: texto ingresado por el usuario (ej. "BhC2")
+Salida: texto con la letra del grupo HSG ("A", "B", "C" o "D")
+Si el valor viene como "B/D", devuelve solo "B".
 """
 
-from __future__ import annotations
-
-import argparse
-import json
-import sys
-import time
-import xml.etree.ElementTree as ET
-from pathlib import Path
-from typing import Dict, Iterable, List
-
+import re
+from collections import Counter
+from io import StringIO
+import pandas as pd
 import requests
 
-SDM_API_URL = "https://sdmdataaccess.sc.egov.usda.gov/Tabular/post.rest"
-DATA_PATH = (
-    Path(__file__).resolve().parents[1]
-    / "public"
-    / "data"
-    / "soil-hsg-map.json"
-)
+ENDPOINT = "https://sdmdataaccess.sc.egov.usda.gov/Tabular/post.rest?format=JSON"
+HEADERS = {"Content-Type": "application/json", "Accept": "application/json"}
 
 
-def run_query(sql: str) -> str:
-    """Send a SQL query to the Soil Data Access API and return raw XML."""
-    resp = requests.post(SDM_API_URL, json={"query": sql})
-    resp.raise_for_status()
-    return resp.text
+def _run_sda_sql(sql: str) -> pd.DataFrame:
+    """Ejecuta una consulta SQL contra SDA y devuelve un DataFrame con la tabla 'Table'."""
+    r = requests.post(ENDPOINT, headers=HEADERS, json={"query": sql}, timeout=90)
+    txt = r.text
+    ct = r.headers.get("Content-Type", "")
+
+    if "application/json" in ct or txt.lstrip().startswith("{"):
+        data = r.json()
+        return pd.DataFrame(data.get("Table", []))
+
+    return pd.read_xml(StringIO(txt), xpath=".//Table")
 
 
-def parse_table(xml: str, columns: Iterable[str]) -> List[Dict[str, str]]:
-    root = ET.fromstring(xml)
-    results = []
-    for table in root.findall(".//Table"):
-        row = {col: table.findtext(col) for col in columns}
-        results.append(row)
-    return results
+def _clean_hsg_token(raw: str) -> str | None:
+    """Devuelve solo la primera letra A, B, C o D del campo HSG."""
+    if raw is None or pd.isna(raw):
+        return None
+    s = str(raw).upper().strip()
+    m = re.search(r"[ABCD]", s)
+    return m.group(0) if m else None
 
 
-def get_area_symbols() -> List[str]:
-    xml = run_query("SELECT DISTINCT areasymbol FROM legend")
-    tables = parse_table(xml, ["areasymbol"])
-    return [t["areasymbol"] for t in tables if t["areasymbol"]]
+def get_hsg(musym: str) -> str:
+    """Obtiene el HSG dominante para un musym dado."""
+    musym = musym.strip().replace("'", "''")
+    sql = f"""
+    SELECT
+      m.musym,
+      (
+        SELECT TOP 1 c.hydgrp
+        FROM component c
+        WHERE c.mukey = m.mukey
+        ORDER BY c.comppct_r DESC
+      ) AS hsg
+    FROM mapunit m
+    WHERE m.musym = '{musym}';
+    """
 
+    df = _run_sda_sql(sql)
+    if df.empty or "hsg" not in df.columns:
+        return ""
 
-def fetch_musym_hsg(area: str) -> Dict[str, str]:
-    sql = (
-        "SELECT mu.musym, muagg.hydgrpdcd FROM legend l "
-        "JOIN mapunit mu ON mu.lkey = l.lkey "
-        "JOIN muaggatt muagg ON muagg.mukey = mu.mukey "
-        f"WHERE l.areasymbol = '{area}' AND muagg.hydgrpdcd IS NOT NULL"
-    )
-    xml = run_query(sql)
-    pairs = parse_table(xml, ["musym", "hydgrpdcd"])
-    return {p["musym"]: p["hydgrpdcd"] for p in pairs if p["musym"] and p["hydgrpdcd"]}
+    tokens = [t for t in (_clean_hsg_token(v) for v in df["hsg"]) if t]
+    if not tokens:
+        return ""
 
-
-def fetch_all_musym_hsg() -> Dict[str, str]:
-    """Fetch all MUSYM to HSG pairs in a single API query."""
-    sql = (
-        "SELECT DISTINCT mu.musym, muagg.hydgrpdcd "
-        "FROM mapunit mu JOIN muaggatt muagg ON mu.mukey = muagg.mukey "
-        "WHERE muagg.hydgrpdcd IS NOT NULL"
-    )
-    xml = run_query(sql)
-    pairs = parse_table(xml, ["musym", "hydgrpdcd"])
-    return {p["musym"]: p["hydgrpdcd"] for p in pairs if p["musym"] and p["hydgrpdcd"]}
-
-
-def load_existing_map() -> Dict[str, str]:
-    if DATA_PATH.exists():
-        with open(DATA_PATH, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return {}
-
-
-def save_map(map_data: Dict[str, str]) -> None:
-    DATA_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with open(DATA_PATH, "w", encoding="utf-8") as f:
-        json.dump(map_data, f, indent=2, sort_keys=True)
-
-
-def update_map(areas: Iterable[str]) -> None:
-    existing = load_existing_map()
-    for idx, area in enumerate(areas, 1):
-        try:
-            print(f"[{idx}/{len(areas)}] Fetching {area}...")
-            pairs = fetch_musym_hsg(area)
-            existing.update(pairs)
-            time.sleep(0.2)  # be kind to the API
-        except Exception as exc:  # noqa: BLE001
-            print(f"Failed to fetch {area}: {exc}", file=sys.stderr)
-    save_map(existing)
-
-
-def main(argv: List[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Update soil-hsg-map.json")
-    parser.add_argument(
-        "--areas",
-        nargs="*",
-        help="Optional list of area symbols to fetch. Defaults to all areas.",
-    )
-    parser.add_argument(
-        "--fast",
-        action="store_true",
-        help="Fetch all MUSYM/HSG pairs in a single query (may be large)",
-    )
-    args = parser.parse_args(argv)
-
-    if args.fast:
-        existing = load_existing_map()
-        try:
-            print("Fetching all MUSYM/HSG pairs in bulk...")
-            pairs = fetch_all_musym_hsg()
-            existing.update(pairs)
-            save_map(existing)
-        except Exception as exc:  # noqa: BLE001
-            print(f"Bulk fetch failed: {exc}", file=sys.stderr)
-            return 1
-        return 0
-    elif args.areas:
-        areas = args.areas
-    else:
-        areas = get_area_symbols()
-
-    update_map(areas)
-    return 0
+    cnt = Counter(tokens)
+    max_freq = max(cnt.values())
+    candidatos = sorted([k for k, v in cnt.items() if v == max_freq])
+    return candidatos[0] if candidatos else ""
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    musym = input("Escribe el MUSYM: ").strip()
+    if musym:
+        hsg = get_hsg(musym)
+        print(hsg)
+    else:
+        print("No ingresaste un MUSYM válido.")
