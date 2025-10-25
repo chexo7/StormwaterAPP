@@ -19,14 +19,19 @@ interface ExportModalProps {
 const ExportModal: React.FC<ExportModalProps> = ({ onExportHydroCAD, onExportSWMM, onExportShapefiles, onClose, exportHydroCADEnabled, exportSWMMEnabled, exportShapefilesEnabled, projection, onProjectionChange, onProjectionConfirm, projectionConfirmed }) => {
   const [filter, setFilter] = useState('');
 
+  const SAFE_OPTIONS = useMemo(
+    () => STATE_PLANE_OPTIONS.filter((o) => !o.proj4.includes('...')),
+    []
+  );
+
   const filteredOptions = useMemo(
     () =>
-      STATE_PLANE_OPTIONS.filter(
+      SAFE_OPTIONS.filter(
         (opt) =>
           opt.name.toLowerCase().includes(filter.toLowerCase()) ||
           opt.epsg.includes(filter)
       ),
-    [filter]
+    [filter, SAFE_OPTIONS]
   );
 
   return (
