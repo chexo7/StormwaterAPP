@@ -23,6 +23,15 @@ This contains everything you need to run your app locally.
    You can control how many log entries the server keeps by setting the
    `LOG_LIMIT` environment variable (defaults to `100`).
 
+## Deploy to Vercel
+
+The repository includes a serverless function at `/api/wss-hsg` that proxies
+Web Soil Survey lookups through the backend. Vercel runs this function in the
+Node.js runtime (Edge is explicitly disabled), so the browser no longer needs
+to talk to the USDA Soil Data Access API directly—avoiding the failing CORS
+preflight request. From the client you can continue to `fetch('/api/wss-hsg')`
+with the same payload used in local development.
+
 ## Geospatial utilities
 
 The backend exposes two endpoints using Turf.js for polygon processing:
