@@ -122,6 +122,27 @@ app.use((req, res, next) => {
   next();
 });
 
+app.post('/api/sda', async (req, res) => {
+  const sqlRaw = typeof req.body?.sql === 'string' ? req.body.sql : '';
+  const sql = sqlRaw.trim();
+
+  if (!sql) {
+    addLog('Rejected SDA query: empty SQL payload', 'warn');
+    return res.status(400).json({ error: 'Missing SQL statement.' });
+  }
+
+  try {
+    const table = await runSdaSql(sql);
+    addLog(`Executed SDA proxy query with ${table.length} rows.`);
+    res.json({ table });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : 'Unknown error during SDA proxy query';
+    addLog(`Failed SDA proxy query: ${message}`, 'error');
+    res.status(502).json({ error: message });
+  }
+});
+
 app.get('/api/soil-hsg-map', (req, res) => {
   const filePath = path.join(__dirname, 'public', 'data', 'soil-hsg-map.json');
   fs.readFile(filePath, (err, data) => {
