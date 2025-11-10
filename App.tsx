@@ -651,7 +651,7 @@ const triggerHydroCADDownload = (
   projectVersion: string
 ) => {
   const blob = new Blob([content], { type: 'text/plain' });
-  const filename = `${(projectName || 'project')}_${projectVersion}.hci`;
+  const filename = `${(projectName || 'project')}_${projectVersion}.hcp`;
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
