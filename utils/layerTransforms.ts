@@ -6,6 +6,8 @@ import {
   cleanCoords as turfCleanCoords,
   featureCollection as turfFeatureCollection,
   union as turfUnion,
+  dissolve as turfDissolve,
+  flattenEach as turfFlattenEach,
 } from '@turf/turf';
 
 type Dir8 = 'N' | 'NE' | 'E' | 'SE' | 'S' | 'SW' | 'W' | 'NW';
@@ -81,6 +83,23 @@ const isPolygonFeature = (
   );
 };
 
+const extractPolygonFragments = (
+  geojson: FeatureCollection
+): Feature<Polygon | MultiPolygon>[] => {
+  const fragments: Feature<Polygon | MultiPolygon>[] = [];
+  turfFlattenEach(geojson as any, current => {
+    if (!current || !current.geometry) return;
+    if (current.geometry.type === 'Polygon' || current.geometry.type === 'MultiPolygon') {
+      fragments.push({
+        type: 'Feature',
+        geometry: current.geometry as Polygon | MultiPolygon,
+        properties: {},
+      });
+    }
+  });
+  return fragments;
+};
+
 const sanitizeMergedGeometry = (
   feature: Feature<Polygon | MultiPolygon> | null
 ): Feature<Polygon | MultiPolygon> | null => {
@@ -116,25 +135,50 @@ const sanitizeMergedGeometry = (
 export const createOverallDrainageArea = (
   geojson: FeatureCollection
 ): FeatureCollection => {
-  const polygonFeatures = geojson.features.filter(isPolygonFeature);
+  const polygonFeatures = extractPolygonFragments(geojson);
   if (polygonFeatures.length === 0) {
     return { type: 'FeatureCollection', features: [] };
   }
 
-  let merged: Feature<Polygon | MultiPolygon> | null = polygonFeatures[0];
-  for (let i = 1; i < polygonFeatures.length; i += 1) {
-    try {
-      const unioned = turfUnion(
-        turfFeatureCollection([
-          merged as Feature<Polygon | MultiPolygon>,
-          polygonFeatures[i] as Feature<Polygon | MultiPolygon>,
-        ])
-      );
-      if (unioned && (unioned.geometry.type === 'Polygon' || unioned.geometry.type === 'MultiPolygon')) {
-        merged = unioned as Feature<Polygon | MultiPolygon>;
+  let merged: Feature<Polygon | MultiPolygon> | null = null;
+
+  try {
+    const dissolved = turfDissolve(
+      turfFeatureCollection(
+        polygonFeatures.map(feature => ({
+          ...feature,
+          properties: { __merge: 1 },
+        }))
+      ),
+      { propertyName: '__merge' }
+    );
+
+    if (dissolved && dissolved.features.length > 0) {
+      const dissolvedFeature = dissolved.features.find(isPolygonFeature);
+      if (dissolvedFeature) {
+        merged = dissolvedFeature as Feature<Polygon | MultiPolygon>;
       }
-    } catch (err) {
-      console.warn('Failed to union drainage area polygon', err);
+    }
+  } catch (err) {
+    console.warn('Failed to dissolve drainage area polygons', err);
+  }
+
+  if (!merged) {
+    merged = polygonFeatures[0];
+    for (let i = 1; i < polygonFeatures.length; i += 1) {
+      try {
+        const unioned = turfUnion(
+          turfFeatureCollection([
+            merged as Feature<Polygon | MultiPolygon>,
+            polygonFeatures[i] as Feature<Polygon | MultiPolygon>,
+          ])
+        );
+        if (unioned && (unioned.geometry.type === 'Polygon' || unioned.geometry.type === 'MultiPolygon')) {
+          merged = unioned as Feature<Polygon | MultiPolygon>;
+        }
+      } catch (err) {
+        console.warn('Failed to union drainage area polygon', err);
+      }
     }
   }
 
