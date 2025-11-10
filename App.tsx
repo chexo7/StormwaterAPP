@@ -1878,6 +1878,8 @@ const App: React.FC = () => {
       let complementCount = 0;
       let skippedSubareas = 0;
       let skippedDrainageAreas = 0;
+      let subareaIntersectErrors = 0;
+      let complementDiffErrors = 0;
 
       const groupedDas = new Map<
         string,
@@ -1939,10 +1941,18 @@ const App: React.FC = () => {
                 properties: baseProps,
               };
 
-        const combinedWithinOverall = intersect(
-          combinedGeometry as any,
-          overallDrainageFeature as any
-        );
+        let combinedWithinOverall: Feature<Polygon | MultiPolygon> | null = null;
+        try {
+          const clipped = intersect(
+            combinedGeometry as any,
+            overallDrainageFeature as any
+          );
+          if (clipped && clipped.geometry) {
+            combinedWithinOverall = clipped as Feature<Polygon | MultiPolygon>;
+          }
+        } catch (error) {
+          console.warn('Failed to intersect drainage area with overall area', error);
+        }
         if (!combinedWithinOverall || !combinedWithinOverall.geometry) {
           skippedDrainageAreas++;
           return;
@@ -1970,7 +1980,21 @@ const App: React.FC = () => {
             return;
           }
 
-          const clipped = intersect(subFeature as any, geometryForProcessing as any);
+          let clipped: Feature<Polygon | MultiPolygon> | null = null;
+          try {
+            const result = intersect(
+              subFeature as any,
+              geometryForProcessing as any
+            );
+            if (result && result.geometry) {
+              clipped = result as Feature<Polygon | MultiPolygon>;
+            }
+          } catch (error) {
+            console.warn('Failed to intersect drainage subarea with drainage area', error);
+            subareaIntersectErrors++;
+            skippedSubareas++;
+            return;
+          }
           if (!clipped || !clipped.geometry) {
             skippedSubareas++;
             return;
@@ -2018,40 +2042,51 @@ const App: React.FC = () => {
 
         normalizedSubs.forEach(subFeature => {
           if (!remainderGeom) return;
-          const diff = turfDifference({
-            type: 'FeatureCollection',
-            features: [remainderGeom as any, subFeature as any],
-          } as FeatureCollection);
-          remainderGeom = diff && diff.geometry
-            ? (diff as Feature<Polygon | MultiPolygon>)
-            : null;
+          try {
+            const diff = turfDifference({
+              type: 'FeatureCollection',
+              features: [remainderGeom as any, subFeature as any],
+            } as FeatureCollection);
+            remainderGeom = diff && diff.geometry
+              ? (diff as Feature<Polygon | MultiPolygon>)
+              : null;
+          } catch (error) {
+            console.warn('Failed to compute complement geometry via difference', error);
+            complementDiffErrors++;
+            remainderGeom = null;
+          }
         });
 
         if (remainderGeom) {
-          flattenEach(remainderGeom as any, rem => {
-            if (!rem || !rem.geometry) return;
-            const remArea = turfArea(rem as any);
-            if (remArea <= AREA_TOLERANCE_SQM) return;
-            if (remArea <= MIN_COMPLEMENT_AREA_SQM) return;
+          try {
+            flattenEach(remainderGeom as any, rem => {
+              if (!rem || !rem.geometry) return;
+              const remArea = turfArea(rem as any);
+              if (remArea <= AREA_TOLERANCE_SQM) return;
+              if (remArea <= MIN_COMPLEMENT_AREA_SQM) return;
 
-            const complementProps = {
-              ...baseProps,
-              [DA_NAME_ATTR]: daName,
-              [SUBAREA_PARENT_ATTR]: daName,
-              [SUBAREA_NAME_ATTR]: `${daName} - Complement`,
-              [COMPLEMENT_FLAG_ATTR]: true,
-              [SUBAREA_AREA_ATTR]: Number((remArea * SQM_TO_ACRES).toFixed(6)),
-            };
+              const complementProps = {
+                ...baseProps,
+                [DA_NAME_ATTR]: daName,
+                [SUBAREA_PARENT_ATTR]: daName,
+                [SUBAREA_NAME_ATTR]: `${daName} - Complement`,
+                [COMPLEMENT_FLAG_ATTR]: true,
+                [SUBAREA_AREA_ATTR]: Number((remArea * SQM_TO_ACRES).toFixed(6)),
+              };
 
-            const complementFeature: Feature<Polygon | MultiPolygon> = {
-              type: 'Feature',
-              geometry: rem.geometry as Polygon | MultiPolygon,
-              properties: complementProps,
-            };
+              const complementFeature: Feature<Polygon | MultiPolygon> = {
+                type: 'Feature',
+                geometry: rem.geometry as Polygon | MultiPolygon,
+                properties: complementProps,
+              };
 
-            complementCount++;
-            processedSubareas.push(complementFeature);
-          });
+              complementCount++;
+              processedSubareas.push(complementFeature);
+            });
+          } catch (error) {
+            console.warn('Failed to iterate remainder geometry for complements', error);
+            complementDiffErrors++;
+          }
         }
       });
 
@@ -2072,6 +2107,9 @@ const App: React.FC = () => {
         const pieces = [`${processedSubareas.length} processed subareas`];
         if (complementCount > 0) pieces.push(`${complementCount} complement`);
         if (skippedSubareas > 0) pieces.push(`${skippedSubareas} skipped/trimmed`);
+        if (subareaIntersectErrors > 0) pieces.push(`${subareaIntersectErrors} subarea errors`);
+        if (complementDiffErrors > 0)
+          pieces.push(`${complementDiffErrors} complement errors`);
         if (skippedDrainageAreas > 0)
           pieces.push(`${skippedDrainageAreas} DA outside overall`);
         addLog(`Drainage subareas generated -> ${pieces.join(', ')}`);
