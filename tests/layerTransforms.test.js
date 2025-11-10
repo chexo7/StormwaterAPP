@@ -119,3 +119,67 @@ test('overall drainage area merges polygons into a single feature', async () => 
   const feature = merged.features[0];
   assert.ok(feature.geometry.type === 'Polygon' || feature.geometry.type === 'MultiPolygon');
 });
+
+test('overall drainage area closes small gaps between adjacent polygons', async () => {
+  const { createOverallDrainageArea } = await loadLayerTransforms();
+
+  const geojson = {
+    type: 'FeatureCollection',
+    features: [
+      {
+        type: 'Feature',
+        geometry: {
+          type: 'Polygon',
+          coordinates: [
+            [
+              [0, 0],
+              [0, 1],
+              [1, 1],
+              [1, 0],
+              [0, 0],
+            ],
+          ],
+        },
+        properties: {},
+      },
+      {
+        type: 'Feature',
+        geometry: {
+          type: 'Polygon',
+          coordinates: [
+            [
+              [0.99995, 0],
+              [0.99995, 1],
+              [1.99995, 1],
+              [1.99995, 0],
+              [0.99995, 0],
+            ],
+          ],
+        },
+        properties: {},
+      },
+      {
+        type: 'Feature',
+        geometry: {
+          type: 'Polygon',
+          coordinates: [
+            [
+              [1.9999, 0],
+              [1.9999, 1],
+              [2.9999, 1],
+              [2.9999, 0],
+              [1.9999, 0],
+            ],
+          ],
+        },
+        properties: {},
+      },
+    ],
+  };
+
+  const merged = createOverallDrainageArea(geojson);
+  assert.strictEqual(merged.type, 'FeatureCollection');
+  assert.strictEqual(merged.features.length, 1);
+  const feature = merged.features[0];
+  assert.ok(feature.geometry.type === 'Polygon' || feature.geometry.type === 'MultiPolygon');
+});

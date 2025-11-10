@@ -2,8 +2,10 @@ import type { FeatureCollection, Feature, LineString, Point, Polygon, MultiPolyg
 import type { LayerData } from '../types';
 import { getDir } from './direction';
 import {
+  bbox as turfBbox,
   buffer as turfBuffer,
   cleanCoords as turfCleanCoords,
+  dissolve as turfDissolve,
   featureCollection as turfFeatureCollection,
   union as turfUnion,
 } from '@turf/turf';
@@ -113,6 +115,54 @@ const sanitizeMergedGeometry = (
   return cleaned;
 };
 
+const closeSmallGaps = (
+  feature: Feature<Polygon | MultiPolygon> | null
+): Feature<Polygon | MultiPolygon> | null => {
+  if (!feature || !feature.geometry) return feature;
+  if (feature.geometry.type === 'Polygon') return feature;
+  const polygons = feature.geometry.coordinates;
+  if (!Array.isArray(polygons) || polygons.length <= 1) return feature;
+
+  let epsilon = 0;
+  try {
+    const [minX, minY, maxX, maxY] = turfBbox(feature as any);
+    const span = Math.max(maxX - minX, maxY - minY);
+    if (Number.isFinite(span) && span > 0) {
+      epsilon = span * 1e-4;
+    }
+  } catch (err) {
+    console.warn('Failed to compute bbox for merged drainage area', err);
+  }
+
+  if (!epsilon || !Number.isFinite(epsilon)) {
+    return feature;
+  }
+
+  try {
+    const expanded = turfBuffer(feature as any, epsilon, { units: 'meters' });
+    if (!expanded || !expanded.geometry) return feature;
+    const contracted = turfBuffer(expanded as any, -epsilon, {
+      units: 'meters',
+    });
+    if (
+      contracted &&
+      contracted.geometry &&
+      (contracted.geometry.type === 'Polygon' ||
+        contracted.geometry.type === 'MultiPolygon')
+    ) {
+      return {
+        type: 'Feature',
+        geometry: contracted.geometry,
+        properties: feature.properties || {},
+      } as Feature<Polygon | MultiPolygon>;
+    }
+  } catch (err) {
+    console.warn('Failed to close small gaps in merged drainage area', err);
+  }
+
+  return feature;
+};
+
 export const createOverallDrainageArea = (
   geojson: FeatureCollection
 ): FeatureCollection => {
@@ -121,24 +171,72 @@ export const createOverallDrainageArea = (
     return { type: 'FeatureCollection', features: [] };
   }
 
-  let merged: Feature<Polygon | MultiPolygon> | null = polygonFeatures[0];
-  for (let i = 1; i < polygonFeatures.length; i += 1) {
-    try {
-      const unioned = turfUnion(
-        turfFeatureCollection([
-          merged as Feature<Polygon | MultiPolygon>,
-          polygonFeatures[i] as Feature<Polygon | MultiPolygon>,
-        ])
-      );
-      if (unioned && (unioned.geometry.type === 'Polygon' || unioned.geometry.type === 'MultiPolygon')) {
-        merged = unioned as Feature<Polygon | MultiPolygon>;
+  let merged: Feature<Polygon | MultiPolygon> | null = null;
+
+  try {
+    const dissolved = turfDissolve(
+      turfFeatureCollection(
+        polygonFeatures as Feature<Polygon | MultiPolygon>[]
+      )
+    );
+    if (dissolved && Array.isArray(dissolved.features)) {
+      const dissolvedPolygons = dissolved.features.filter(isPolygonFeature);
+      if (dissolvedPolygons.length === 1) {
+        merged = dissolvedPolygons[0] as Feature<Polygon | MultiPolygon>;
+      } else if (dissolvedPolygons.length > 1) {
+        merged = dissolvedPolygons.reduce<
+          Feature<Polygon | MultiPolygon> | null
+        >((acc, feature) => {
+          if (!acc) return feature as Feature<Polygon | MultiPolygon>;
+          try {
+            const unioned = turfUnion(
+              turfFeatureCollection([
+                acc,
+                feature as Feature<Polygon | MultiPolygon>,
+              ])
+            );
+            if (
+              unioned &&
+              (unioned.geometry.type === 'Polygon' ||
+                unioned.geometry.type === 'MultiPolygon')
+            ) {
+              return unioned as Feature<Polygon | MultiPolygon>;
+            }
+          } catch (err) {
+            console.warn('Failed to union dissolved drainage polygon', err);
+          }
+          return acc;
+        }, null);
       }
-    } catch (err) {
-      console.warn('Failed to union drainage area polygon', err);
+    }
+  } catch (err) {
+    console.warn('Failed to dissolve drainage area polygons', err);
+  }
+
+  if (!merged) {
+    merged = polygonFeatures[0];
+    for (let i = 1; i < polygonFeatures.length; i += 1) {
+      try {
+        const unioned = turfUnion(
+          turfFeatureCollection([
+            merged as Feature<Polygon | MultiPolygon>,
+            polygonFeatures[i] as Feature<Polygon | MultiPolygon>,
+          ])
+        );
+        if (
+          unioned &&
+          (unioned.geometry.type === 'Polygon' ||
+            unioned.geometry.type === 'MultiPolygon')
+        ) {
+          merged = unioned as Feature<Polygon | MultiPolygon>;
+        }
+      } catch (err) {
+        console.warn('Failed to union drainage area polygon', err);
+      }
     }
   }
 
-  const cleaned = sanitizeMergedGeometry(merged);
+  const cleaned = sanitizeMergedGeometry(closeSmallGaps(merged));
   if (!cleaned || !cleaned.geometry) {
     return { type: 'FeatureCollection', features: [] };
   }
