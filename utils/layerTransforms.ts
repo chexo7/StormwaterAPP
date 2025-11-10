@@ -5,6 +5,7 @@ import {
   bbox as turfBbox,
   buffer as turfBuffer,
   cleanCoords as turfCleanCoords,
+  convertLength as turfConvertLength,
   dissolve as turfDissolve,
   featureCollection as turfFeatureCollection,
   union as turfUnion,
@@ -124,8 +125,10 @@ const closeSmallGaps = (
   if (!Array.isArray(polygons) || polygons.length <= 1) return feature;
 
   let epsilon = 0;
+  let bbox: [number, number, number, number] | null = null;
   try {
-    const [minX, minY, maxX, maxY] = turfBbox(feature as any);
+    bbox = turfBbox(feature as any) as [number, number, number, number];
+    const [minX, minY, maxX, maxY] = bbox;
     const span = Math.max(maxX - minX, maxY - minY);
     if (Number.isFinite(span) && span > 0) {
       epsilon = span * 1e-4;
@@ -139,10 +142,36 @@ const closeSmallGaps = (
   }
 
   try {
-    const expanded = turfBuffer(feature as any, epsilon, { units: 'meters' });
+    let bufferDistance = epsilon;
+    let bufferUnits: 'meters' | 'degrees' = 'meters';
+    if (bbox) {
+      const [minX, minY, maxX, maxY] = bbox;
+      const maxAbsLon = Math.max(Math.abs(minX), Math.abs(maxX));
+      const maxAbsLat = Math.max(Math.abs(minY), Math.abs(maxY));
+      const isLikelyGeographic = maxAbsLon <= 180 && maxAbsLat <= 90;
+      if (isLikelyGeographic) {
+        try {
+          bufferDistance = turfConvertLength(epsilon, 'degrees', 'meters');
+        } catch (err) {
+          console.warn(
+            'Failed to convert epsilon to meters; falling back to degree buffering',
+            err
+          );
+          bufferUnits = 'degrees';
+        }
+      }
+    }
+
+    if (!bufferDistance || !Number.isFinite(bufferDistance)) {
+      return feature;
+    }
+
+    const expanded = turfBuffer(feature as any, bufferDistance, {
+      units: bufferUnits,
+    });
     if (!expanded || !expanded.geometry) return feature;
-    const contracted = turfBuffer(expanded as any, -epsilon, {
-      units: 'meters',
+    const contracted = turfBuffer(expanded as any, -bufferDistance, {
+      units: bufferUnits,
     });
     if (
       contracted &&
