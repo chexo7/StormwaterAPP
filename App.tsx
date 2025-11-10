@@ -49,8 +49,6 @@ const SUBAREA_AREA_ATTR = 'SUBAREA_AC';
 const SQM_TO_ACRES = 0.000247105381;
 const SQM_TO_SQFT = 10.76391041671;
 const ACRE_TO_SQFT = 43560;
-const MIN_COMPLEMENT_AREA_SF = 100;
-const MIN_COMPLEMENT_AREA_SQM = MIN_COMPLEMENT_AREA_SF / SQM_TO_SQFT;
 const AREA_TOLERANCE_SQM = 0.01;
 const SUBAREA_AREA_TOLERANCE_SF = 5;
 
@@ -346,10 +344,7 @@ const normalizeOverlayPiecesBySubarea = (
   return { features: normalizedFeatures, coverageIssues };
 };
 
-const aggregateOverlayForHydroCAD = (
-  features: Feature[],
-  subareas: Feature<Polygon | MultiPolygon>[]
-): HydroCADSubcatchment[] => {
+const aggregateOverlayForHydroCAD = (features: Feature[]): HydroCADSubcatchment[] => {
   type SubareaAggregate = {
     name: string;
     order: number;
@@ -384,24 +379,16 @@ const aggregateOverlayForHydroCAD = (
     return aggregate;
   };
 
-  subareas.forEach((subFeature, index) => {
-    const props = subFeature.properties || {};
-    const rawName = (props as any)[SUBAREA_NAME_ATTR];
-    const fallback = `Subarea ${index + 1}`;
-    const parentRaw = (props as any)[SUBAREA_PARENT_ATTR] ?? null;
-    ensureAggregate(rawName, fallback, index, parentRaw);
-  });
-
   features.forEach((feature, idx) => {
     if (!feature.properties) return;
 
     const rawName = (feature.properties as any)[SUBAREA_NAME_ATTR];
-    const fallback = `Subarea ${subareas.length + idx + 1}`;
+    const fallback = `Subarea ${idx + 1}`;
     const parentRaw = (feature.properties as any)[SUBAREA_PARENT_ATTR] ?? null;
     const aggregate = ensureAggregate(
       rawName,
       fallback,
-      subareas.length + idx,
+      idx,
       parentRaw
     );
 
@@ -1735,7 +1722,7 @@ const App: React.FC = () => {
     const tasks: ComputeTask[] = [
       { id: 'check_overall', name: 'Validate Overall Drainage Area', status: 'pending' },
       { id: 'check_attrs', name: 'Validate required attributes', status: 'pending' },
-      { id: 'prepare_subareas', name: 'Build drainage subareas with complements', status: 'pending' },
+      { id: 'prepare_subareas', name: 'Build drainage subareas', status: 'pending' },
       { id: 'overlay', name: 'Execute SCS overlay analysis', status: 'pending' },
       { id: 'hydrocad', name: 'Generate HydroCAD file (SCS)', status: 'pending' },
     ];
@@ -1863,23 +1850,16 @@ const App: React.FC = () => {
     }
 
     try {
-      const {
-        intersect: turfIntersect,
-        difference: turfDifference,
-        flattenEach,
-        area: turfArea,
-      } = await import('@turf/turf');
+      const { intersect: turfIntersect, flattenEach, area: turfArea } = await import('@turf/turf');
 
       const intersect = (a: Feature | any, b: Feature | any) =>
         turfIntersect({ type: 'FeatureCollection', features: [a, b] } as any);
 
       const resultLayers: LayerData[] = [];
       const processedSubareas: Feature<Polygon | MultiPolygon>[] = [];
-      let complementCount = 0;
       let skippedSubareas = 0;
       let skippedDrainageAreas = 0;
       let subareaIntersectErrors = 0;
-      let complementDiffErrors = 0;
 
       const groupedDas = new Map<
         string,
@@ -2034,60 +2014,6 @@ const App: React.FC = () => {
           processedSubareas.push(normalizedFeature);
         });
 
-        let remainderGeom: Feature<Polygon | MultiPolygon> | null = {
-          type: 'Feature',
-          geometry: geometryForProcessing.geometry as Polygon | MultiPolygon,
-          properties: baseProps,
-        };
-
-        normalizedSubs.forEach(subFeature => {
-          if (!remainderGeom) return;
-          try {
-            const diff = turfDifference({
-              type: 'FeatureCollection',
-              features: [remainderGeom as any, subFeature as any],
-            } as FeatureCollection);
-            remainderGeom = diff && diff.geometry
-              ? (diff as Feature<Polygon | MultiPolygon>)
-              : null;
-          } catch (error) {
-            console.warn('Failed to compute complement geometry via difference', error);
-            complementDiffErrors++;
-            remainderGeom = null;
-          }
-        });
-
-        if (remainderGeom) {
-          try {
-            flattenEach(remainderGeom as any, rem => {
-              if (!rem || !rem.geometry) return;
-              const remArea = turfArea(rem as any);
-              if (remArea <= AREA_TOLERANCE_SQM) return;
-              if (remArea <= MIN_COMPLEMENT_AREA_SQM) return;
-
-              const complementProps = {
-                ...baseProps,
-                [DA_NAME_ATTR]: daName,
-                [SUBAREA_PARENT_ATTR]: daName,
-                [SUBAREA_NAME_ATTR]: `${daName} - Complement`,
-                [COMPLEMENT_FLAG_ATTR]: true,
-                [SUBAREA_AREA_ATTR]: Number((remArea * SQM_TO_ACRES).toFixed(6)),
-              };
-
-              const complementFeature: Feature<Polygon | MultiPolygon> = {
-                type: 'Feature',
-                geometry: rem.geometry as Polygon | MultiPolygon,
-                properties: complementProps,
-              };
-
-              complementCount++;
-              processedSubareas.push(complementFeature);
-            });
-          } catch (error) {
-            console.warn('Failed to iterate remainder geometry for complements', error);
-            complementDiffErrors++;
-          }
-        }
       });
 
       if (processedSubareas.length > 0) {
@@ -2105,11 +2031,8 @@ const App: React.FC = () => {
           prev.map(t => (t.id === 'prepare_subareas' ? { ...t, status: 'success' } : t))
         );
         const pieces = [`${processedSubareas.length} processed subareas`];
-        if (complementCount > 0) pieces.push(`${complementCount} complement`);
         if (skippedSubareas > 0) pieces.push(`${skippedSubareas} skipped/trimmed`);
         if (subareaIntersectErrors > 0) pieces.push(`${subareaIntersectErrors} subarea errors`);
-        if (complementDiffErrors > 0)
-          pieces.push(`${complementDiffErrors} complement errors`);
         if (skippedDrainageAreas > 0)
           pieces.push(`${skippedDrainageAreas} DA outside overall`);
         addLog(`Drainage subareas generated -> ${pieces.join(', ')}`);
@@ -2214,7 +2137,7 @@ const App: React.FC = () => {
         addLog(`Overlay created with ${overlay.length} features`);
 
         try {
-          const subcatchments = aggregateOverlayForHydroCAD(overlay, processedSubareas);
+          const subcatchments = aggregateOverlayForHydroCAD(overlay);
           if (subcatchments.length === 0) {
             throw new Error('No hay combinaciones válidas de CN para generar HydroCAD.');
           }
