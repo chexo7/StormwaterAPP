@@ -167,10 +167,7 @@ const clipCollectionToOverall = (
       return;
     }
     try {
-      const clipped = turfIntersect({
-        type: 'FeatureCollection',
-        features: [feature as any, overall as any],
-      } as any);
+      const clipped = turfIntersect(feature as any, overall as any);
       if (!clipped || !clipped.geometry) return;
       if (
         clipped.geometry.type !== 'Polygon' &&
@@ -1871,7 +1868,7 @@ const App: React.FC = () => {
       } = await import('@turf/turf');
 
       const intersect = (a: Feature | any, b: Feature | any) =>
-        turfIntersect({ type: 'FeatureCollection', features: [a, b] } as any);
+        turfIntersect(a as any, b as any);
 
       const resultLayers: LayerData[] = [];
       const processedSubareas: Feature<Polygon | MultiPolygon>[] = [];
@@ -2018,13 +2015,83 @@ const App: React.FC = () => {
 
         normalizedSubs.forEach(subFeature => {
           if (!remainderGeom) return;
-          const diff = turfDifference({
-            type: 'FeatureCollection',
-            features: [remainderGeom as any, subFeature as any],
-          } as FeatureCollection);
-          remainderGeom = diff && diff.geometry
-            ? (diff as Feature<Polygon | MultiPolygon>)
-            : null;
+          const diff = turfDifference(remainderGeom as any, subFeature as any);
+          if (!diff || !diff.geometry) {
+            remainderGeom = null;
+            return;
+          }
+
+          const geom = diff.geometry;
+          if (geom.type === 'Polygon' || geom.type === 'MultiPolygon') {
+            remainderGeom = {
+              type: 'Feature',
+              geometry: geom as Polygon | MultiPolygon,
+              properties: baseProps,
+            };
+            return;
+          }
+
+          const pieces: Feature<Polygon | MultiPolygon>[] = [];
+          flattenEach(diff as any, piece => {
+            if (!piece || !piece.geometry) return;
+            if (
+              piece.geometry.type !== 'Polygon' &&
+              piece.geometry.type !== 'MultiPolygon'
+            ) {
+              return;
+            }
+            pieces.push({
+              type: 'Feature',
+              geometry: piece.geometry as Polygon | MultiPolygon,
+              properties: baseProps,
+            });
+          });
+
+          if (pieces.length === 0) {
+            remainderGeom = null;
+            return;
+          }
+
+          if (pieces.length === 1) {
+            remainderGeom = pieces[0];
+            return;
+          }
+
+          const multiCoords: number[][][][] = [];
+          pieces.forEach(piece => {
+            const geometry = piece.geometry;
+            if (geometry.type === 'Polygon') {
+              multiCoords.push(geometry.coordinates);
+            } else {
+              geometry.coordinates.forEach(coords => multiCoords.push(coords));
+            }
+          });
+
+          if (multiCoords.length === 0) {
+            remainderGeom = null;
+            return;
+          }
+
+          if (multiCoords.length === 1) {
+            remainderGeom = {
+              type: 'Feature',
+              geometry: {
+                type: 'Polygon',
+                coordinates: multiCoords[0],
+              } as Polygon,
+              properties: baseProps,
+            };
+            return;
+          }
+
+          remainderGeom = {
+            type: 'Feature',
+            geometry: {
+              type: 'MultiPolygon',
+              coordinates: multiCoords,
+            } as MultiPolygon,
+            properties: baseProps,
+          };
         });
 
         if (remainderGeom) {
