@@ -53,7 +53,11 @@ export const formatDischargePointName = (value: unknown): string => {
   const trailingDigits = normalized.match(/(\d{1,2})$/);
   if (trailingDigits) {
     const num = parseInt(trailingDigits[1], 10);
-    if (Number.isFinite(num) && num >= 1) {
+    const suffixIndex = normalized.lastIndexOf(trailingDigits[1]);
+    const prefix = normalized.slice(0, suffixIndex);
+    const lastNonSpaceChar = prefix.trimEnd().slice(-1);
+    const hasNegativeIndicator = ['-', '–', '—', '−'].includes(lastNonSpaceChar);
+    if (Number.isFinite(num) && num >= 1 && !hasNegativeIndicator) {
       return `DP-${num.toString().padStart(2, '0')}`;
     }
   }
