@@ -5,8 +5,11 @@ import {
   buffer as turfBuffer,
   cleanCoords as turfCleanCoords,
   featureCollection as turfFeatureCollection,
+  flattenEach as turfFlattenEach,
+  bbox as turfBbox,
   union as turfUnion,
 } from '@turf/turf';
+import polygonClipping from 'polygon-clipping';
 
 type Dir8 = 'N' | 'NE' | 'E' | 'SE' | 'S' | 'SW' | 'W' | 'NW';
 
@@ -81,7 +84,7 @@ const isPolygonFeature = (
   );
 };
 
-const sanitizeMergedGeometry = (
+const sanitizePolygonGeometry = (
   feature: Feature<Polygon | MultiPolygon> | null
 ): Feature<Polygon | MultiPolygon> | null => {
   if (!feature) return null;
@@ -121,24 +124,122 @@ export const createOverallDrainageArea = (
     return { type: 'FeatureCollection', features: [] };
   }
 
-  let merged: Feature<Polygon | MultiPolygon> | null = polygonFeatures[0];
-  for (let i = 1; i < polygonFeatures.length; i += 1) {
+  const sanitizedPolygons: Feature<Polygon | MultiPolygon>[] = [];
+  turfFlattenEach(
+    turfFeatureCollection(polygonFeatures as Feature<Polygon | MultiPolygon>[]),
+    feature => {
+      if (!feature || !feature.geometry) return;
+      const sanitized = sanitizePolygonGeometry(feature as Feature<Polygon | MultiPolygon>);
+      if (sanitized && sanitized.geometry) {
+        sanitizedPolygons.push(sanitized);
+      }
+    }
+  );
+
+  if (sanitizedPolygons.length === 0) {
+    return { type: 'FeatureCollection', features: [] };
+  }
+
+  const combineAsMultiPolygon = (
+    a: Feature<Polygon | MultiPolygon>,
+    b: Feature<Polygon | MultiPolygon>
+  ): Feature<Polygon | MultiPolygon> => {
+    const coordsA =
+      a.geometry.type === 'Polygon'
+        ? [a.geometry.coordinates]
+        : a.geometry.coordinates;
+    const coordsB =
+      b.geometry.type === 'Polygon'
+        ? [b.geometry.coordinates]
+        : b.geometry.coordinates;
+    return {
+      type: 'Feature',
+      geometry: {
+        type: 'MultiPolygon',
+        coordinates: [...coordsA, ...coordsB],
+      },
+      properties: {},
+    } as Feature<Polygon | MultiPolygon>;
+  };
+
+  let merged: Feature<Polygon | MultiPolygon> | null = sanitizedPolygons[0];
+  for (let i = 1; i < sanitizedPolygons.length; i += 1) {
+    const current = sanitizedPolygons[i];
+    if (!merged) {
+      merged = current;
+      continue;
+    }
     try {
       const unioned = turfUnion(
         turfFeatureCollection([
           merged as Feature<Polygon | MultiPolygon>,
-          polygonFeatures[i] as Feature<Polygon | MultiPolygon>,
+          current,
         ])
       );
-      if (unioned && (unioned.geometry.type === 'Polygon' || unioned.geometry.type === 'MultiPolygon')) {
+      if (
+        unioned &&
+        (unioned.geometry.type === 'Polygon' || unioned.geometry.type === 'MultiPolygon')
+      ) {
         merged = unioned as Feature<Polygon | MultiPolygon>;
+        continue;
       }
     } catch (err) {
       console.warn('Failed to union drainage area polygon', err);
     }
+
+    const bbox = turfBbox(
+      turfFeatureCollection([
+        merged as Feature<Polygon | MultiPolygon>,
+        current,
+      ])
+    );
+    const width = Math.abs(bbox[2] - bbox[0]);
+    const height = Math.abs(bbox[3] - bbox[1]);
+    const scale = Math.max(width, height);
+    const precisionFactor = scale > 0 ? Math.pow(10, Math.max(4, Math.min(9, Math.floor(Math.log10(scale)) + 7))) : 1e9;
+
+    const toPolygonClippingInput = (feature: Feature<Polygon | MultiPolygon>) => {
+      const coords =
+        feature.geometry.type === 'Polygon'
+          ? [feature.geometry.coordinates]
+          : feature.geometry.coordinates;
+      return coords.map(polygon =>
+        polygon.map(ring =>
+          ring.map(coord => {
+            const [x, y] = coord;
+            const roundedX = Math.round(x * precisionFactor) / precisionFactor;
+            const roundedY = Math.round(y * precisionFactor) / precisionFactor;
+            return [roundedX, roundedY];
+          })
+        )
+      );
+    };
+
+    try {
+      const unionedCoords = polygonClipping.union(
+        toPolygonClippingInput(merged),
+        toPolygonClippingInput(current)
+      );
+      if (unionedCoords && unionedCoords.length > 0) {
+        const geometry =
+          unionedCoords.length === 1
+            ? { type: 'Polygon', coordinates: unionedCoords[0] }
+            : { type: 'MultiPolygon', coordinates: unionedCoords };
+        merged = {
+          type: 'Feature',
+          geometry: geometry as Polygon | MultiPolygon,
+          properties: {},
+        };
+        continue;
+      }
+    } catch (err) {
+      console.warn('Failed to union drainage area polygon using polygon-clipping fallback', err);
+    }
+
+    merged = combineAsMultiPolygon(merged, current);
   }
 
-  const cleaned = sanitizeMergedGeometry(merged);
+  const cleaned = sanitizePolygonGeometry(merged);
   if (!cleaned || !cleaned.geometry) {
     return { type: 'FeatureCollection', features: [] };
   }

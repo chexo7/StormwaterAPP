@@ -25,6 +25,12 @@ const loadLayerTransforms = async () => {
   const turfUrl = new URL('../node_modules/@turf/turf/dist/esm/index.js', import.meta.url);
   outputText = outputText.replace(/from\s+['"]@turf\/turf['"]/g, `from '${turfUrl.href}'`);
 
+  const polygonClippingUrl = new URL('../node_modules/polygon-clipping/dist/polygon-clipping.esm.js', import.meta.url);
+  outputText = outputText.replace(
+    /from\s+['"]polygon-clipping['"]/g,
+    `from '${polygonClippingUrl.href}'`
+  );
+
   const tmpFile = join(tmpdir(), `layerTransforms-${randomUUID()}.mjs`);
   await writeFile(tmpFile, outputText);
   try {
@@ -117,5 +123,63 @@ test('overall drainage area merges polygons into a single feature', async () => 
   assert.strictEqual(merged.type, 'FeatureCollection');
   assert.strictEqual(merged.features.length, 1);
   const feature = merged.features[0];
-  assert.ok(feature.geometry.type === 'Polygon' || feature.geometry.type === 'MultiPolygon');
+  assert.strictEqual(feature.geometry.type, 'Polygon');
+});
+
+test('overall drainage area flattens multipolygon inputs before merging', async () => {
+  const { createOverallDrainageArea } = await loadLayerTransforms();
+
+  const geojson = {
+    type: 'FeatureCollection',
+    features: [
+      {
+        type: 'Feature',
+        geometry: {
+          type: 'MultiPolygon',
+          coordinates: [
+            [
+              [
+                [0, 0],
+                [2, 0],
+                [2, 2],
+                [0, 2],
+                [0, 0],
+              ],
+            ],
+            [
+              [
+                [4, 0],
+                [6, 0],
+                [6, 2],
+                [4, 2],
+                [4, 0],
+              ],
+            ],
+          ],
+        },
+        properties: {},
+      },
+      {
+        type: 'Feature',
+        geometry: {
+          type: 'Polygon',
+          coordinates: [
+            [
+              [2, -0.5],
+              [4, -0.5],
+              [4, 2.5],
+              [2, 2.5],
+              [2, -0.5],
+            ],
+          ],
+        },
+        properties: {},
+      },
+    ],
+  };
+
+  const merged = createOverallDrainageArea(geojson);
+  assert.strictEqual(merged.features.length, 1);
+  const { geometry } = merged.features[0];
+  assert.ok(geometry.type === 'Polygon' || geometry.type === 'MultiPolygon');
 });
