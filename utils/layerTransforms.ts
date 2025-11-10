@@ -36,6 +36,7 @@ export const formatDischargePointName = (value: unknown): string => {
       const padded = String(num).padStart(2, '0');
       return `DP-${padded}`;
     }
+    return String(num);
   }
 
   const sanitized = sanitizeText(value);
@@ -52,9 +53,13 @@ export const formatDischargePointName = (value: unknown): string => {
 
   const trailingDigits = normalized.match(/(\d{1,2})$/);
   if (trailingDigits) {
-    const num = parseInt(trailingDigits[1], 10);
-    if (Number.isFinite(num) && num >= 1) {
-      return `DP-${num.toString().padStart(2, '0')}`;
+    const precedingIndex = normalized.length - trailingDigits[1].length - 1;
+    const precedingChar = precedingIndex >= 0 ? normalized[precedingIndex] : '';
+    if (precedingChar !== '-') {
+      const num = parseInt(trailingDigits[1], 10);
+      if (Number.isFinite(num) && num >= 1) {
+        return `DP-${num.toString().padStart(2, '0')}`;
+      }
     }
   }
 
