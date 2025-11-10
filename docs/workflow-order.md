@@ -10,7 +10,7 @@ This checklist captures the sequencing rules that keep the revised hydrologic wo
 2. **Load Drainage Subareas**
    - Once every Drainage Area polygon has a DP, upload the `Drainage Subareas` layer (ZIPs like `SUB-DA.zip`).
    - For each subarea polygon pick a `DRAINAGE AREA - #` name and link it to one of the available Drainage Area discharge points.
-   - Ensure the set of subareas tied to a DP fully covers the parent Drainage Area (the processor will auto-create complements for any remainder).
+   - Ensure the set of subareas tied to a DP fully covers the parent Drainage Area before running the processor.
 
 3. **Load LOD**
    - Upload the `LOD` layer at any point; it does not gate other datasets but is required before computing.
@@ -25,6 +25,6 @@ This checklist captures the sequencing rules that keep the revised hydrologic wo
 
 6. **Review Before Compute**
    - Confirm every layer needed for SCS calculations is present: `LOD`, `Drainage Areas`, `Drainage Subareas`, `Land Cover`, and `Soil Layer from Web Soil Survey`.
-   - Spot-check logs for auto-generated complements or trimming notices before running the compute overlay.
+   - Spot-check logs for trimming notices before running the compute overlay.
 
 Keep this list close to the upload logic and update both when requirements evolve.
