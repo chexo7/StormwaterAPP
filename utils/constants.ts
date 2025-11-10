@@ -2,6 +2,10 @@ export const ARCHIVE_NAME_MAP: Record<string, string> = {
   'da.zip': 'Drainage Areas',
   'da-to-dp.zip': 'Drainage Areas',
   'da_to_dp.zip': 'Drainage Areas',
+  'overall.zip': 'Overall Drainage Area',
+  'overall drainage area.zip': 'Overall Drainage Area',
+  'overall_drainage_area.zip': 'Overall Drainage Area',
+  'overall-drainage-area.zip': 'Overall Drainage Area',
   'subareas.zip': 'Drainage Subareas',
   'sub-da.zip': 'Drainage Subareas',
   'sub_da.zip': 'Drainage Subareas',
@@ -18,6 +22,7 @@ export const ARCHIVE_NAME_MAP: Record<string, string> = {
 
 export const KNOWN_LAYER_NAMES = [
   'Drainage Areas',
+  'Overall Drainage Area',
   'Drainage Subareas',
   'Land Cover',
   'LOD',
