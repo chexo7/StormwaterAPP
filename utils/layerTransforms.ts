@@ -6,7 +6,9 @@ import {
   buffer as turfBuffer,
   cleanCoords as turfCleanCoords,
   dissolve as turfDissolve,
+  distance as turfDistance,
   featureCollection as turfFeatureCollection,
+  point as turfPoint,
   union as turfUnion,
 } from '@turf/turf';
 
@@ -127,8 +129,33 @@ const closeSmallGaps = (
   try {
     const [minX, minY, maxX, maxY] = turfBbox(feature as any);
     const span = Math.max(maxX - minX, maxY - minY);
-    if (Number.isFinite(span) && span > 0) {
-      epsilon = span * 1e-4;
+    const withinLatLonRange =
+      Number.isFinite(minX) &&
+      Number.isFinite(maxX) &&
+      Number.isFinite(minY) &&
+      Number.isFinite(maxY) &&
+      Math.max(Math.abs(minX), Math.abs(maxX)) <= 180 &&
+      Math.max(Math.abs(minY), Math.abs(maxY)) <= 90;
+
+    let spanInMeters = span;
+
+    if (withinLatLonRange) {
+      const westSouth = turfPoint([minX, minY]);
+      const eastSouth = turfPoint([maxX, minY]);
+      const westNorth = turfPoint([minX, maxY]);
+
+      const horizontal = turfDistance(westSouth, eastSouth, {
+        units: 'kilometers',
+      });
+      const vertical = turfDistance(westSouth, westNorth, {
+        units: 'kilometers',
+      });
+
+      spanInMeters = Math.max(horizontal, vertical) * 1000;
+    }
+
+    if (Number.isFinite(spanInMeters) && spanInMeters > 0) {
+      epsilon = spanInMeters * 1e-4;
     }
   } catch (err) {
     console.warn('Failed to compute bbox for merged drainage area', err);
