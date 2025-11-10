@@ -7,6 +7,7 @@ import {
   cleanCoords as turfCleanCoords,
   dissolve as turfDissolve,
   featureCollection as turfFeatureCollection,
+  convertLength as turfConvertLength,
   union as turfUnion,
 } from '@turf/turf';
 
@@ -124,11 +125,28 @@ const closeSmallGaps = (
   if (!Array.isArray(polygons) || polygons.length <= 1) return feature;
 
   let epsilon = 0;
+  let bbox: [number, number, number, number] | null = null;
   try {
-    const [minX, minY, maxX, maxY] = turfBbox(feature as any);
+    bbox = turfBbox(feature as any) as [number, number, number, number];
+    const [minX, minY, maxX, maxY] = bbox;
     const span = Math.max(maxX - minX, maxY - minY);
     if (Number.isFinite(span) && span > 0) {
       epsilon = span * 1e-4;
+      const isLikelyLonLat =
+        Math.abs(minX) <= 180 &&
+        Math.abs(maxX) <= 180 &&
+        Math.abs(minY) <= 90 &&
+        Math.abs(maxY) <= 90;
+      if (isLikelyLonLat) {
+        try {
+          epsilon = turfConvertLength(epsilon, 'degrees', 'meters');
+        } catch (convertErr) {
+          console.warn(
+            'Failed to convert drainage gap closing distance from degrees to meters',
+            convertErr
+          );
+        }
+      }
     }
   } catch (err) {
     console.warn('Failed to compute bbox for merged drainage area', err);
