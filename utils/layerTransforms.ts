@@ -270,7 +270,10 @@ const normalizeLandCover = (
   cloneGeojson(
     geojson,
     geojson.features.map(feature => {
-      const rawSource = (feature.properties as any)?.LandCover ?? (feature.properties as any)?.LAND_COVER;
+      const rawSource =
+        (feature.properties as any)?.LandCover ??
+        (feature.properties as any)?.Landcover ??
+        (feature.properties as any)?.LAND_COVER;
       const rawValue = rawSource == null ? '' : String(rawSource);
       const match = landCoverOptions.find(opt => opt.toLowerCase() === rawValue.toLowerCase());
       return {
