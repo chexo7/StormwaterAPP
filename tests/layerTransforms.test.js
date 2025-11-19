@@ -72,6 +72,22 @@ test('catch basin retains zero-valued readings after normalization', async () =>
   assert.strictEqual(props['Elevation Ground [ft]'], 0);
 });
 
+test('discharge point formatter preserves negative identifiers', async () => {
+  const { formatDischargePointName } = await loadLayerTransforms();
+
+  assert.strictEqual(formatDischargePointName(-1), '-1');
+  assert.strictEqual(formatDischargePointName('-1'), '-1');
+  assert.strictEqual(formatDischargePointName('Drainage Area -1'), 'DRAINAGE AREA -1');
+});
+
+test('discharge point formatter still normalizes positive identifiers', async () => {
+  const { formatDischargePointName } = await loadLayerTransforms();
+
+  assert.strictEqual(formatDischargePointName(1), 'DP-01');
+  assert.strictEqual(formatDischargePointName('dp1'), 'DP-01');
+  assert.strictEqual(formatDischargePointName('Drainage Area 1'), 'DP-01');
+});
+
 test('overall drainage area merges polygons into a single feature', async () => {
   const { createOverallDrainageArea } = await loadLayerTransforms();
 
