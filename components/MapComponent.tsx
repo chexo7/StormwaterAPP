@@ -535,6 +535,9 @@ const GeomanControls = ({
     try {
       // changeControlOrder is only available in newer versions
       (map.pm as any).Toolbar.changeControlOrder(toolOrder);
+      // add cancel action next to finish for edit and drag modes
+      (map.pm as any).Toolbar.changeActionsOfControl('editMode', ['finishMode', 'cancel']);
+      (map.pm as any).Toolbar.changeActionsOfControl('dragMode', ['finishMode', 'cancel']);
     } catch {
       /* noop */
     }
