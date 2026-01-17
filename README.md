@@ -25,14 +25,24 @@ This contains everything you need to run your app locally.
 
 ## Geospatial utilities
 
-The backend exposes two endpoints using Turf.js for polygon processing:
+The backend exposes several endpoints so the browser never talks directly to
+USDA Soil Data Access (which lacks CORS support) and to keep spatial processing
+server-side:
+
+* `POST /api/sda` accepts `{ sql }` and proxies the request to the SDA tabular
+  API, returning `{ table }` with the resulting rows.
+* `POST /api/wss-hsg` accepts `{ areaSymbol, symbols }` and responds with
+  `{ areaSymbol, results }` where each item includes `{ musym, muname, hsg }`.
+  The backend batches MUSYM queries, sanitizes inputs, and simplifies the HSG
+  values so the client receives clean data.
+
+### Turf.js geometry helpers
 
 * `POST /api/intersect` accepts `{ poly1, poly2 }` GeoJSON polygons and returns
   their intersection or `null` if they do not overlap.
 * `POST /api/area` accepts `{ polygon }` and returns `{ area }` in square meters.
 
-An additional route serves SCS Curve Number lookup data used for hydrologic
-analysis:
+### Curve Number lookup data
 
 * `GET /api/cn-values` returns the contents of `public/data/SCS_CN_VALUES.json`.
 
@@ -42,8 +52,6 @@ analysis:
   conditions.
 
 This allows the frontend to fetch the table of CN values based on soil group.
-
-These routes are ready for future integration with the frontend.
 
 ## Update soil HSG mapping
 
