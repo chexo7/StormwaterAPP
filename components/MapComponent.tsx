@@ -188,6 +188,10 @@ const ManagedGeoJsonLayer = ({
   useEffect(() => {
     if (!geoJsonRef.current) return;
     geoJsonRef.current.eachLayer((layer: any) => {
+      if (isEditingLayer) {
+        // Re-init layer in case Geoman opt-in disabled it
+        (L as any).PM?.reInitLayer?.(layer);
+      }
       const idx = data.features.indexOf(layer.feature as any);
       if (isEditingLayer && editingFeatureIndex === idx) {
         layer.pm.enable({
@@ -701,6 +705,12 @@ const MapComponent: React.FC<MapComponentProps> = ({
       map.off('overlayremove', handleRemove);
     };
   }, [layers, onLayerVisibilityChange]);
+
+  // Require explicit opt-in for Geoman editing so layers aren't editable
+  // unless the Edit Layers mode is active.
+  useEffect(() => {
+    (L as any).PM?.setOptIn?.(true);
+  }, []);
 
   const handleSaveClick = () => {
     if (editingTarget?.layerId) {
