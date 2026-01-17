@@ -71,6 +71,23 @@ You can limit the update to specific area symbols:
 python scripts/update_soil_hsg_map.py --areas CA630 CA649
 ```
 
+## Verify soil HSG mapping
+
+After updating the dataset you can verify that the letters match the
+current values from the Soil Data Access API using the
+`verify_soil_hsg_map.py` script.  It will report any mismatched MUSYM
+codes and exits with a non-zero status when differences are found.
+
+```bash
+python scripts/verify_soil_hsg_map.py --areas CA630 CA649
+```
+
+To check all available data in one large query use the `--fast` flag:
+
+```bash
+python scripts/verify_soil_hsg_map.py --fast
+```
+
 ## Desktop layout
 
 The default styles target 1080p displays but scale gracefully up to 4K
