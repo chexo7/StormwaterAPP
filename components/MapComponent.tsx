@@ -738,13 +738,13 @@ const MapComponent: React.FC<MapComponentProps> = ({
             onClick={handleSaveClick}
             className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded shadow"
           >
-            Guardar
+            Finalizar
           </button>
           <button
             onClick={onDiscardEdits}
             className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded shadow"
           >
-            Descartar
+            Cancelar
           </button>
         </div>
       )}
