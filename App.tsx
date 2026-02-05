@@ -757,16 +757,14 @@ const App: React.FC = () => {
       'Overall Drainage Area',
       'Drainage Areas',
       'LOD',
+      'Land Cover',
       'Soil Layer from Web Soil Survey',
     ]);
     if (drainageAreasAssigned) {
       names.add(SUBAREA_LAYER_NAME);
     }
-    if (soilsLoaded) {
-      names.add('Land Cover');
-    }
     return Array.from(names);
-  }, [drainageAreasAssigned, soilsLoaded]);
+  }, [drainageAreasAssigned]);
 
   const scsLayerStatuses = useMemo<ScsLayerStatus[]>(() => {
     const statuses: ScsLayerStatus[] = [
@@ -1222,10 +1220,8 @@ const App: React.FC = () => {
         if (name === 'Land Cover') {
           if (!soilsLoaded) {
             const msg =
-              'Carga primero la capa de suelos (WSS) antes de agregar la capa de Land Cover para mantener la secuencia de trabajo.';
-            setError(msg);
-            addLog(msg, 'error');
-            return;
+              'Advertencia: agregaste Land Cover sin una capa WSS cargada. Puedes continuar, pero deberás cargar y completar WSS para habilitar Compute.';
+            addLog(msg, 'warn');
           }
         }
 
