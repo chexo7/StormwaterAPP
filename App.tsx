@@ -756,7 +756,6 @@ const App: React.FC = () => {
     const names = new Set<string>([
       'Overall Drainage Area',
       'Drainage Areas',
-      'LOD',
       'Soil Layer from Web Soil Survey',
     ]);
     if (drainageAreasAssigned) {
