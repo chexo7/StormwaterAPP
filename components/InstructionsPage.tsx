@@ -26,7 +26,6 @@ const instructionsContent = {
       {
         heading: 'Requisitos antes de exportar',
         items: [
-          'La capa LOD debe contener exactamente un polígono válido.',
           'Carga por separado las Áreas de Drenaje generales (una por punto de descarga) y las Subáreas de Drenaje asociadas mediante el campo PARENT_DA, asegurando que cada área use su Discharge Point numerado (DP-##).',
           'La aplicación generará la subárea complementaria cuando las subáreas cargadas no cubran el área general; revisa y valida esos resultados.',
           'Confirma que cada subárea tenga Land Cover y que cada polígono de la capa WSS cuente con un HSG verificado (autoasignado o completado manualmente) en A/B/C/D.',
@@ -60,7 +59,6 @@ const instructionsContent = {
       {
         heading: 'Pre-export checklist',
         items: [
-          'The LOD layer must contain exactly one valid polygon.',
           'Upload general Drainage Areas (one per discharge point) and their Drainage Subareas, linking each subarea with the PARENT_DA field and keeping the Discharge Point numbering (DP-##) consistent.',
           'The application will synthesize a complementary subarea whenever the uploaded subareas do not cover the full drainage area—review those results carefully.',
           'Ensure every subarea carries Land Cover information and that each WSS polygon has a verified Hydrologic Soil Group (auto-filled or manually completed as A/B/C/D).',
