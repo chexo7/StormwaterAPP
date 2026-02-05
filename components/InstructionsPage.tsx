@@ -7,7 +7,7 @@ const instructionsContent = {
       'Esta herramienta te guía en la preparación y revisión de áreas de drenaje antes de exportarlas a otros formatos.',
     stepsTitle: 'Pasos para comenzar',
     steps: [
-      'Carga un archivo Shapefile o GeoPackage desde el panel izquierdo. Cada capa se validará automáticamente y el registro mostrará cualquier advertencia.',
+      'Carga un archivo Shapefile en formato .zip desde el panel izquierdo. Cada capa se validará automáticamente y el registro mostrará cualquier advertencia.',
       'Primero sube las Drainage Areas, asigna un Discharge Point (DP-##) a cada polígono y luego incorpora las Drainage Subareas vinculándolas a esos mismos DP. Al completar esas asociaciones se habilitará la carga de la capa de suelos (WSS); después de cargarla podrás añadir la capa de Land Cover con la detección automática habitual.',
       'Revisa el panel de capas para activar o desactivar la visibilidad, cambiar estilos y seleccionar qué capa editar.',
       'Usa el mapa para revisar geometrías. Puedes editar atributos clave como el Discharge Point # (DP-##), la cobertura del suelo y verificar o completar manualmente el HSG (A/B/C/D) en la capa WSS desde los controles contextuales.',
@@ -40,7 +40,7 @@ const instructionsContent = {
       'This workspace helps you prepare and review drainage area data before exporting to downstream modeling tools.',
     stepsTitle: 'Getting started',
     steps: [
-      'Upload a Shapefile or GeoPackage from the left panel. Each layer is validated automatically and the activity log will highlight any warnings.',
+      'Upload a Shapefile as a .zip archive from the left panel. Each layer is validated automatically and the activity log will highlight any warnings.',
       'Load the Drainage Areas first, assign a Discharge Point (DP-##) to every polygon, then import the Drainage Subareas and link them to those discharge points. Once those prerequisites are satisfied the WSS soil layer unlocks, and after it is loaded you can add the Land Cover layer with the usual auto-detection.',
       'Review the layer panel to toggle visibility, adjust styles, and choose which layer is currently editable.',
       'Use the map to inspect geometries. Contextual controls let you edit key attributes like the Discharge Point # (DP-##), Land Cover, and review or manually complete the HSG value (A/B/C/D) on the WSS features.',
