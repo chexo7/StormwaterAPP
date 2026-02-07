@@ -29,11 +29,12 @@ export const ESRI_PRJ_BY_EPSG: Record<string, string> = {
 };
 
 export async function resolvePrj(epsg: string): Promise<string> {
-  if (ESRI_PRJ_BY_EPSG[epsg]) return ESRI_PRJ_BY_EPSG[epsg];
-  try {
-    const r = await fetch(`https://epsg.io/${epsg}.prj`);
-    if (r.ok) return await r.text();
-  } catch {}
+  const wkt = ESRI_PRJ_BY_EPSG[epsg];
+  if (wkt && !wkt.includes('...')) return wkt;
+
+  const r = await fetch(`https://epsg.io/${epsg}.prj`);
+  if (r.ok) return await r.text();
+
   throw new Error(`No PRJ found for EPSG:${epsg}`);
 }
 
